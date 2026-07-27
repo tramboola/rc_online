@@ -1,0 +1,6 @@
+project_id          = "rc-racing-production"
+environment         = "production"
+region              = "europe-central2"
+container_tag       = "replace-with-git-sha"
+domain              = "race.example.com"
+deletion_protection = true

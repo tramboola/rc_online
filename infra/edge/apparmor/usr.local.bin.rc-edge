@@ -1,0 +1,19 @@
+#include <tunables/global>
+
+/usr/local/bin/rc-edge {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  network inet stream,
+  network inet6 stream,
+
+  /usr/local/bin/rc-edge mr,
+  /var/lib/rc-edge/ rw,
+  /var/lib/rc-edge/** rwk,
+  /etc/ssl/certs/** r,
+  /proc/sys/kernel/random/uuid r,
+
+  deny /home/** rwklx,
+  deny /root/** rwklx,
+  deny /var/run/docker.sock rwklx,
+}

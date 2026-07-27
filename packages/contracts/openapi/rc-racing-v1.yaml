@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: RC Racing API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3001
+paths:
+  /v1/public/status:
+    get:
+      operationId: getPublicStatus
+      responses:
+        "200":
+          description: Public site, car and queue status
+  /v1/public/stream:
+    get:
+      operationId: getPublicStream
+      responses:
+        "200":
+          description: Public stream snapshot
+  /v1/public/seasons/current:
+    get:
+      operationId: getCurrentSeason
+      responses:
+        "200":
+          description: Current season
+  /v1/public/leaderboard:
+    get:
+      operationId: getLeaderboard
+      responses:
+        "200":
+          description: Moderated leaderboard
+  /v1/catalog:
+    get:
+      operationId: getCatalog
+      responses:
+        "200":
+          description: Active catalog
+  /v1/wallets:
+    get:
+      operationId: getWallet
+      responses:
+        "200":
+          description: Ledger-derived wallet balance
+  /v1/preflight-results:
+    post:
+      operationId: submitPreflight
+      responses:
+        "201":
+          description: Preflight result
+  /v1/queue:
+    post:
+      operationId: joinQueue
+      responses:
+        "201":
+          description: Queue position
+  /v1/queue/me:
+    delete:
+      operationId: leaveQueue
+      responses:
+        "200":
+          description: Queue position removed
+  /v1/ride-offers/{id}/accept:
+    post:
+      operationId: acceptRideOffer
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Accepted ride snapshot
+  /v1/rides/{id}:
+    get:
+      operationId: getRide
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Authoritative ride snapshot
+  /v1/checkout-sessions:
+    post:
+      operationId: createCheckoutSession
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8 }
+      responses:
+        "201":
+          description: Stripe or mock Checkout Session

@@ -1,0 +1,19 @@
+groups:
+  - name: rc-racing
+    rules:
+      - alert: RcApiUnavailable
+        expr: up{job="rc-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: RC Racing API is unavailable
+          runbook: docs/runbooks/api-unavailable.md
+      - alert: RcEdgeUnavailable
+        expr: up{job="rc-edge"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: RC Racing edge is unavailable
+          runbook: docs/runbooks/edge-offline.md

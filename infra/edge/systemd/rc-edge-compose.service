@@ -1,0 +1,35 @@
+[Unit]
+Description=RC Racing Edge Compose Bundle
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=rc-edge
+Group=rc-edge
+WorkingDirectory=/opt/rc-racing-edge
+ExecStart=/usr/bin/docker compose --profile core --profile sim up -d --remove-orphans
+ExecStop=/usr/bin/docker compose stop
+TimeoutStartSec=180
+TimeoutStopSec=60
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/rc-racing-edge/data
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallFilter=@system-service
+SystemCallFilter=~@debug @mount @swap @reboot
+SystemCallArchitectures=native
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

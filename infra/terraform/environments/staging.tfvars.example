@@ -1,0 +1,6 @@
+project_id          = "rc-racing-staging"
+environment         = "staging"
+region              = "europe-central2"
+container_tag       = "replace-with-git-sha"
+domain              = "staging.example.com"
+deletion_protection = false

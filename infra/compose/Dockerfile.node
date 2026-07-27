@@ -1,0 +1,35 @@
+FROM node:22.20.0-bookworm-slim AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable
+WORKDIR /workspace
+
+FROM base AS dependencies
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/worker/package.json apps/worker/package.json
+COPY apps/edge/package.json apps/edge/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/domain/package.json packages/domain/package.json
+RUN pnpm install --frozen-lockfile=false
+
+FROM dependencies AS builder
+ARG APP_FILTER
+COPY . .
+RUN pnpm --filter "${APP_FILTER}..." build
+
+FROM base AS runner
+ARG APP_FILTER
+ENV APP_FILTER=$APP_FILTER
+ENV NODE_ENV=production
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack install --global pnpm@10.33.0
+RUN groupadd --gid 10001 rc && useradd --uid 10001 --gid rc --create-home rc
+RUN install -d -o rc -g rc /var/lib/rc-edge
+COPY --from=builder --chown=rc:rc /workspace /workspace
+USER 10001:10001
+EXPOSE 3000
+CMD ["sh", "-c", "pnpm --filter \"$APP_FILTER\" start"]

@@ -1,0 +1,43 @@
+{
+  "name": "rc-racing-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RC Racing cloud, edge and simulator monorepo",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "dev:mock": "cross-env NODE_ENV=development MOCK_MODE=true IDENTITY_PROVIDER=mock PAYMENT_PROVIDER=mock DEVICE_PROVIDER=simulator TIMING_PROVIDER=simulator CAMERA_PROVIDER=loop PUBLIC_STREAM_PROVIDER=mediamtx turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:failure": "pnpm --filter @rc/failure-tests test",
+    "test:e2e": "pnpm --filter @rc/e2e test:e2e",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "db:generate": "pnpm --filter @rc/database db:generate",
+    "db:migrate": "pnpm --filter @rc/database db:migrate",
+    "db:seed": "pnpm --filter @rc/database db:seed",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "cross-env": "^7.0.3",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "find-my-way": "9.7.0",
+      "js-yaml": "5.2.2",
+      "postcss": "8.5.18",
+      "sharp": "0.35.0"
+    }
+  }
+}

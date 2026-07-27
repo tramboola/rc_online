@@ -1,0 +1,7 @@
+* @tramboola
+
+/apps/api/src/billing/ @tramboola
+/apps/edge/ @tramboola
+/packages/domain/src/ledger.ts @tramboola
+/packages/database/migrations/ @tramboola
+/infra/terraform/ @tramboola

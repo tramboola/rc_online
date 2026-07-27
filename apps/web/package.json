@@ -1,0 +1,29 @@
+{
+  "name": "@rc/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build && node scripts/prepare-standalone.mjs",
+    "dev": "next dev",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@fontsource/oswald": "^5.2.0",
+    "@fontsource/rajdhani": "^5.2.0",
+    "@phosphor-icons/react": "^2.1.0",
+    "@rc/contracts": "workspace:*",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  }
+}
