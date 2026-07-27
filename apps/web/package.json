@@ -15,7 +15,7 @@
     "@fontsource/rajdhani": "^5.2.0",
     "@phosphor-icons/react": "^2.1.0",
     "@rc/contracts": "workspace:*",
-    "next": "^16.0.0",
+    "next": "^16.2.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
