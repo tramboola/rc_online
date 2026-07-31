@@ -12,6 +12,17 @@
   --amber: #ffb71b;
   --font-display: "Oswald", Impact, sans-serif;
   --font-ui: "Rajdhani", "Arial Narrow", sans-serif;
+  --motion-press: 100ms;
+  --motion-fast: 130ms;
+  --motion-ui: 160ms;
+  --motion-surface: 190ms;
+  --ease-out-ui: cubic-bezier(.22, 1, .36, 1);
+}
+
+@property --frame-color {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #35434b;
 }
 
 * { box-sizing: border-box; }
@@ -51,7 +62,13 @@ img { display: block; max-width: 100%; }
   transform: skew(-7deg);
   border-right: 1px solid #2d353b;
 }
-.brand strong { color: var(--red); margin-right: 10px; }
+.brand-lockup {
+  display: inline-flex;
+  align-items: baseline;
+  transform-origin: left center;
+  transition: transform var(--motion-fast) var(--ease-out-ui);
+}
+.brand strong { color: var(--red); display: inline-block; margin-right: 10px; }
 .site-header nav { display: flex; align-items: stretch; gap: 16px; }
 .site-header nav a {
   min-width: 125px;
@@ -59,9 +76,10 @@ img { display: block; max-width: 100%; }
   text-align: center;
   font-weight: 600;
   position: relative;
+  transition: color var(--motion-ui) ease, opacity var(--motion-ui) ease;
 }
 .site-header nav a.active { color: var(--red); }
-.site-header nav a.active::after {
+.site-header nav a::after {
   content: "";
   height: 3px;
   position: absolute;
@@ -70,7 +88,14 @@ img { display: block; max-width: 100%; }
   bottom: 0;
   background: var(--red);
   box-shadow: 0 0 14px rgba(255, 59, 53, .55);
+  opacity: 0;
+  transform: scaleX(.35);
+  transform-origin: center;
+  transition:
+    opacity var(--motion-fast) ease,
+    transform var(--motion-fast) var(--ease-out-ui);
 }
+.site-header nav a.active::after { opacity: 1; transform: scaleX(1); }
 .account-chip {
   justify-self: end;
   margin: 14px 40px 14px 0;
@@ -81,6 +106,10 @@ img { display: block; max-width: 100%; }
   align-items: center;
   gap: 10px;
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  transition:
+    --frame-color var(--motion-ui) ease,
+    border-color var(--motion-ui) ease,
+    transform var(--motion-fast) var(--ease-out-ui);
 }
 .account-chip .balance { font-weight: 700; }
 .account-chip small { font-size: 13px; font-style: italic; }
@@ -102,6 +131,133 @@ p { color: #a9afb3; }
   border: 1px solid #35434b;
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
+
+/* Native borders are clipped before they can paint diagonal corners.
+   These tiny overlays complete each frame without adding extra markup. */
+.account-chip,
+.panel-cut,
+.data-panel,
+.hero-link,
+.action-button,
+.icon-label,
+.product-card,
+.step-rail li > span,
+.readiness-box {
+  --frame-color: #35434b;
+  --frame-hover-color: #65747c;
+  --frame-width: .5px;
+  --corner-stroke-size: calc(var(--cut-size) - 1px);
+  position: relative;
+}
+.account-chip::before,
+.panel-cut::before,
+.data-panel::before,
+.hero-link::before,
+.action-button::before,
+.icon-label::before,
+.product-card::before,
+.step-rail li > span::before,
+.readiness-box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.account-chip::before,
+.data-panel::before,
+.product-card::before,
+.readiness-box::before {
+  background:
+    linear-gradient(135deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) top left / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(135deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) bottom right / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat;
+}
+.panel-cut::before,
+.hero-link::before,
+.action-button::before,
+.step-rail li > span::before {
+  background:
+    linear-gradient(135deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) top left / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(45deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) top right / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(135deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) bottom right / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(45deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) bottom left / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat;
+}
+.icon-label::before {
+  background:
+    linear-gradient(135deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) top left / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(45deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) top right / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat;
+}
+.account-chip { --cut-size: 8px; --frame-color: var(--red); --frame-hover-color: #ff7772; }
+.panel-cut { --cut-size: 14px; --frame-color: #566269; --frame-hover-color: #7c8b93; }
+.hero-media.panel-cut { --frame-color: var(--cyan); --frame-hover-color: #7ce8fb; }
+.data-panel { --cut-size: 10px; }
+.challenge-card { --frame-color: #722027; --frame-hover-color: #a8464e; }
+.queue-position { --frame-color: var(--cyan); --frame-hover-color: #7ce8fb; }
+.queue-closed,
+.stop-panel { --frame-color: var(--red); --frame-hover-color: #ff7772; }
+.hero-link,
+.action-button {
+  --cut-size: 12px;
+  --frame-color: #ff6762;
+  --frame-hover-color: #ff918d;
+}
+.action-cyan { --frame-color: var(--cyan); --frame-hover-color: #7ce8fb; }
+.action-ghost { --frame-color: #435058; --frame-hover-color: #6b7a82; }
+.action-lime { --frame-color: var(--lime); --frame-hover-color: #d4ef61; }
+.icon-label { --cut-size: 10px; --frame-color: var(--cyan); --frame-hover-color: #7ce8fb; }
+.icon-label.tone-lime { --frame-color: var(--lime); --frame-hover-color: #d4ef61; }
+.icon-label.tone-red { --frame-color: var(--red); --frame-hover-color: #ff7772; }
+.icon-label.tone-amber { --frame-color: var(--amber); --frame-hover-color: #ffd16b; }
+.season-banner .icon-label::before,
+.your-season .icon-label::before,
+.neutral-panel .icon-label::before {
+  display: none;
+}
+.product-card { --cut-size: 12px; --frame-color: var(--cyan); --frame-hover-color: #7ce8fb; }
+.product-card.popular { --frame-color: var(--lime); --frame-hover-color: #d4ef61; }
+.product-card.featured { --frame-color: var(--red); --frame-hover-color: #ff7772; --frame-width: 1px; }
+.step-rail li > span { --cut-size: 13px; --frame-color: currentColor; }
+.readiness-box { --cut-size: 12px; --frame-color: var(--cyan); }
 .home-main, .pricing-main, .leaderboard-main, .results-main, .operator-main {
   width: min(1600px, calc(100% - 52px));
   margin: 0 auto;
@@ -120,7 +276,13 @@ p { color: #a9afb3; }
   overflow: hidden;
   background: #061016;
 }
-.hero-media img { width: 100%; height: 100%; object-fit: cover; position: absolute; }
+.hero-media img,
+.hero-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+}
 .live-badge, .viewer-badge {
   position: absolute;
   top: 17px;
@@ -156,9 +318,21 @@ p { color: #a9afb3; }
   letter-spacing: 1.5px;
   cursor: pointer;
   clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px), 0 12px);
-  transition: transform .15s ease, filter .15s ease;
+  touch-action: manipulation;
+  transition:
+    --frame-color var(--motion-ui) ease,
+    border-color var(--motion-ui) ease,
+    color var(--motion-ui) ease,
+    transform var(--motion-fast) var(--ease-out-ui);
 }
-.hero-link:hover, .action-button:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.14); }
+.hero-link > svg, .action-button > svg {
+  flex: 0 0 auto;
+  transition: transform var(--motion-fast) var(--ease-out-ui);
+}
+.hero-link:active, .action-button:active:not(:disabled) {
+  transform: scale(.975);
+  transition-duration: var(--motion-press);
+}
 .action-button:focus-visible, a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid white; outline-offset: 3px; }
 .action-button:disabled { opacity: .45; cursor: not-allowed; }
 .action-cyan { color: var(--cyan); border-color: var(--cyan); background: rgba(5, 22, 27, .92); }
@@ -406,7 +580,14 @@ p { color: #a9afb3; }
 .offer-actions .action-button { width: 100%; }
 .fine-print { font-size: 14px; display: flex; gap: 6px; align-items: center; }
 
-.ride-page { width: 100vw; height: 100vh; overflow: hidden; position: relative; background: #000; }
+.ride-page {
+  --ride-infographic-scale: .5;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  background: #000;
+}
 .drive-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ride-shade { position: absolute; inset: 0; background: radial-gradient(circle, transparent 40%, rgba(0, 0, 0, .45) 100%); }
 .ride-brand { position: absolute; left: 0; top: 0; min-width: 800px; height: 105px; border: 1px solid #52575a; background: rgba(0, 0, 0, .78); display: flex; align-items: center; gap: 70px; padding: 0 55px; }
@@ -415,7 +596,7 @@ p { color: #a9afb3; }
 .ride-left-stats { position: absolute; left: 55px; top: 170px; display: grid; gap: 4px; text-shadow: 0 2px 12px #000; }
 .ride-left-stats small { color: var(--cyan); font: 600 30px var(--font-display); }
 .ride-left-stats strong { font: 500 68px var(--font-display); margin-bottom: 37px; }
-.lap-clock { position: absolute; top: 45px; left: 50%; transform: translateX(-50%); text-align: center; display: flex; flex-direction: column; text-shadow: 0 2px 12px #000; }
+.lap-clock { position: absolute; top: 45px; left: 50%; translate: -50% 0; text-align: center; display: flex; flex-direction: column; text-shadow: 0 2px 12px #000; }
 .lap-clock small { color: var(--cyan); font: 600 34px var(--font-display); }
 .lap-clock strong { font: 500 92px var(--font-display); }
 .lap-clock em { color: var(--lime); font: 500 44px var(--font-display); }
@@ -426,10 +607,26 @@ p { color: #a9afb3; }
 .ride-telemetry .icon-label { min-height: 100px; padding: 15px; background: rgba(5, 7, 9, .83); }
 .ride-telemetry .icon-label strong { font-size: 28px; }
 .ride-telemetry button { min-height: 90px; color: var(--cyan); border: 1px solid #536068; background: rgba(5, 7, 9, .83); display: grid; place-items: center; cursor: pointer; }
-.ride-actions { position: absolute; left: 50%; transform: translateX(-50%); bottom: 35px; width: min(1450px, 58vw); min-height: 96px; border: 1px solid var(--red); background: rgba(8, 5, 6, .9); display: grid; grid-template-columns: 1fr auto; align-items: center; padding-left: 32px; color: #ff5b4d; font: 500 27px var(--font-display); }
+.ride-actions { position: absolute; left: 50%; translate: -50% 0; bottom: 35px; width: min(1450px, 58vw); min-height: 96px; border: 1px solid var(--red); background: rgba(8, 5, 6, .9); display: grid; grid-template-columns: 1fr auto; align-items: center; padding-left: 32px; color: #ff5b4d; font: 500 27px var(--font-display); }
 .ride-actions > span { display: flex; align-items: center; gap: 12px; }
 .ride-actions .action-button { height: 100%; }
 .end-ride { position: absolute; right: 50px; bottom: 35px; min-width: 285px; height: 96px; border: 1px solid var(--red); background: rgba(10, 7, 8, .82); color: #ff5b4d; display: flex; align-items: center; justify-content: center; gap: 18px; font: 500 27px var(--font-display); cursor: pointer; }
+.ride-brand,
+.ride-left-stats,
+.lap-clock,
+.time-ring,
+.ride-telemetry,
+.ride-actions,
+.end-ride {
+  scale: var(--ride-infographic-scale);
+}
+.ride-brand,
+.ride-left-stats { transform-origin: top left; }
+.lap-clock { transform-origin: top center; }
+.time-ring,
+.ride-telemetry { transform-origin: top right; }
+.ride-actions { transform-origin: bottom center; }
+.end-ride { transform-origin: bottom right; }
 
 .results-main { padding-bottom: 25px; }
 .result-heading { display: flex; justify-content: space-between; align-items: center; }
@@ -478,6 +675,268 @@ p { color: #a9afb3; }
 .stop-panel > svg { color: var(--red); }
 .stop-panel .action-button { margin: 40px auto 0; width: 100%; }
 
+/* Lightweight interaction motion: CSS-only, composited where movement is used. */
+.panel-cut,
+.data-panel,
+.icon-label {
+  transition-property: --frame-color, border-color;
+  transition-duration: var(--motion-ui);
+  transition-timing-function: ease;
+}
+.balance-panel a,
+.value-card > a,
+.challenge-card > a,
+.mobile-gate a {
+  transition:
+    color var(--motion-ui) ease,
+    opacity var(--motion-ui) ease,
+    transform var(--motion-fast) var(--ease-out-ui);
+}
+.balance-panel a > svg,
+.challenge-card > a > svg {
+  transition: transform var(--motion-fast) var(--ease-out-ui);
+}
+.home-cards article,
+.product-card,
+.car-choice,
+.segmented button,
+.profile-options button,
+.ride-telemetry button,
+.end-ride {
+  touch-action: manipulation;
+}
+.home-cards article,
+.product-card {
+  transition:
+    --frame-color var(--motion-surface) ease,
+    border-color var(--motion-surface) ease,
+    transform var(--motion-surface) var(--ease-out-ui);
+}
+.record-card > img,
+.challenge-car,
+.product-card h3,
+.product-card > strong,
+.ribbon {
+  transition:
+    opacity var(--motion-surface) ease,
+    transform var(--motion-surface) var(--ease-out-ui);
+}
+.table-row:not(.table-head),
+.lap-summary > div,
+.fleet-panel > div {
+  transition:
+    background-color var(--motion-ui) ease,
+    color var(--motion-ui) ease;
+}
+.table-row:not(.table-head) > strong,
+.lap-summary > div > strong,
+.fleet-panel > div > svg {
+  transition: transform var(--motion-fast) var(--ease-out-ui);
+}
+.segmented button,
+.profile-options button {
+  transition:
+    background-color var(--motion-ui) ease,
+    border-color var(--motion-ui) ease,
+    color var(--motion-ui) ease,
+    transform var(--motion-fast) var(--ease-out-ui);
+}
+.segmented button > svg,
+.profile-options button > svg {
+  transition: transform var(--motion-fast) var(--ease-out-ui);
+}
+.segmented button:active,
+.profile-options button:active,
+.car-choice:active,
+.ride-telemetry button:active,
+.end-ride:active {
+  transform: scale(.975);
+  transition-duration: var(--motion-press);
+}
+.segmented button.selected > svg,
+.profile-options button.selected > svg {
+  transform: translateY(-1px) scale(1.06);
+}
+.car-choice {
+  transition:
+    border-color var(--motion-ui) ease,
+    transform var(--motion-fast) var(--ease-out-ui);
+}
+.car-choice img {
+  transition:
+    opacity var(--motion-surface) ease,
+    transform var(--motion-surface) var(--ease-out-ui);
+}
+.choice-check {
+  opacity: 1;
+  transform: scale(1);
+  transform-origin: center;
+  transition:
+    opacity var(--motion-ui) ease,
+    transform var(--motion-ui) var(--ease-out-ui);
+}
+@starting-style {
+  .choice-check {
+    opacity: 0;
+    transform: scale(.92);
+  }
+}
+.ride-telemetry button,
+.end-ride {
+  transition:
+    border-color var(--motion-ui) ease,
+    color var(--motion-ui) ease,
+    transform var(--motion-fast) var(--ease-out-ui);
+}
+.ride-telemetry button > svg,
+.end-ride > svg {
+  transition: transform var(--motion-fast) var(--ease-out-ui);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .site-header nav a:hover { color: #fff; }
+  .site-header nav a:hover::after { opacity: .68; transform: scaleX(1); }
+  .site-header nav a.active:hover { color: var(--red); }
+  .site-header nav a.active:hover::after { opacity: 1; }
+  .brand:hover .brand-lockup { transform: translateX(2px) scale(1.025); }
+  .account-chip:hover { --frame-color: var(--frame-hover-color); border-color: var(--frame-hover-color); transform: translateY(-1px); }
+
+  .hero-link:hover,
+  .action-button:hover:not(:disabled) {
+    --frame-color: var(--frame-hover-color);
+    border-color: var(--frame-hover-color);
+    transform: translateY(-1px) scale(1.01);
+  }
+  .hero-link:hover > svg,
+  .action-button:hover:not(:disabled) > svg,
+  .balance-panel a:hover > svg,
+  .challenge-card > a:hover > svg {
+    transform: translateX(4px);
+  }
+
+  .balance-panel a:hover,
+  .value-card > a:hover,
+  .challenge-card > a:hover,
+  .mobile-gate a:hover {
+    opacity: .82;
+    transform: translateX(2px);
+  }
+  .home-cards article:hover,
+  .product-card:hover {
+    --frame-color: var(--frame-hover-color);
+    border-color: var(--frame-hover-color);
+    transform: translateY(-2px);
+  }
+  .panel-cut:hover,
+  .data-panel:hover,
+  .icon-label:hover {
+    --frame-color: var(--frame-hover-color);
+    border-color: var(--frame-hover-color);
+  }
+  .record-card:hover > img { opacity: .2; transform: scale(1.025); }
+  .challenge-card:hover .challenge-car { opacity: .58; transform: translateX(-4px) scale(1.015); }
+  .product-card:hover h3 { transform: translateY(-1px); }
+  .product-card:hover > strong { transform: translateY(-2px); }
+  .product-card:hover .ribbon { transform: translateY(2px); }
+
+  .table-row:not(.table-head):hover,
+  .lap-summary > div:hover,
+  .fleet-panel > div:hover {
+    background-color: rgba(53, 214, 244, .045);
+  }
+  .table-row:not(.table-head):hover > strong,
+  .lap-summary > div:hover > strong {
+    transform: translateX(2px);
+  }
+  .fleet-panel > div:hover > svg { transform: scale(1.06); }
+
+  .segmented button:hover,
+  .profile-options button:hover {
+    border-color: #718087;
+    color: #fff;
+    transform: translateY(-1px);
+  }
+  .segmented button.selected:hover,
+  .profile-options button.selected:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+  .car-choice:hover { border-color: #78848a; transform: translateY(-1px); }
+  .car-choice:hover img { transform: scale(1.012); }
+  .car-choice.selected:hover { border-color: var(--cyan); }
+
+  .ride-telemetry button:hover {
+    border-color: var(--cyan);
+    color: #fff;
+    transform: translateY(-1px);
+  }
+  .ride-telemetry button:hover > svg { transform: scale(1.06); }
+  .end-ride:hover {
+    border-color: #ff7772;
+    color: #ff7772;
+    transform: translateY(-1px);
+  }
+  .end-ride:hover > svg { transform: translateX(2px); }
+}
+
+@media (max-width: 1600px), (max-height: 900px) {
+  .ride-brand {
+    min-width: 440px;
+    height: 72px;
+    gap: 28px;
+    padding: 0 28px;
+  }
+  .ride-brand .brand { font-size: 30px; }
+  .ride-brand > b { font-size: 18px; }
+  .ride-left-stats { left: 28px; top: 145px; }
+  .ride-left-stats small { font-size: 20px; }
+  .ride-left-stats strong { font-size: 46px; margin-bottom: 20px; }
+  .lap-clock { top: 24px; }
+  .lap-clock small { font-size: 25px; }
+  .lap-clock strong { font-size: 64px; }
+  .lap-clock em { font-size: 30px; }
+  .time-ring {
+    top: 28px;
+    right: 24px;
+    width: 190px;
+    height: 190px;
+    border-width: 10px;
+  }
+  .time-ring small { font-size: 20px; }
+  .time-ring strong { font-size: 48px; }
+  .ride-telemetry {
+    right: 24px;
+    top: 238px;
+    gap: 8px;
+    width: 220px;
+  }
+  .ride-telemetry .icon-label { min-height: 72px; padding: 10px; }
+  .ride-telemetry .icon-label strong { font-size: 22px; }
+  .ride-telemetry button { min-height: 64px; }
+  .ride-actions {
+    left: 24px;
+    bottom: 20px;
+    width: calc(100vw - 310px);
+    min-height: 72px;
+    padding-left: 20px;
+    font-size: 21px;
+    translate: none;
+    transform-origin: bottom left;
+  }
+  .ride-actions .action-button {
+    min-height: 70px;
+    padding: 0 22px;
+    font-size: 21px;
+  }
+  .end-ride {
+    right: 24px;
+    bottom: 20px;
+    min-width: 220px;
+    height: 72px;
+    font-size: 22px;
+  }
+}
+
 @media (max-width: 1200px) {
   .site-header { grid-template-columns: 250px 1fr 190px; }
   .brand { padding-left: 28px; font-size: 31px; }
@@ -501,8 +960,9 @@ p { color: #a9afb3; }
   body { font-size: 16px; }
   .site-header { height: auto; grid-template-columns: 1fr auto; }
   .site-header .brand { height: 62px; }
-  .site-header nav { grid-column: 1 / -1; overflow-x: auto; order: 3; border-top: 1px solid #253039; }
-  .site-header nav a { min-width: 112px; height: 50px; padding-top: 14px; }
+  .site-header nav { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; order: 3; border-top: 1px solid #253039; }
+  .site-header nav a { min-width: 0; height: 50px; padding-top: 14px; }
+  .site-header nav a:last-child { display: none; }
   .account-chip { margin: 12px 15px 12px 0; min-width: 145px; }
   .home-main, .pricing-main, .leaderboard-main, .results-main, .operator-main { width: calc(100% - 28px); }
   .hero-grid { grid-template-columns: 1fr; }
@@ -534,5 +994,48 @@ p { color: #a9afb3; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+  .hero-link,
+  .action-button,
+  .account-chip,
+  .home-cards article,
+  .product-card,
+  .car-choice,
+  .segmented button,
+  .profile-options button,
+  .ride-telemetry button,
+  .end-ride,
+  .balance-panel a,
+  .value-card > a,
+  .challenge-card > a,
+  .mobile-gate a {
+    transform: none !important;
+  }
+  .site-header nav a::after,
+  .brand-lockup,
+  .hero-link > svg,
+  .action-button > svg,
+  .balance-panel a > svg,
+  .challenge-card > a > svg,
+  .record-card > img,
+  .challenge-car,
+  .product-card h3,
+  .product-card > strong,
+  .ribbon,
+  .table-row:not(.table-head) > strong,
+  .lap-summary > div > strong,
+  .fleet-panel > div > svg,
+  .segmented button > svg,
+  .profile-options button > svg,
+  .car-choice img,
+  .choice-check,
+  .ride-telemetry button > svg,
+  .end-ride > svg {
+    transform: none !important;
+  }
 }

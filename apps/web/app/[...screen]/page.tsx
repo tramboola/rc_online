@@ -18,5 +18,10 @@ export default async function ScreenPage({
 }) {
   const { screen } = await params;
   const requested = (screen[0] ?? "home") as ScreenName;
-  return <SimulationScreen screen={knownScreens.has(requested) ? requested : "home"} />;
+  return (
+    <SimulationScreen
+      mockMode={process.env.MOCK_MODE === "true"}
+      screen={knownScreens.has(requested) ? requested : "home"}
+    />
+  );
 }

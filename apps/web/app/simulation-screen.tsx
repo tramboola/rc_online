@@ -63,19 +63,28 @@ function Header({ active }: { active: ScreenName }) {
   return (
     <header className="site-header">
       <Link className="brand" href="/">
-        <strong>RC</strong> RACING
+        <span className="brand-lockup"><strong>RC</strong> RACING</span>
       </Link>
       <nav aria-label="Primary">
-        <Link className={active === "home" ? "active" : ""} href="/">
+        <Link
+          aria-current={active === "home" ? "page" : undefined}
+          className={active === "home" ? "active" : ""}
+          href="/"
+        >
           Live Track
         </Link>
         <Link
+          aria-current={active === "leaderboard" ? "page" : undefined}
           className={active === "leaderboard" ? "active" : ""}
           href="/leaderboard"
         >
           Leaderboard
         </Link>
-        <Link className={active === "pricing" ? "active" : ""} href="/pricing">
+        <Link
+          aria-current={active === "pricing" ? "page" : undefined}
+          className={active === "pricing" ? "active" : ""}
+          href="/pricing"
+        >
           Pricing
         </Link>
         <a href="#how-it-works">How It Works</a>
@@ -151,17 +160,32 @@ function MobileGate() {
   );
 }
 
-function HomeScreen() {
+function HomeScreen({ mockMode }: { mockMode: boolean }) {
   return (
     <div className="page">
       <Header active="home" />
       <main className="home-main">
         <section className="hero-grid">
           <div className="hero-media panel-cut">
-            <img
-              src="/assets/hero-track.png"
-              alt="Black and red RC car racing on the indoor Neon Circuit"
-            />
+            {mockMode ? (
+              <video
+                aria-label="Black and red RC car racing on the indoor Neon Circuit"
+                autoPlay
+                disablePictureInPicture
+                loop
+                muted
+                playsInline
+                poster="/assets/hero-track.png"
+                preload="metadata"
+              >
+                <source src="/assets/hero-track.mp4" type="video/mp4" />
+              </video>
+            ) : (
+              <img
+                src="/assets/hero-track.png"
+                alt="Black and red RC car racing on the indoor Neon Circuit"
+              />
+            )}
             <span className="live-badge">● LIVE</span>
             <span className="viewer-badge">287 watching</span>
           </div>
@@ -189,7 +213,7 @@ function HomeScreen() {
 
         <section className="home-cards" id="how-it-works">
           <article className="data-panel record-card">
-            <img src="/assets/neon-circuit-map.png" alt="" />
+            <img src="/assets/neon-circuit-map-simple-v2.webp" alt="Neon Circuit track layout" />
             <small>SEASON 01 RECORD</small>
             <h2>00:42.817</h2>
             <p>NIGHTSHIFT · TOP DRIVER</p>
@@ -361,7 +385,7 @@ function LeaderboardScreen() {
         <section className="season-banner panel-cut">
           <div><small>SEASON 01 —</small><h1>NEON CIRCUIT</h1></div>
           <IconLabel icon={CheckCircle} title="LIVE SEASON" subtitle="ENDS AUG 18" tone="lime" />
-          <img className="season-track" src="/assets/neon-circuit-map.png" alt="Neon Circuit track layout" />
+          <img className="season-track" src="/assets/neon-circuit-map-simple-v2.webp" alt="Neon Circuit track layout" />
           <IconLabel icon={Trophy} title="$1,000" subtitle="TOTAL PRIZE POOL" tone="lime" />
           <ActionButton tone="cyan">VIEW RULES</ActionButton>
         </section>
@@ -461,8 +485,22 @@ function PreflightScreen() {
               <div className="panel-heading">
                 <h2>CONTROLLER SETUP</h2>
                 <div className="segmented">
-                  <button className={controller === "keyboard" ? "selected" : ""} onClick={() => setController("keyboard")}><Keyboard size={18} /> KEYBOARD</button>
-                  <button className={controller === "gamepad" ? "selected" : ""} onClick={() => setController("gamepad")}><GameController size={18} /> GAMEPAD</button>
+                  <button
+                    aria-pressed={controller === "keyboard"}
+                    className={controller === "keyboard" ? "selected" : ""}
+                    onClick={() => setController("keyboard")}
+                    type="button"
+                  >
+                    <Keyboard size={18} /> KEYBOARD
+                  </button>
+                  <button
+                    aria-pressed={controller === "gamepad"}
+                    className={controller === "gamepad" ? "selected" : ""}
+                    onClick={() => setController("gamepad")}
+                    type="button"
+                  >
+                    <GameController size={18} /> GAMEPAD
+                  </button>
                 </div>
               </div>
               <img
@@ -487,7 +525,13 @@ function PreflightScreen() {
               <h3>DRIVING PROFILE</h3>
               <div className="profile-options">
                 {(["soft", "normal", "aggressive"] as const).map((item) => (
-                  <button className={profile === item ? "selected" : ""} key={item} onClick={() => setProfile(item)}>
+                  <button
+                    aria-pressed={profile === item}
+                    className={profile === item ? "selected" : ""}
+                    key={item}
+                    onClick={() => setProfile(item)}
+                    type="button"
+                  >
                     {item === "soft" ? <ShieldCheck size={28} /> : item === "normal" ? <Gauge size={28} /> : <Lightning size={28} />}
                     <span>{item.toUpperCase()}</span>
                   </button>
@@ -603,7 +647,13 @@ function QueueScreen() {
               [blueCarId, "CAR 01", "NIGHT RUNNER", "/assets/car-blue.png", "86%", "EXCELLENT"],
               [redCarId, "CAR 02", "RED COMET", "/assets/car-red.png", "74%", "GOOD"],
             ].map(([id, number, name, src, battery, connection]) => (
-              <button className={`car-choice ${selectedCar === id ? "selected" : ""}`} onClick={() => setSelectedCar(id!)} key={id}>
+              <button
+                aria-pressed={selectedCar === id}
+                className={`car-choice ${selectedCar === id ? "selected" : ""}`}
+                key={id}
+                onClick={() => setSelectedCar(id!)}
+                type="button"
+              >
                 {selectedCar === id ? <CheckCircle className="choice-check" size={32} weight="fill" /> : null}
                 <img src={src} alt={`${name} RC car`} />
                 <small>{number}</small><strong>{name}</strong>
@@ -622,10 +672,10 @@ function QueueScreen() {
   );
 }
 
-function RideScreen() {
+function RideScreen({ mockMode }: { mockMode: boolean }) {
   const router = useRouter();
   const loopRef = useRef<BrowserControlLoop | null>(null);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(mockMode);
   const [remaining, setRemaining] = useState(138);
   const [lapTime, setLapTime] = useState(31842);
   const [control, setControl] = useState({ steering: 0, throttle: 0, brake: 0 });
@@ -701,23 +751,50 @@ function RideScreen() {
   return (
     <div className="ride-page desktop-flow">
       <MobileGate />
-      <img className="drive-poster" src="/assets/drive-onboard.png" alt="Onboard view behind a green RC car on the Neon Circuit" />
+      {mockMode ? (
+        <video
+          aria-label="Onboard view behind a green RC car on the Neon Circuit"
+          autoPlay
+          className="drive-poster"
+          disablePictureInPicture
+          loop
+          muted={muted}
+          playsInline
+          poster="/assets/drive-onboard.png"
+          preload="metadata"
+        >
+          <source src="/assets/drive-onboard.mp4" type="video/mp4" />
+        </video>
+      ) : (
+        <img
+          className="drive-poster"
+          src="/assets/drive-onboard.png"
+          alt="Onboard view behind a green RC car on the Neon Circuit"
+        />
+      )}
       <div className="ride-shade" />
-      <div className="ride-brand"><span className="brand"><strong>RC</strong> RACING</span><b>● LIVE / DIRECT</b></div>
+      <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> RACING</span></span><b>● LIVE / DIRECT</b></div>
       <div className="ride-left-stats"><small>PERSONAL BEST</small><strong>00:47.306</strong><small>SEASON RANK</small><strong>#27</strong></div>
       <div className="lap-clock"><small>LAP 04</small><strong>{`00:${(lapTime / 1000).toFixed(3).padStart(6, "0")}`}</strong><em>-00.684</em></div>
       <div className="time-ring"><small>TIME LEFT</small><strong>{timeLeft}</strong></div>
       <aside className="ride-telemetry">
         <IconLabel icon={BatteryHigh} title="78%" subtitle="BATTERY" tone="lime" />
         <IconLabel icon={WifiHigh} title="GOOD" subtitle="60 ms" tone="lime" />
-        <button onClick={() => setMuted((value) => !value)}><SpeakerHigh size={36} /><span>{muted ? "MUTED" : "AUDIO"}</span></button>
+        <button
+          aria-label={muted ? "Unmute ride audio" : "Mute ride audio"}
+          aria-pressed={muted}
+          onClick={() => setMuted((value) => !value)}
+          type="button"
+        >
+          <SpeakerHigh size={36} /><span>{muted ? "MUTED" : "AUDIO"}</span>
+        </button>
         <IconLabel icon={GameController} title="CONNECTED" subtitle={`S ${control.steering} · T ${control.throttle}`} />
       </aside>
       <div className="ride-actions">
         <span><Clock size={27} /> EXTEND RIDE? 5:00 AVAILABLE — QUEUE EMPTY</span>
         <ActionButton onClick={() => setRemaining((value) => value + 300)}>EXTEND +5 MIN</ActionButton>
       </div>
-      <button className="end-ride" onClick={() => void endRide()}><Flag size={28} /> END RIDE</button>
+      <button className="end-ride" onClick={() => void endRide()} type="button"><Flag size={28} /> END RIDE</button>
     </div>
   );
 }
@@ -737,7 +814,7 @@ function ResultsScreen() {
       <main className="results-main">
         <div className="result-heading">
           <div><h1>/// RIDE COMPLETE</h1><p>Car 01 returned safely</p></div>
-          <img src="/assets/neon-circuit-map.png" alt="Neon Circuit track layout" />
+          <img src="/assets/neon-circuit-map-simple-v2.webp" alt="Neon Circuit track layout" />
         </div>
         <section className="personal-best-panel">
           <div><small>NEW PERSONAL BEST</small><strong>00:46.622</strong></div>
@@ -826,13 +903,19 @@ function OperatorScreen() {
   );
 }
 
-export function SimulationScreen({ screen }: { screen: ScreenName }) {
+export function SimulationScreen({
+  mockMode = false,
+  screen,
+}: {
+  mockMode?: boolean;
+  screen: ScreenName;
+}) {
   if (screen === "pricing") return <PricingScreen />;
   if (screen === "leaderboard") return <LeaderboardScreen />;
   if (screen === "preflight") return <PreflightScreen />;
   if (screen === "queue") return <QueueScreen />;
-  if (screen === "ride") return <RideScreen />;
+  if (screen === "ride") return <RideScreen mockMode={mockMode} />;
   if (screen === "results") return <ResultsScreen />;
   if (screen === "operator") return <OperatorScreen />;
-  return <HomeScreen />;
+  return <HomeScreen mockMode={mockMode} />;
 }

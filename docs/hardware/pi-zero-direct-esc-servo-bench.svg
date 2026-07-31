@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1100" viewBox="0 0 1800 1100">
+  <defs>
+    <style>
+      .bg { fill: #f7fafc; }
+      .title { font: 700 38px Arial, sans-serif; fill: #101820; }
+      .subtitle { font: 600 24px Arial, sans-serif; fill: #394956; }
+      .h2 { font: 700 25px Arial, sans-serif; fill: #101820; }
+      .label { font: 600 20px Arial, sans-serif; fill: #101820; }
+      .small { font: 600 16px Arial, sans-serif; fill: #273640; }
+      .tiny { font: 700 13px Arial, sans-serif; fill: #101820; }
+      .white-text { font: 700 22px Arial, sans-serif; fill: #fff; }
+      .board { fill: #176b45; stroke: #0c3d29; stroke-width: 5; }
+      .device { fill: #34424c; stroke: #101820; stroke-width: 5; }
+      .panel { fill: #fff; stroke: #263640; stroke-width: 3; }
+      .pin { fill: #f2c94c; stroke: #5f4a00; stroke-width: 2; }
+      .pin-signal-a { fill: #ffd400; stroke: #674f00; stroke-width: 4; }
+      .pin-signal-b { fill: #fff; stroke: #263640; stroke-width: 4; }
+      .pin-ground { fill: #1c252b; stroke: #000; stroke-width: 4; }
+      .wire-steer { fill: none; stroke: #ffd400; stroke-width: 9; stroke-linejoin: round; stroke-linecap: round; }
+      .wire-esc { fill: none; stroke: #f7f7f7; stroke-width: 11; stroke-linejoin: round; stroke-linecap: round; }
+      .wire-esc-outline { fill: none; stroke: #263640; stroke-width: 15; stroke-linejoin: round; stroke-linecap: round; }
+      .wire-ground { fill: none; stroke: #111; stroke-width: 11; stroke-linejoin: round; stroke-linecap: round; }
+      .wire-power { fill: none; stroke: #e32636; stroke-width: 11; stroke-linejoin: round; stroke-linecap: round; }
+      .wire-power-thick { fill: none; stroke: #e32636; stroke-width: 18; stroke-linejoin: round; stroke-linecap: round; }
+      .wire-ground-thick { fill: none; stroke: #111; stroke-width: 18; stroke-linejoin: round; stroke-linecap: round; }
+      .junction { fill: #111; }
+      .warning { fill: #fff5f5; stroke: #cc1f2f; stroke-width: 5; }
+      .warning-text { font: 700 24px Arial, sans-serif; fill: #b01827; }
+      .resistor { fill: #e6c188; stroke: #6d4a1e; stroke-width: 4; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1800" height="1100"/>
+
+  <text x="900" y="55" text-anchor="middle" class="title">ТЕСТОВОЕ ПОДКЛЮЧЕНИЕ: Raspberry Pi Zero 2 W → ESC + РУЛЬ</text>
+  <text x="900" y="93" text-anchor="middle" class="subtitle">Только на стенде — ведущие колёса вывешены</text>
+
+  <!-- Raspberry Pi Zero 2 W -->
+  <rect x="55" y="150" rx="28" ry="28" width="420" height="710" class="board"/>
+  <circle cx="88" cy="185" r="14" fill="#d7b34d"/>
+  <circle cx="442" cy="185" r="14" fill="#d7b34d"/>
+  <circle cx="88" cy="825" r="14" fill="#d7b34d"/>
+  <circle cx="442" cy="825" r="14" fill="#d7b34d"/>
+  <text x="190" y="220" class="white-text">Raspberry Pi</text>
+  <text x="190" y="252" class="white-text">Zero 2 W</text>
+  <rect x="100" y="315" width="160" height="160" rx="12" fill="#273640" stroke="#111" stroke-width="4"/>
+  <text x="180" y="390" text-anchor="middle" class="white-text">CPU</text>
+  <text x="180" y="420" text-anchor="middle" class="small" fill="#fff">Linux + PWM test</text>
+
+  <!-- Deterministic 40-pin header: odd left, even right -->
+  <rect x="310" y="175" width="135" height="610" rx="12" fill="#162129" stroke="#071014" stroke-width="4"/>
+  <text x="342" y="167" text-anchor="middle" class="small" fill="#fff">нечёт.</text>
+  <text x="414" y="167" text-anchor="middle" class="small" fill="#fff">чёт.</text>
+
+  <!-- Header rows 1..40 -->
+  <g>
+    <circle cx="342" cy="205" r="11" class="pin"/><text x="342" y="210" text-anchor="middle" class="tiny">1</text>
+    <circle cx="414" cy="205" r="11" class="pin"/><text x="414" y="210" text-anchor="middle" class="tiny">2</text>
+    <circle cx="342" cy="233" r="11" class="pin"/><text x="342" y="238" text-anchor="middle" class="tiny">3</text>
+    <circle cx="414" cy="233" r="11" class="pin"/><text x="414" y="238" text-anchor="middle" class="tiny">4</text>
+    <circle cx="342" cy="261" r="11" class="pin"/><text x="342" y="266" text-anchor="middle" class="tiny">5</text>
+    <circle cx="414" cy="261" r="11" class="pin"/><text x="414" y="266" text-anchor="middle" class="tiny">6</text>
+    <circle cx="342" cy="289" r="11" class="pin"/><text x="342" y="294" text-anchor="middle" class="tiny">7</text>
+    <circle cx="414" cy="289" r="11" class="pin"/><text x="414" y="294" text-anchor="middle" class="tiny">8</text>
+    <circle cx="342" cy="317" r="11" class="pin"/><text x="342" y="322" text-anchor="middle" class="tiny">9</text>
+    <circle cx="414" cy="317" r="11" class="pin"/><text x="414" y="322" text-anchor="middle" class="tiny">10</text>
+    <circle cx="342" cy="345" r="11" class="pin"/><text x="342" y="350" text-anchor="middle" class="tiny">11</text>
+    <circle cx="414" cy="345" r="15" class="pin-signal-a"/><text x="414" y="351" text-anchor="middle" class="tiny">12</text>
+    <circle cx="342" cy="373" r="11" class="pin"/><text x="342" y="378" text-anchor="middle" class="tiny">13</text>
+    <circle cx="414" cy="373" r="15" class="pin-ground"/><text x="414" y="379" text-anchor="middle" class="tiny" fill="#fff">14</text>
+    <circle cx="342" cy="401" r="11" class="pin"/><text x="342" y="406" text-anchor="middle" class="tiny">15</text>
+    <circle cx="414" cy="401" r="11" class="pin"/><text x="414" y="406" text-anchor="middle" class="tiny">16</text>
+    <circle cx="342" cy="429" r="11" class="pin"/><text x="342" y="434" text-anchor="middle" class="tiny">17</text>
+    <circle cx="414" cy="429" r="11" class="pin"/><text x="414" y="434" text-anchor="middle" class="tiny">18</text>
+    <circle cx="342" cy="457" r="11" class="pin"/><text x="342" y="462" text-anchor="middle" class="tiny">19</text>
+    <circle cx="414" cy="457" r="11" class="pin"/><text x="414" y="462" text-anchor="middle" class="tiny">20</text>
+    <circle cx="342" cy="485" r="11" class="pin"/><text x="342" y="490" text-anchor="middle" class="tiny">21</text>
+    <circle cx="414" cy="485" r="11" class="pin"/><text x="414" y="490" text-anchor="middle" class="tiny">22</text>
+    <circle cx="342" cy="513" r="11" class="pin"/><text x="342" y="518" text-anchor="middle" class="tiny">23</text>
+    <circle cx="414" cy="513" r="11" class="pin"/><text x="414" y="518" text-anchor="middle" class="tiny">24</text>
+    <circle cx="342" cy="541" r="11" class="pin"/><text x="342" y="546" text-anchor="middle" class="tiny">25</text>
+    <circle cx="414" cy="541" r="11" class="pin"/><text x="414" y="546" text-anchor="middle" class="tiny">26</text>
+    <circle cx="342" cy="569" r="11" class="pin"/><text x="342" y="574" text-anchor="middle" class="tiny">27</text>
+    <circle cx="414" cy="569" r="11" class="pin"/><text x="414" y="574" text-anchor="middle" class="tiny">28</text>
+    <circle cx="342" cy="597" r="11" class="pin"/><text x="342" y="602" text-anchor="middle" class="tiny">29</text>
+    <circle cx="414" cy="597" r="11" class="pin"/><text x="414" y="602" text-anchor="middle" class="tiny">30</text>
+    <circle cx="342" cy="625" r="11" class="pin"/><text x="342" y="630" text-anchor="middle" class="tiny">31</text>
+    <circle cx="414" cy="625" r="11" class="pin"/><text x="414" y="630" text-anchor="middle" class="tiny">32</text>
+    <circle cx="342" cy="653" r="11" class="pin"/><text x="342" y="658" text-anchor="middle" class="tiny">33</text>
+    <circle cx="414" cy="653" r="11" class="pin"/><text x="414" y="658" text-anchor="middle" class="tiny">34</text>
+    <circle cx="342" cy="681" r="15" class="pin-signal-b"/><text x="342" y="687" text-anchor="middle" class="tiny">35</text>
+    <circle cx="414" cy="681" r="11" class="pin"/><text x="414" y="686" text-anchor="middle" class="tiny">36</text>
+    <circle cx="342" cy="709" r="11" class="pin"/><text x="342" y="714" text-anchor="middle" class="tiny">37</text>
+    <circle cx="414" cy="709" r="11" class="pin"/><text x="414" y="714" text-anchor="middle" class="tiny">38</text>
+    <circle cx="342" cy="737" r="11" class="pin"/><text x="342" y="742" text-anchor="middle" class="tiny">39</text>
+    <circle cx="414" cy="737" r="11" class="pin"/><text x="414" y="742" text-anchor="middle" class="tiny">40</text>
+  </g>
+
+  <text x="495" y="332" class="label">GPIO18 / физ. pin 12 — РУЛЬ PWM</text>
+  <text x="495" y="668" class="label">GPIO19 / физ. pin 35 — ESC PWM</text>
+  <text x="495" y="402" class="label">GND / физ. pin 14 — ОБЩАЯ ЗЕМЛЯ</text>
+
+  <!-- Steering signal with inline resistor -->
+  <path d="M429 345 H650" class="wire-steer"/>
+  <rect x="650" y="328" width="90" height="34" rx="8" class="resistor"/>
+  <path d="M667 328 v34 M687 328 v34 M707 328 v34 M727 328 v34" stroke="#9b2736" stroke-width="7"/>
+  <text x="695" y="316" text-anchor="middle" class="label">1 кОм</text>
+  <path d="M740 345 H1050 V245 H1280" class="wire-steer"/>
+
+  <!-- ESC signal with inline resistor; outline ensures white wire is visible -->
+  <path d="M327 681 H650" class="wire-esc-outline"/>
+  <path d="M327 681 H650" class="wire-esc"/>
+  <rect x="650" y="664" width="90" height="34" rx="8" class="resistor"/>
+  <path d="M667 664 v34 M687 664 v34 M707 664 v34 M727 664 v34" stroke="#9b2736" stroke-width="7"/>
+  <text x="695" y="652" text-anchor="middle" class="label">1 кОм</text>
+  <path d="M740 681 H1090 V620 H1190" class="wire-esc-outline"/>
+  <path d="M740 681 H1090 V620 H1190" class="wire-esc"/>
+
+  <!-- One continuous common-ground bus: Pi + servo + ESC -->
+  <path d="M429 373 H950 V320 H1280" class="wire-ground"/>
+  <path d="M950 320 V700 H1190" class="wire-ground"/>
+  <circle cx="950" cy="373" r="12" class="junction"/>
+  <circle cx="950" cy="700" r="12" class="junction"/>
+  <text x="970" y="360" class="small">ОДИН ОБЩИЙ GND</text>
+
+  <!-- Steering servo and explicit 3-pin connector -->
+  <rect x="1370" y="160" width="330" height="230" rx="24" class="device"/>
+  <circle cx="1535" cy="160" r="50" fill="#202a30" stroke="#101820" stroke-width="5"/>
+  <path d="M1535 160 L1650 120" stroke="#101820" stroke-width="22" stroke-linecap="round"/>
+  <text x="1535" y="270" text-anchor="middle" class="white-text">РУЛЕВАЯ МАШИНКА</text>
+  <text x="1535" y="302" text-anchor="middle" class="small" fill="#fff">(сервопривод)</text>
+  <rect x="1260" y="216" width="110" height="142" rx="10" class="panel"/>
+  <circle cx="1280" cy="245" r="9" fill="#ffd400" stroke="#111" stroke-width="3"/>
+  <circle cx="1280" cy="290" r="9" fill="#e32636" stroke="#111" stroke-width="3"/>
+  <circle cx="1280" cy="335" r="9" fill="#111"/>
+  <text x="1235" y="250" text-anchor="end" class="small">SIGNAL</text>
+  <text x="1235" y="295" text-anchor="end" class="small">+5–6 В</text>
+  <text x="1235" y="340" text-anchor="end" class="small">GND</text>
+  <path d="M1289 245 H1370 M1289 290 H1370 M1289 335 H1370" stroke="#111" stroke-width="7"/>
+
+  <!-- ESC and explicit receiver connector -->
+  <rect x="1260" y="545" width="310" height="260" rx="24" class="device"/>
+  <text x="1415" y="650" text-anchor="middle" class="white-text">ESC</text>
+  <text x="1415" y="680" text-anchor="middle" class="small" fill="#fff">со встроенным BEC</text>
+  <rect x="1170" y="585" width="90" height="150" rx="10" class="panel"/>
+  <circle cx="1190" cy="620" r="9" fill="#fff" stroke="#111" stroke-width="3"/>
+  <circle cx="1190" cy="660" r="9" fill="#e32636" stroke="#111" stroke-width="3"/>
+  <circle cx="1190" cy="700" r="9" fill="#111"/>
+  <text x="1150" y="625" text-anchor="end" class="small">SIGNAL</text>
+  <text x="1150" y="665" text-anchor="end" class="small">+ BEC</text>
+  <text x="1150" y="705" text-anchor="end" class="small">GND</text>
+
+  <!-- BEC red wire goes only ESC BEC -> servo power -->
+  <path d="M1181 660 H1120 V290 H1280" class="wire-power"/>
+  <text x="980" y="274" class="label" fill="#c51f31">BEC 5–6 В → только сервопривод</text>
+
+  <!-- Motor -->
+  <rect x="1630" y="535" width="125" height="180" rx="58" fill="#bfc7cc" stroke="#263640" stroke-width="5"/>
+  <path d="M1570 610 H1630 M1570 650 H1630 M1570 690 H1630" stroke-width="10" stroke-linecap="round"/>
+  <path d="M1570 610 H1630" stroke="#3478d4" stroke-width="10"/>
+  <path d="M1570 650 H1630" stroke="#f5bd22" stroke-width="10"/>
+  <path d="M1570 690 H1630" stroke="#111" stroke-width="10"/>
+  <text x="1690" y="755" text-anchor="middle" class="label">МОТОР</text>
+
+  <!-- Battery, emergency disconnect, and thick ESC power -->
+  <rect x="1395" y="885" width="300" height="130" rx="18" fill="#303a40" stroke="#111" stroke-width="5"/>
+  <text x="1545" y="942" text-anchor="middle" class="white-text">АККУМУЛЯТОР RC</text>
+  <text x="1545" y="977" text-anchor="middle" class="small" fill="#fff">2S / 3S LiPo</text>
+  <rect x="1135" y="900" width="130" height="105" rx="16" fill="#cc2d32" stroke="#771419" stroke-width="5"/>
+  <text x="1200" y="1035" text-anchor="middle" class="small">АВАРИЙНЫЙ</text>
+  <text x="1200" y="1056" text-anchor="middle" class="small">РАЗЪЁМ / ВЫКЛ.</text>
+  <path d="M1300 805 V915 H1265" class="wire-power-thick"/>
+  <path d="M1265 945 H1395" class="wire-power-thick"/>
+  <path d="M1340 805 V985 H1395" class="wire-ground-thick"/>
+  <text x="1270" y="850" text-anchor="middle" class="small">СИЛОВОЕ ПИТАНИЕ ESC</text>
+
+  <!-- Separate Pi USB power -->
+  <rect x="95" y="925" width="330" height="115" rx="16" class="panel"/>
+  <text x="260" y="970" text-anchor="middle" class="h2">ОТДЕЛЬНОЕ ПИТАНИЕ Pi</text>
+  <text x="260" y="1008" text-anchor="middle" class="label">5 В / 2 А через micro-USB</text>
+  <path d="M260 925 V860" stroke="#263640" stroke-width="12"/>
+
+  <!-- Warning -->
+  <rect x="500" y="890" width="570" height="150" rx="18" class="warning"/>
+  <text x="785" y="940" text-anchor="middle" class="warning-text">НЕ ПОДКЛЮЧАТЬ К Raspberry Pi:</text>
+  <text x="785" y="980" text-anchor="middle" class="warning-text">красный провод BEC → GPIO / 3.3V / 5V</text>
+  <text x="785" y="1018" text-anchor="middle" class="label">К Pi идут только 2 сигнала и общий GND</text>
+
+  <!-- Legend -->
+  <rect x="500" y="755" width="570" height="105" rx="16" class="panel"/>
+  <text x="525" y="790" class="label">Цвета:</text>
+  <path d="M610 782 H675" class="wire-steer"/><text x="690" y="790" class="small">руль</text>
+  <path d="M770 782 H835" class="wire-esc-outline"/><path d="M770 782 H835" class="wire-esc"/><text x="850" y="790" class="small">ESC PWM</text>
+  <path d="M610 826 H675" class="wire-ground"/><text x="690" y="834" class="small">GND</text>
+  <path d="M770 826 H835" class="wire-power"/><text x="850" y="834" class="small">BEC / питание</text>
+</svg>
