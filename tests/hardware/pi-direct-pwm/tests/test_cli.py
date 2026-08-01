@@ -28,6 +28,14 @@ class FakeOutput:
         self.closed = True
 
 
+def transitions(commands: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    return [
+        command
+        for index, command in enumerate(commands)
+        if index == 0 or command != commands[index - 1]
+    ]
+
+
 class CliTests(unittest.TestCase):
     def test_gpio_check_claims_and_releases_without_generating_a_pulse(self) -> None:
         clock = FakeClock()
@@ -42,7 +50,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(output.commands, [])
         self.assertTrue(output.closed)
 
-    def test_steering_profile_uses_bounded_pulse_and_closes_gpio(self) -> None:
+    def test_steering_profiles_use_full_standard_range_for_two_seconds(self) -> None:
         clock = FakeClock()
         output = FakeOutput()
         result = main(
@@ -52,8 +60,23 @@ class CliTests(unittest.TestCase):
             sleeper=clock.sleep,
         )
         self.assertEqual(result, 0)
-        self.assertIn((1440, 1500), output.commands)
+        self.assertIn((1000, 1500), output.commands)
         self.assertEqual(output.commands[-1], (1500, 1500))
+        self.assertAlmostEqual(clock.now, 3.6)
+        self.assertTrue(output.closed)
+
+        clock = FakeClock()
+        output = FakeOutput()
+        result = main(
+            ["steer-right", "--dry-run"],
+            output_factory=lambda _dry_run: output,
+            clock=clock,
+            sleeper=clock.sleep,
+        )
+        self.assertEqual(result, 0)
+        self.assertIn((2000, 1500), output.commands)
+        self.assertEqual(output.commands[-1], (1500, 1500))
+        self.assertAlmostEqual(clock.now, 3.6)
         self.assertTrue(output.closed)
 
     def test_motor_profile_runs_without_an_extra_confirmation_flag(self) -> None:
@@ -66,9 +89,33 @@ class CliTests(unittest.TestCase):
             sleeper=clock.sleep,
         )
         self.assertEqual(result, 0)
-        self.assertIn((1500, 1550), output.commands)
+        self.assertIn((1500, 1750), output.commands)
         self.assertEqual(output.commands[-1], (1500, 1500))
-        self.assertLessEqual(clock.now, 4.5)
+        self.assertAlmostEqual(clock.now, 6.1)
+        self.assertTrue(output.closed)
+
+    def test_motor_reverse_releases_brake_then_requests_reverse_for_two_seconds(self) -> None:
+        clock = FakeClock()
+        output = FakeOutput()
+        result = main(
+            ["motor-reverse", "--dry-run"],
+            output_factory=lambda _dry_run: output,
+            clock=clock,
+            sleeper=clock.sleep,
+        )
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            transitions(output.commands),
+            [
+                (1500, 1500),
+                (1500, 1250),
+                (1500, 1500),
+                (1500, 1250),
+                (1500, 1500),
+            ],
+        )
+        self.assertEqual(output.commands[-1], (1500, 1500))
+        self.assertAlmostEqual(clock.now, 6.9)
         self.assertTrue(output.closed)
 
 

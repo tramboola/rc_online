@@ -19,19 +19,22 @@ class CloseableOutput(Protocol):
 LIMITS = SafetyLimits(
     steering_neutral_us=1500,
     throttle_neutral_us=1500,
-    steering_min_us=1400,
-    steering_max_us=1600,
-    throttle_min_us=1450,
-    throttle_max_us=1550,
+    steering_min_us=1000,
+    steering_max_us=2000,
+    throttle_min_us=1250,
+    throttle_max_us=1750,
     watchdog_ms=250,
 )
 
 PROFILES = {
     "neutral": TestCommand(1500, 1500, duration_s=1.0, settle_s=0),
-    "steer-left": TestCommand(1440, 1500, duration_s=0.6, settle_s=0.5),
-    "steer-right": TestCommand(1560, 1500, duration_s=0.6, settle_s=0.5),
-    "motor-forward": TestCommand(1500, 1550, duration_s=0.4, settle_s=3.0),
+    "steer-left": TestCommand(1000, 1500, duration_s=2.0, settle_s=0.5),
+    "steer-right": TestCommand(2000, 1500, duration_s=2.0, settle_s=0.5),
+    "motor-forward": TestCommand(1500, 1750, duration_s=2.0, settle_s=3.0),
+    "motor-reverse": TestCommand(1500, 1250, duration_s=2.0, settle_s=0.5),
 }
+
+REVERSE_BRAKE = TestCommand(1500, 1250, duration_s=0.3, settle_s=3.0)
 
 
 class ConsolePulseOutput:
@@ -88,6 +91,8 @@ def main(
     try:
         if args.action == "gpio-check":
             return 0
+        if args.action == "motor-reverse":
+            execute_test(output, clock, sleeper, LIMITS, REVERSE_BRAKE)
         execute_test(output, clock, sleeper, LIMITS, PROFILES[args.action])
         sleeper(0.1)
     finally:

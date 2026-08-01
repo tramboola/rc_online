@@ -1,0 +1,13 @@
+#!/usr/bin/python3
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+
+os.chdir(tempfile.gettempdir())
+sys.path.insert(0, "/opt/rc-bench-control")
+
+from rc_bench.live_server import main
+
+raise SystemExit(main())
