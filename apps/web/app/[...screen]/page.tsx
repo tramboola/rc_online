@@ -2,6 +2,7 @@ import { SimulationScreen, type ScreenName } from "../simulation-screen";
 
 const knownScreens = new Set<ScreenName>([
   "home",
+  "how-it-works",
   "pricing",
   "leaderboard",
   "preflight",

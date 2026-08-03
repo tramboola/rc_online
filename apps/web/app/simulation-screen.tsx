@@ -9,6 +9,8 @@ import {
   Check,
   CheckCircle,
   Clock,
+  CreditCard,
+  Desktop,
   Flag,
   GameController,
   Gauge,
@@ -23,6 +25,7 @@ import {
   Stop,
   Timer,
   Trophy,
+  UserCircle,
   UsersThree,
   Warning,
   WifiHigh,
@@ -46,10 +49,15 @@ import {
   getVideoStatusLabel,
   getViewerBadgeText,
 } from "./home-presentation";
+import {
+  howItWorksRequirements,
+  howItWorksSteps,
+} from "./how-it-works-content";
 import { useViewerCount } from "./use-viewer-count";
 
 export type ScreenName =
   | "home"
+  | "how-it-works"
   | "pricing"
   | "leaderboard"
   | "preflight"
@@ -93,7 +101,13 @@ function Header({ active }: { active: ScreenName }) {
         >
           Pricing
         </Link>
-        <a href="#how-it-works">How It Works</a>
+        <Link
+          aria-current={active === "how-it-works" ? "page" : undefined}
+          className={active === "how-it-works" ? "active" : ""}
+          href="/how-it-works"
+        >
+          How It Works
+        </Link>
       </nav>
       <AccountControl />
     </header>
@@ -259,6 +273,89 @@ function HomeScreen({ mockMode }: { mockMode: boolean }) {
         <span><WifiHigh size={28} /><b>LIVE VIDEO<small>Multiple camera angles</small></b></span>
         <span><UsersThree size={28} /><b>GLOBAL COMMUNITY<small>Drivers worldwide</small></b></span>
       </footer>
+    </div>
+  );
+}
+
+const howItWorksIcons = [
+  UserCircle,
+  CreditCard,
+  UsersThree,
+  GameController,
+  Flag,
+] as const;
+
+function HowItWorksScreen() {
+  return (
+    <div className="page">
+      <Header active="how-it-works" />
+      <main className="how-main">
+        <section className="how-hero panel-cut">
+          <div>
+            <p className="eyebrow">HOW IT WORKS / REMOTE RACING</p>
+            <h1>FROM SCREEN<br />TO TRACK</h1>
+            <p>
+              Five clear steps take you from a Google profile to driving a
+              real RC car through your browser.
+            </p>
+          </div>
+          <aside className="how-hero-status" aria-label="Journey summary">
+            <span>01 — 05</span>
+            <strong>ONE SIMPLE FLOW</strong>
+            <small>PROFILE · TIME · QUEUE · CONTROLS · DRIVE</small>
+          </aside>
+        </section>
+
+        <section className="how-step-grid" aria-label="How RC Mania works">
+          {howItWorksSteps.map((step, index) => {
+            const StepIcon = howItWorksIcons[index] ?? Flag;
+            return (
+              <article
+                className={`how-step-card data-panel${step.id === "queue" ? " how-step-queue" : ""}`}
+                key={step.id}
+              >
+                <span className="how-step-number">{step.number}</span>
+                <StepIcon aria-hidden="true" size={35} />
+                <small>STEP {step.number}</small>
+                <h2>{step.title}</h2>
+                <p>{step.description}</p>
+              </article>
+            );
+          })}
+        </section>
+
+        <section className="how-bottom-grid">
+          <article className="how-requirements data-panel">
+            <div>
+              <p className="eyebrow">READY TO CONNECT?</p>
+              <h2>WHAT YOU NEED</h2>
+            </div>
+            <ul>
+              {howItWorksRequirements.map((requirement) => (
+                <li key={requirement}><CheckCircle size={22} /> {requirement}</li>
+              ))}
+            </ul>
+          </article>
+
+          <aside className="how-fast-lane data-panel">
+            <Lightning aria-hidden="true" size={42} />
+            <div>
+              <small>EMPTY QUEUE</small>
+              <strong>START RIGHT AWAY</strong>
+              <p>No waiting when the track is available.</p>
+            </div>
+          </aside>
+
+          <div className="how-actions">
+            <Link className="hero-link" href="/pricing#packs">
+              VIEW PRICING <ArrowRight size={22} weight="bold" />
+            </Link>
+            <Link className="action-button action-cyan" href="/">
+              BACK TO LIVE TRACK <Flag size={22} />
+            </Link>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
@@ -927,6 +1024,7 @@ export function SimulationScreen({
   screen: ScreenName;
 }) {
   if (screen === "pricing") return <PricingScreen />;
+  if (screen === "how-it-works") return <HowItWorksScreen />;
   if (screen === "leaderboard") return <LeaderboardScreen />;
   if (screen === "preflight") return <PreflightScreen />;
   if (screen === "queue") return <QueueScreen />;
