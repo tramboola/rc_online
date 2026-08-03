@@ -1,6 +1,6 @@
 # Mock Preview Viewer Counter Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace misleading live/demo copy with a coming-soon state in mock mode and display a real count of browser profiles active on the home page.
 
@@ -35,7 +35,7 @@
 - `ViewerRegistry.count(): number` prunes expired viewers and returns the active count.
 - `createViewerPost(registry)` returns a Next route handler accepting `{ viewerId: string }`.
 
-- [ ] **Step 1: Write failing registry tests**
+- [x] **Step 1: Write failing registry tests**
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -68,13 +68,13 @@ describe("ViewerRegistry", () => {
 });
 ```
 
-- [ ] **Step 2: Run registry tests and verify RED**
+- [x] **Step 2: Run registry tests and verify RED**
 
 Run: `pnpm.cmd --filter @rc/web test -- app/viewer-registry.test.ts`
 
 Expected: FAIL because `viewer-registry.ts` does not exist.
 
-- [ ] **Step 3: Implement the minimal registry**
+- [x] **Step 3: Implement the minimal registry**
 
 Create `isValidViewerId` with `/^[A-Za-z0-9_-]{1,128}$/`. Create a map-backed
 registry with constructor defaults `ttlMs = 45_000`, `now = Date.now`, and
@@ -82,13 +82,13 @@ registry with constructor defaults `ttlMs = 45_000`, `now = Date.now`, and
 the oldest entry before admitting a new viewer at capacity. Store the production
 singleton on `globalThis` so Next development reloads do not create counters.
 
-- [ ] **Step 4: Run registry tests and verify GREEN**
+- [x] **Step 4: Run registry tests and verify GREEN**
 
 Run: `pnpm.cmd --filter @rc/web test -- app/viewer-registry.test.ts`
 
 Expected: PASS with 3 tests.
 
-- [ ] **Step 5: Write failing route tests**
+- [x] **Step 5: Write failing route tests**
 
 ```ts
 import { expect, test } from "vitest";
@@ -117,13 +117,13 @@ test("POST rejects invalid identifiers", async () => {
 });
 ```
 
-- [ ] **Step 6: Run route tests and verify RED**
+- [x] **Step 6: Run route tests and verify RED**
 
 Run: `pnpm.cmd --filter @rc/web test -- app/api/viewers/route.test.ts`
 
 Expected: FAIL because the route module does not exist.
 
-- [ ] **Step 7: Implement the route and verify GREEN**
+- [x] **Step 7: Implement the route and verify GREEN**
 
 Export `createViewerPost(registry)` plus production `POST`. Parse JSON inside a
 `try` block, validate `viewerId`, return `{ count }` with status 200, and return
@@ -133,7 +133,7 @@ Run: `pnpm.cmd --filter @rc/web test -- app/viewer-registry.test.ts app/api/view
 
 Expected: PASS with 5 tests.
 
-- [ ] **Step 8: Commit the server counter**
+- [x] **Step 8: Commit the server counter**
 
 ```bash
 git add apps/web/app/viewer-id.ts apps/web/app/viewer-registry.ts apps/web/app/viewer-registry.test.ts apps/web/app/api/viewers/route.ts apps/web/app/api/viewers/route.test.ts
@@ -156,36 +156,36 @@ git commit -m "Add active viewer counter API"
 - Produces: `getHomePresentation(mockMode)`, `getOrCreateViewerId(storage, createId)`, `sendViewerHeartbeat(viewerId, fetcher)`, and `useViewerCount()`.
 - `useViewerCount()` returns `{ count: number | null, unavailable: boolean }`.
 
-- [ ] **Step 1: Write failing presentation tests**
+- [x] **Step 1: Write failing presentation tests**
 
 Test that mock mode returns `COMING SOON`, `PREVIEW / COMING SOON`, no CTA URL,
 and `showLiveBadge: false`. Test that non-mock mode returns `START DRIVING`,
 `LIVE / DIRECT`, `/preflight`, and `showLiveBadge: true`.
 
-- [ ] **Step 2: Run presentation tests and verify RED**
+- [x] **Step 2: Run presentation tests and verify RED**
 
 Run: `pnpm.cmd --filter @rc/web test -- app/home-presentation.test.ts`
 
 Expected: FAIL because the presentation module does not exist.
 
-- [ ] **Step 3: Implement and verify the presentation model**
+- [x] **Step 3: Implement and verify the presentation model**
 
 Implement a pure `getHomePresentation(mockMode: boolean)` returning the exact
 copy and flags from Step 1, then rerun the test and expect PASS.
 
-- [ ] **Step 4: Write failing browser helper tests**
+- [x] **Step 4: Write failing browser helper tests**
 
 Test that `getOrCreateViewerId` reuses a stored valid ID, replaces an invalid
 stored value with `createId()`, and that `sendViewerHeartbeat` returns a
 non-negative integer count but rejects malformed responses.
 
-- [ ] **Step 5: Run helper tests and verify RED**
+- [x] **Step 5: Run helper tests and verify RED**
 
 Run: `pnpm.cmd --filter @rc/web test -- app/viewer-client.test.ts`
 
 Expected: FAIL because the client helper module does not exist.
 
-- [ ] **Step 6: Implement browser helpers and the client hook**
+- [x] **Step 6: Implement browser helpers and the client hook**
 
 Use storage key `rcmania_viewer_id`. Generate the default ID from
 `crypto.getRandomValues`, which also works before HTTPS is enabled.
@@ -194,7 +194,7 @@ Use storage key `rcmania_viewer_id`. Generate the default ID from
 then every 15,000 ms, clears its interval on unmount, and exposes the failure
 state without throwing into the page.
 
-- [ ] **Step 7: Render the approved mock experience**
+- [x] **Step 7: Render the approved mock experience**
 
 In `HomeScreen`, call `getHomePresentation(mockMode)` and `useViewerCount()`.
 Render the red live badge only when `showLiveBadge` is true. Render the viewer
@@ -202,13 +202,13 @@ badge as `${count} WATCHING NOW` or `AUDIENCE UNAVAILABLE`. Render a disabled
 `span.hero-link.hero-link-disabled` for mock mode and retain the `/preflight`
 link outside mock mode. Add disabled styling without hover motion.
 
-- [ ] **Step 8: Run focused tests and verify GREEN**
+- [x] **Step 8: Run focused tests and verify GREEN**
 
 Run: `pnpm.cmd --filter @rc/web test -- app/home-presentation.test.ts app/viewer-client.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit the mock presentation**
+- [x] **Step 9: Commit the mock presentation**
 
 ```bash
 git add apps/web/app/home-presentation.ts apps/web/app/home-presentation.test.ts apps/web/app/viewer-client.ts apps/web/app/viewer-client.test.ts apps/web/app/use-viewer-count.ts apps/web/app/simulation-screen.tsx apps/web/app/styles.css
@@ -225,14 +225,14 @@ git commit -m "Show honest mock preview audience state"
 - Consumes: the mock home page and `/api/viewers` route from Tasks 1 and 2.
 - Produces: regression coverage proving that the deployed mock experience is honest and connected to the real counter.
 
-- [ ] **Step 1: Write the browser regression test**
+- [x] **Step 1: Write the browser regression test**
 
 With `MOCK_MODE=true`, assert that the home page contains `COMING SOON`, has no
 `START DRIVING` link, has no `.live-badge`, and eventually shows text matching
 `/^\d+ WATCHING NOW$/`. Send a second heartbeat with another valid ID and assert
 the returned count is at least two.
 
-- [ ] **Step 2: Build and run the browser test**
+- [x] **Step 2: Build and run the browser test**
 
 Run:
 
@@ -244,7 +244,7 @@ pnpm.cmd --filter @rc/e2e test:e2e -- --project=desktop-chromium specs/mock-prev
 
 Expected: PASS.
 
-- [ ] **Step 3: Run complete focused verification**
+- [x] **Step 3: Run complete focused verification**
 
 Run:
 
@@ -259,7 +259,7 @@ git status --short
 Expected: all commands exit 0; Git status contains only the intended plan and
 feature files before the final commit.
 
-- [ ] **Step 4: Commit integration coverage and completed plan**
+- [x] **Step 4: Commit integration coverage and completed plan**
 
 Mark all completed checkboxes in this plan, then commit with:
 
@@ -268,7 +268,7 @@ git add tests/e2e/specs/mock-preview.spec.ts docs/superpowers/plans/2026-08-03-m
 git commit -m "Verify mock preview audience behavior"
 ```
 
-- [ ] **Step 5: Report deployment boundary**
+- [x] **Step 5: Report deployment boundary**
 
 Report the commits and verification results. Do not push or deploy the new
 image until the user explicitly authorizes publishing the changed site.
