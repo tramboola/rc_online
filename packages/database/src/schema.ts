@@ -28,6 +28,7 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   displayName: text("display_name").notNull(),
   role: text("role").notNull().default("user"),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
   ...auditColumns,
 }, (table) => [
@@ -45,6 +46,28 @@ export const oauthIdentities = pgTable("oauth_identities", {
     table.provider,
     table.providerSubject,
   ),
+]);
+
+export const authSessions = pgTable("auth_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  ...auditColumns,
+}, (table) => [
+  index("auth_sessions_user_idx").on(table.userId),
+  index("auth_sessions_expiry_idx").on(table.expiresAt),
+]);
+
+export const accountBalances = pgTable("account_balances", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  currency: text("currency").notNull().default("USD"),
+  amountMinor: bigint("amount_minor", { mode: "number" }).notNull().default(0),
+  ...auditColumns,
+}, (table) => [
+  check("account_balances_currency_usd", sql`${table.currency} = 'USD'`),
+  check("account_balances_amount_nonnegative", sql`${table.amountMinor} >= 0`),
 ]);
 
 export const nicknames = pgTable("nicknames", {

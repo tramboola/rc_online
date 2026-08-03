@@ -42,4 +42,18 @@ describe("versioned SQL migrations", () => {
     expect(sql).toContain("before update or delete on ledger_entries");
     expect(sql).toContain("raise exception");
   });
+
+  it("adds persistent Google authentication state", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0003_google_auth.sql"),
+      "utf8",
+    );
+
+    expect(sql).toMatch(/alter table users\s+add column email_verified_at timestamptz/i);
+    expect(sql).toMatch(/create table auth_sessions\b/i);
+    expect(sql).toMatch(/token_hash text not null unique/i);
+    expect(sql).toMatch(/create index auth_sessions_expiry_idx/i);
+    expect(sql).toMatch(/create table account_balances\b/i);
+    expect(sql).toMatch(/check \(amount_minor >= 0\)/i);
+  });
 });
