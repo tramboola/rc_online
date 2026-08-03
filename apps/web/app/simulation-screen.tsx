@@ -69,7 +69,7 @@ function Header({ active }: { active: ScreenName }) {
   return (
     <header className="site-header">
       <Link className="brand" href="/">
-        <span className="brand-lockup"><strong>RC</strong> RACING</span>
+        <span className="brand-lockup"><strong>RC</strong> MANIA</span>
       </Link>
       <nav aria-label="Primary">
         <Link
@@ -793,7 +793,7 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
         />
       )}
       <div className="ride-shade" />
-      <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> RACING</span></span><b>{videoStatusLabel}</b></div>
+      <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>{videoStatusLabel}</b></div>
       <div className="ride-left-stats"><small>PERSONAL BEST</small><strong>00:47.306</strong><small>SEASON RANK</small><strong>#27</strong></div>
       <div className="lap-clock"><small>LAP 04</small><strong>{`00:${(lapTime / 1000).toFixed(3).padStart(6, "0")}`}</strong><em>-00.684</em></div>
       <div className="time-ring"><small>TIME LEFT</small><strong>{timeLeft}</strong></div>

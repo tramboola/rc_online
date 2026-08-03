@@ -11,7 +11,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 
 export const metadata: Metadata = {
-  title: "RC Racing — Drive it for real",
+  title: "RC Mania — Drive it for real",
   description: "Control real RC cars from your browser.",
 };
 

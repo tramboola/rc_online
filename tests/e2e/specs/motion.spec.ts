@@ -32,7 +32,7 @@ test("desktop interactions use short composited hover motion", async ({
     )
     .not.toBe("none");
 
-  const brand = page.getByRole("link", { name: "RC RACING" });
+  const brand = page.getByRole("link", { name: "RC MANIA" });
   const brandLockup = brand.locator(".brand-lockup");
   await brand.hover();
   await expect

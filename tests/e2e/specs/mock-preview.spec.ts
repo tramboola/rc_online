@@ -7,6 +7,8 @@ test("mock home is a coming-soon preview with a real audience count", async ({
 
   await page.goto("/");
 
+  await expect(page).toHaveTitle("RC Mania — Drive it for real");
+  await expect(page.getByRole("link", { name: "RC MANIA" })).toBeVisible();
   await expect(page.getByText("COMING SOON", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /start driving/i })).toHaveCount(0);
   await expect(page.locator(".live-badge")).toHaveCount(0);
@@ -20,5 +22,6 @@ test("mock home is a coming-soon preview with a real audience count", async ({
   expect(body.count).toBeGreaterThanOrEqual(2);
 
   await page.goto("/ride");
+  await expect(page.locator(".ride-brand .brand-lockup")).toHaveText("RC MANIA");
   await expect(page.locator(".ride-brand b")).toHaveText("PREVIEW");
 });
