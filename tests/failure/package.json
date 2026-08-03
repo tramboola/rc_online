@@ -14,8 +14,8 @@
     "@rc/domain": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.9.0",
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2",
     "vitest": "^4.0.0"
   }
 }
