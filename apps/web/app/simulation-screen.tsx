@@ -194,14 +194,14 @@ function HomeScreen({ mockMode }: { mockMode: boolean }) {
                 loop
                 muted
                 playsInline
-                poster="/assets/hero-track.png"
+                poster="/assets/hero-track.webp"
                 preload="metadata"
               >
                 <source src="/assets/hero-track.mp4" type="video/mp4" />
               </video>
             ) : (
               <img
-                src="/assets/hero-track.png"
+                src="/assets/hero-track.webp"
                 alt="Black and red RC car racing on the indoor Neon Circuit"
               />
             )}
@@ -258,7 +258,7 @@ function HomeScreen({ mockMode }: { mockMode: boolean }) {
             <Link href="/pricing">VIEW PRICING</Link>
           </article>
           <article className="data-panel challenge-card">
-            <img className="challenge-car" src="/assets/car-red.png" alt="Red Comet RC car" />
+            <img className="challenge-car" src="/assets/car-red.webp" alt="Red Comet RC car" />
             <small>CREATOR CHALLENGE</small>
             <h3>BEAT THE PRO LAP</h3>
             <p>Upload. Compete. Win.</p>
@@ -617,7 +617,7 @@ function PreflightScreen() {
               </div>
               <img
                 className="controller-asset"
-                src="/assets/controller-gamepad.png"
+                src="/assets/controller-gamepad.webp"
                 alt="Configured dual-stick game controller"
               />
               <ul>
@@ -722,7 +722,7 @@ function QueueScreen() {
               {[1, 2, 3, 4, 5].map((position) => (
                 <span className={position === 1 ? "you" : ""} key={position}>
                   <b>P{position}</b>
-                  <img src="/assets/queue-car-top.png" alt="" />
+                  <img src="/assets/queue-car-top.webp" alt="" />
                   {position === 1 ? <small>YOU</small> : null}
                 </span>
               ))}
@@ -756,8 +756,8 @@ function QueueScreen() {
           <h3>SELECT YOUR CAR</h3>
           <div className="car-choice-grid">
             {[
-              [blueCarId, "CAR 01", "NIGHT RUNNER", "/assets/car-blue.png", "86%", "EXCELLENT"],
-              [redCarId, "CAR 02", "RED COMET", "/assets/car-red.png", "74%", "GOOD"],
+              [blueCarId, "CAR 01", "NIGHT RUNNER", "/assets/car-blue.webp", "86%", "EXCELLENT"],
+              [redCarId, "CAR 02", "RED COMET", "/assets/car-red.webp", "74%", "GOOD"],
             ].map(([id, number, name, src, battery, connection]) => (
               <button
                 aria-pressed={selectedCar === id}
@@ -873,7 +873,7 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
           loop
           muted={muted}
           playsInline
-          poster="/assets/drive-onboard.png"
+          poster="/assets/drive-onboard.webp"
           preload="metadata"
         >
           <source src="/assets/drive-onboard.mp4" type="video/mp4" />
@@ -881,7 +881,7 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
       ) : (
         <img
           className="drive-poster"
-          src="/assets/drive-onboard.png"
+          src="/assets/drive-onboard.webp"
           alt="Onboard view behind a green RC car on the Neon Circuit"
         />
       )}
