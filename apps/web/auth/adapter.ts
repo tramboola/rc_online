@@ -39,7 +39,7 @@ export function createRcAuthAdapter(
         id: user.id,
         email: user.email.trim().toLowerCase(),
         displayName: user.name?.trim() || user.email,
-        emailVerifiedAt: user.emailVerified,
+        emailVerifiedAt: user.emailVerified ?? now(),
         disabledAt: null,
       });
       return toAdapterUser(created)!;

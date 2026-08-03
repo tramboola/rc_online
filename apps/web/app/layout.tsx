@@ -8,7 +8,10 @@ import "@fontsource/rajdhani/700.css";
 import "./styles.css";
 
 import type { Metadata } from "next";
+import { SessionProvider } from "next-auth/react";
 import { connection } from "next/server";
+
+import { auth } from "../auth";
 
 export const metadata: Metadata = {
   title: "RC Mania — Drive it for real",
@@ -20,10 +23,13 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   // A per-request CSP nonce can only be applied during dynamic rendering.
   await connection();
+  const session = await auth();
 
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <SessionProvider session={session}>{children}</SessionProvider>
+      </body>
     </html>
   );
 }
