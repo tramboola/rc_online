@@ -59,3 +59,53 @@
 - [ ] **Step 6: Present the preview**
 
   Render the final WebP inline and ask the user to select variant `1`, `2`, `3`, or `4`. Do not update production UI yet.
+
+### Task 2: Integrate selected variant 4 into the challenge card
+
+**Files:**
+- Create: `apps/web/public/assets/challenge-burning-wheel.webp`
+- Modify: `apps/web/app/web-assets.test.ts`
+- Modify: `apps/web/app/simulation-screen.tsx:261`
+- Modify: `apps/web/app/styles.css:450-451, 870, 993, 1202`
+
+**Interfaces:**
+- Consumes: bottom-right variant `4` from `docs/design-previews/burning-wheel-contact-sheet-alpha.png`
+- Produces: a transparent WebP website asset referenced only by the Creator Challenge card
+
+- [ ] **Step 1: Write the failing asset-contract test**
+
+  Extend `apps/web/app/web-assets.test.ts` with a test that opens `public/assets/challenge-burning-wheel.webp` through `sharp`, then asserts `format === "webp"`, `hasAlpha === true`, and non-zero dimensions.
+
+- [ ] **Step 2: Run the test to verify RED**
+
+  Run:
+
+  ```powershell
+  pnpm.cmd --filter @rc/web test -- app/web-assets.test.ts
+  ```
+
+  Expected: FAIL because `challenge-burning-wheel.webp` does not exist.
+
+- [ ] **Step 3: Extract and optimize variant 4**
+
+  Crop the bottom-right quadrant from the alpha master, trim to non-transparent bounds with proportional padding, and save `apps/web/public/assets/challenge-burning-wheel.webp` with alpha transparency, WebP quality 90, and no number label.
+
+- [ ] **Step 4: Replace the challenge-card artwork reference**
+
+  In `simulation-screen.tsx`, change only the challenge card image source to `/assets/challenge-burning-wheel.webp`, set the alternative text to `Burning racing wheel`, and rename the class from `challenge-car` to `challenge-art`.
+
+  In `styles.css`, rename the matching selectors and change the artwork from `object-fit: cover` to `object-fit: contain`, keeping the existing positioning, opacity, blend mode, and hover behavior.
+
+- [ ] **Step 5: Run the test to verify GREEN**
+
+  Run:
+
+  ```powershell
+  pnpm.cmd --filter @rc/web test -- app/web-assets.test.ts
+  ```
+
+  Expected: both web asset tests PASS.
+
+- [ ] **Step 6: Verify the application**
+
+  Run web typecheck and production build, then inspect the challenge card at desktop and mobile widths. Confirm the wheel is not clipped, does not cover the left-side copy, loads successfully, and preserves the hover treatment.
