@@ -258,7 +258,11 @@ function HomeScreen({ mockMode }: { mockMode: boolean }) {
             <Link href="/pricing">VIEW PRICING</Link>
           </article>
           <article className="data-panel challenge-card">
-            <img className="challenge-car" src="/assets/car-red.webp" alt="Red Comet RC car" />
+            <img
+              className="challenge-art"
+              src="/assets/challenge-burning-wheel.webp"
+              alt="Burning racing wheel"
+            />
             <small>CREATOR CHALLENGE</small>
             <h3>BEAT THE PRO LAP</h3>
             <p>Upload. Compete. Win.</p>

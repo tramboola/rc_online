@@ -447,8 +447,8 @@ p { color: #a9afb3; }
 .home-cards h3 { font-size: 42px; line-height: 1; margin: 9px 0 0; }
 .home-cards p { margin: 3px 0 7px; }
 .home-cards .challenge-card { border-color: #722027; background: linear-gradient(145deg, #16090b, #071015); position: relative; overflow: hidden; }
-.challenge-card > :not(.challenge-car) { position: relative; z-index: 1; }
-.challenge-car { position: absolute; right: 0; top: 0; width: 55%; height: 100%; object-fit: cover; opacity: .48; mix-blend-mode: screen; }
+.challenge-card > :not(.challenge-art) { position: relative; z-index: 1; }
+.challenge-art { position: absolute; right: 0; top: 0; width: 55%; height: 100%; object-fit: contain; opacity: .48; mix-blend-mode: screen; }
 .challenge-card strong { color: var(--lime); font: 600 29px var(--font-display); }
 .challenge-card > a { position: absolute !important; right: 17px; bottom: 14px; border: 1px solid #657178; padding: 7px 11px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
 .record-card { position: relative; overflow: hidden; }
@@ -867,7 +867,7 @@ p { color: #a9afb3; }
     transform var(--motion-surface) var(--ease-out-ui);
 }
 .record-card > img,
-.challenge-car,
+.challenge-art,
 .product-card h3,
 .product-card > strong,
 .ribbon {
@@ -990,7 +990,7 @@ p { color: #a9afb3; }
     border-color: var(--frame-hover-color);
   }
   .record-card:hover > img { opacity: .2; transform: scale(1.025); }
-  .challenge-card:hover .challenge-car { opacity: .58; transform: translateX(-4px) scale(1.015); }
+  .challenge-card:hover .challenge-art { opacity: .58; transform: translateX(-4px) scale(1.015); }
   .product-card:hover h3 { transform: translateY(-1px); }
   .product-card:hover > strong { transform: translateY(-2px); }
   .product-card:hover .ribbon { transform: translateY(2px); }
@@ -1199,7 +1199,7 @@ p { color: #a9afb3; }
   .balance-panel a > svg,
   .challenge-card > a > svg,
   .record-card > img,
-  .challenge-car,
+  .challenge-art,
   .product-card h3,
   .product-card > strong,
   .ribbon,
