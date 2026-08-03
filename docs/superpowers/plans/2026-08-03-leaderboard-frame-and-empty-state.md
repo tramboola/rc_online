@@ -25,7 +25,7 @@
 
 - Create `apps/web/app/leaderboard-presentation.ts`: pure mock/non-mock leaderboard presentation model.
 - Create `apps/web/app/leaderboard-presentation.test.ts`: behavior tests for honest mock data and retained non-mock data.
-- Create `apps/web/app/leaderboard-screen-source.test.ts`: source-level semantic regression checks for rules navigation and removed Past Seasons action.
+- Create `apps/web/app/leaderboard-screen.test.tsx`: rendered HTML regression checks for rules navigation, mock content, and removed Past Seasons action.
 - Create `apps/web/app/frame-styles.test.ts`: source-level regression checks for the single frame-color channel.
 - Modify `apps/web/app/simulation-screen.tsx`: render the presentation model, semantic rules link, placeholder rows, and no Past Seasons control.
 - Modify `apps/web/app/styles.css`: synchronize clipped frames and style the pre-launch table state.
@@ -233,7 +233,7 @@ git commit -m "Add leaderboard pre-launch presentation"
 ### Task 2: Render the Honest Mock Leaderboard and Navigation
 
 **Files:**
-- Create: `apps/web/app/leaderboard-screen-source.test.ts`
+- Create: `apps/web/app/leaderboard-screen.test.tsx`
 - Modify: `apps/web/app/simulation-screen.tsx`
 - Modify: `apps/web/app/styles.css`
 
@@ -242,43 +242,46 @@ git commit -m "Add leaderboard pre-launch presentation"
 - Changes: `LeaderboardScreen({ mockMode }: { mockMode: boolean })`.
 - Changes: `SimulationScreen` passes its existing `mockMode` prop into `LeaderboardScreen`.
 
-- [ ] **Step 1: Write failing source-level semantic tests**
+- [ ] **Step 1: Write failing rendered semantic tests**
 
-```ts
-import { readFile } from "node:fs/promises";
+```tsx
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-const screenUrl = new URL("./simulation-screen.tsx", import.meta.url);
+import { SimulationScreen } from "./simulation-screen";
 
-describe("leaderboard screen semantics", () => {
-  test("links View Rules to the existing How It Works route", async () => {
-    const source = await readFile(screenUrl, "utf8");
+vi.mock("./account-control", () => ({
+  AccountControl: () => null,
+}));
 
-    expect(source).toMatch(
-      /<Link className="action-button action-cyan" href="\/how-it-works">\s*<span>VIEW RULES<\/span>/su,
+describe("leaderboard screen", () => {
+  test("renders honest mock content without premature season actions", () => {
+    const html = renderToStaticMarkup(
+      <SimulationScreen mockMode screen="leaderboard" />,
     );
+
+    expect(html).toContain("SEASON HASN&#x27;T STARTED YET");
+    expect(html).toContain("COMING SOON");
+    expect(html).not.toContain("NIGHTSHIFT");
+    expect(html).not.toContain("PAST SEASONS");
   });
 
-  test("does not render the premature Past Seasons action", async () => {
-    const source = await readFile(screenUrl, "utf8");
+  test("renders View Rules as a link to How It Works", () => {
+    const html = renderToStaticMarkup(
+      <SimulationScreen mockMode screen="leaderboard" />,
+    );
 
-    expect(source).not.toMatch(/PAST SEASONS/i);
-  });
-
-  test("passes mock mode into the leaderboard screen", async () => {
-    const source = await readFile(screenUrl, "utf8");
-
-    expect(source).toContain("<LeaderboardScreen mockMode={mockMode} />");
+    expect(html).toMatch(/<a[^>]*href="\/how-it-works"[^>]*>.*VIEW RULES.*<\/a>/su);
   });
 });
 ```
 
 - [ ] **Step 2: Run the targeted tests and verify RED**
 
-Run: `pnpm --filter @rc/web exec vitest run app/leaderboard-screen-source.test.ts`
+Run: `pnpm --filter @rc/web exec vitest run app/leaderboard-screen.test.tsx`
 
-Expected: all three tests fail against the current button, Past Seasons label, and missing prop.
+Expected: both tests fail because the current screen ignores `mockMode`, renders Past Seasons, and uses a button without the How It Works link.
 
 - [ ] **Step 3: Render the presentation model**
 
@@ -405,9 +408,9 @@ Add focused empty-state CSS:
 
 - [ ] **Step 4: Run focused presentation and semantic tests**
 
-Run: `pnpm --filter @rc/web exec vitest run app/leaderboard-presentation.test.ts app/leaderboard-screen-source.test.ts`
+Run: `pnpm --filter @rc/web exec vitest run app/leaderboard-presentation.test.ts app/leaderboard-screen.test.tsx`
 
-Expected: 5 tests pass.
+Expected: 4 tests pass.
 
 - [ ] **Step 5: Run the web TypeScript check**
 
@@ -418,7 +421,7 @@ Expected: exit 0.
 - [ ] **Step 6: Commit the leaderboard UI**
 
 ```bash
-git add apps/web/app/simulation-screen.tsx apps/web/app/styles.css apps/web/app/leaderboard-screen-source.test.ts
+git add apps/web/app/simulation-screen.tsx apps/web/app/styles.css apps/web/app/leaderboard-screen.test.tsx
 git commit -m "Render honest mock leaderboard"
 ```
 
