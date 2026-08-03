@@ -23,7 +23,6 @@ import {
   Stop,
   Timer,
   Trophy,
-  UserCircle,
   UsersThree,
   Warning,
   WifiHigh,
@@ -40,6 +39,7 @@ import {
 } from "react";
 
 import { apiRequest } from "./api-client";
+import { AccountControl } from "./account-control";
 import { BrowserControlLoop } from "./control-loop";
 import {
   getHomePresentation,
@@ -95,11 +95,7 @@ function Header({ active }: { active: ScreenName }) {
         </Link>
         <a href="#how-it-works">How It Works</a>
       </nav>
-      <Link className="account-chip" href="/pricing">
-        <UserCircle size={23} />
-        <span className="balance">12:30</span>
-        <small>BALANCE</small>
-      </Link>
+      <AccountControl />
     </header>
   );
 }
