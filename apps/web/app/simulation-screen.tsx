@@ -41,6 +41,12 @@ import {
 
 import { apiRequest } from "./api-client";
 import { BrowserControlLoop } from "./control-loop";
+import {
+  getHomePresentation,
+  getVideoStatusLabel,
+  getViewerBadgeText,
+} from "./home-presentation";
+import { useViewerCount } from "./use-viewer-count";
 
 export type ScreenName =
   | "home"
@@ -161,6 +167,9 @@ function MobileGate() {
 }
 
 function HomeScreen({ mockMode }: { mockMode: boolean }) {
+  const presentation = getHomePresentation(mockMode);
+  const viewerCount = useViewerCount();
+
   return (
     <div className="page">
       <Header active="home" />
@@ -186,16 +195,26 @@ function HomeScreen({ mockMode }: { mockMode: boolean }) {
                 alt="Black and red RC car racing on the indoor Neon Circuit"
               />
             )}
-            <span className="live-badge">● LIVE</span>
-            <span className="viewer-badge">287 watching</span>
+            {presentation.showLiveBadge ? <span className="live-badge">● LIVE</span> : null}
+            <span
+              className={`viewer-badge${presentation.showLiveBadge ? "" : " viewer-badge-preview"}`}
+            >
+              {getViewerBadgeText(viewerCount.count, viewerCount.unavailable)}
+            </span>
           </div>
           <div className="hero-copy">
-            <p className="eyebrow">LIVE / DIRECT</p>
+            <p className="eyebrow">{presentation.eyebrow}</p>
             <h1>DRIVE IT FOR REAL</h1>
             <p>Control a real RC car from your browser.</p>
-            <Link className="hero-link" href="/preflight">
-              START DRIVING <ArrowRight size={28} weight="bold" />
-            </Link>
+            {presentation.ctaHref ? (
+              <Link className="hero-link" href={presentation.ctaHref}>
+                {presentation.ctaLabel} <ArrowRight size={28} weight="bold" />
+              </Link>
+            ) : (
+              <span aria-disabled="true" className="hero-link hero-link-disabled">
+                {presentation.ctaLabel} <Clock size={28} weight="bold" />
+              </span>
+            )}
           </div>
         </section>
 
@@ -674,6 +693,7 @@ function QueueScreen() {
 
 function RideScreen({ mockMode }: { mockMode: boolean }) {
   const router = useRouter();
+  const videoStatusLabel = getVideoStatusLabel(mockMode);
   const loopRef = useRef<BrowserControlLoop | null>(null);
   const [muted, setMuted] = useState(mockMode);
   const [remaining, setRemaining] = useState(138);
@@ -773,7 +793,7 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
         />
       )}
       <div className="ride-shade" />
-      <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> RACING</span></span><b>● LIVE / DIRECT</b></div>
+      <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> RACING</span></span><b>{videoStatusLabel}</b></div>
       <div className="ride-left-stats"><small>PERSONAL BEST</small><strong>00:47.306</strong><small>SEASON RANK</small><strong>#27</strong></div>
       <div className="lap-clock"><small>LAP 04</small><strong>{`00:${(lapTime / 1000).toFixed(3).padStart(6, "0")}`}</strong><em>-00.684</em></div>
       <div className="time-ring"><small>TIME LEFT</small><strong>{timeLeft}</strong></div>

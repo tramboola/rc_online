@@ -293,6 +293,7 @@ p { color: #a9afb3; }
 }
 .live-badge { left: 21px; background: #ef1414; }
 .viewer-badge { left: 122px; background: rgba(0, 0, 0, .82); }
+.viewer-badge-preview { left: 21px; }
 .hero-copy { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .hero-copy .eyebrow { margin-bottom: 10px; }
 .hero-copy h1 {
@@ -335,6 +336,14 @@ p { color: #a9afb3; }
 }
 .action-button:focus-visible, a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid white; outline-offset: 3px; }
 .action-button:disabled { opacity: .45; cursor: not-allowed; }
+.hero-link-disabled {
+  --frame-color: #5d666b;
+  border-color: #5d666b;
+  background: rgba(38, 43, 46, .92);
+  color: #c4c9cc;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 .action-cyan { color: var(--cyan); border-color: var(--cyan); background: rgba(5, 22, 27, .92); }
 .action-ghost { color: #d6d6d6; border-color: #435058; background: rgba(4, 10, 14, .82); }
 .action-lime { color: var(--lime); border-color: var(--lime); background: rgba(12, 24, 7, .9); }
@@ -801,13 +810,13 @@ p { color: #a9afb3; }
   .brand:hover .brand-lockup { transform: translateX(2px) scale(1.025); }
   .account-chip:hover { --frame-color: var(--frame-hover-color); border-color: var(--frame-hover-color); transform: translateY(-1px); }
 
-  .hero-link:hover,
+  .hero-link:not(.hero-link-disabled):hover,
   .action-button:hover:not(:disabled) {
     --frame-color: var(--frame-hover-color);
     border-color: var(--frame-hover-color);
     transform: translateY(-1px) scale(1.01);
   }
-  .hero-link:hover > svg,
+  .hero-link:not(.hero-link-disabled):hover > svg,
   .action-button:hover:not(:disabled) > svg,
   .balance-panel a:hover > svg,
   .challenge-card > a:hover > svg {
