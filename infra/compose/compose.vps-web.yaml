@@ -1,6 +1,63 @@
 name: rcmania
 
 services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rcmania
+      POSTGRES_USER: rcmania
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the private env file}
+    volumes:
+      - rcmania-postgres-data:/var/lib/postgresql/data
+    networks:
+      - state
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    shm_size: 128mb
+    mem_limit: 512m
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  migrate:
+    image: rcmania-migrate:${RC_IMAGE_TAG:?Set RC_IMAGE_TAG to the Git commit SHA}
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.migrate
+    restart: "no"
+    init: true
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the private env file}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - state
+    mem_limit: 256m
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"
+
   web:
     image: rcmania-web:${RC_IMAGE_TAG:?Set RC_IMAGE_TAG to the Git commit SHA}
     build:
@@ -18,6 +75,17 @@ services:
       MOCK_MODE: "true"
       HOSTNAME: 0.0.0.0
       PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the private env file}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in the private env file}
+      AUTH_URL: ${AUTH_URL:?Set AUTH_URL in the private env file}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?Set GOOGLE_OAUTH_CLIENT_ID in the private env file}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:?Set GOOGLE_OAUTH_CLIENT_SECRET in the private env file}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - state
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
@@ -44,3 +112,11 @@ services:
         max-size: 10m
         max-file: "3"
     stop_grace_period: 20s
+
+networks:
+  edge:
+  state:
+    internal: true
+
+volumes:
+  rcmania-postgres-data:
