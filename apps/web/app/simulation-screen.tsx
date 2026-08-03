@@ -264,9 +264,9 @@ function HomeScreen({ mockMode }: { mockMode: boolean }) {
               src="/assets/challenge-burning-wheel.webp"
               alt="Burning racing wheel"
             />
-            <small>CREATOR CHALLENGE</small>
-            <h3>BEAT THE PRO LAP</h3>
-            <p>Upload. Compete. Win.</p>
+            <small>SEASON CHALLENGE</small>
+            <h3>BEAT THE TRACK RECORD</h3>
+            <p>Finish the season with the fastest lap. Win.</p>
             <strong>$1,000</strong>
             <Link href="/leaderboard">LEARN MORE <ArrowRight size={16} /></Link>
           </article>
