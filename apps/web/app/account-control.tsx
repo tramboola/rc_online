@@ -1,6 +1,7 @@
 "use client";
 
-import { SignOut, UserCircle } from "@phosphor-icons/react";
+import { CreditCard, SignOut, UserCircle } from "@phosphor-icons/react";
+import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -80,7 +81,16 @@ export function AccountControl() {
             <small>ACCOUNT BALANCE</small>
             <strong>{presentation.primary}</strong>
           </div>
+          <Link
+            className="account-menu-action account-menu-primary"
+            href="/pricing#packs"
+            role="menuitem"
+          >
+            <CreditCard aria-hidden="true" size={20} />
+            MANAGE BALANCE &amp; PLANS
+          </Link>
           <button
+            className="account-menu-action"
             onClick={() => void signOut({ redirectTo: pathname })}
             role="menuitem"
             type="button"
