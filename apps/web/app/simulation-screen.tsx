@@ -53,6 +53,7 @@ import {
   howItWorksRequirements,
   howItWorksSteps,
 } from "./how-it-works-content";
+import { getLeaderboardPresentation } from "./leaderboard-presentation";
 import { useViewerCount } from "./use-viewer-count";
 
 export type ScreenName =
@@ -482,57 +483,76 @@ function PricingScreen() {
   );
 }
 
-const leaderboard = [
-  ["NIGHTSHIFT", "00:42.817", "—", "MAY 12 · 11:42", "CONFIRMED"],
-  ["APEXGHOST", "00:43.162", "+00.345", "MAY 12 · 10:28", "CONFIRMED"],
-  ["REDLINE", "00:43.498", "+00.681", "MAY 12 · 09:57", "CONFIRMED"],
-  ["VORTEX", "00:43.901", "+01.084", "MAY 11 · 20:14", "CONFIRMED"],
-  ["BLITZ", "00:44.112", "+01.295", "MAY 11 · 18:33", "CONFIRMED"],
-  ["TURBOJAY", "00:44.388", "+01.571", "MAY 11 · 16:22", "CONFIRMED"],
-  ["SLIPSTREAM", "00:44.776", "+01.959", "MAY 10 · 09:41", "PENDING REVIEW"],
-  ["PHANTOM", "00:44.993", "+02.176", "MAY 10 · 07:05", "CONFIRMED"],
-] as const;
+function LeaderboardScreen({ mockMode }: { mockMode: boolean }) {
+  const presentation = getLeaderboardPresentation(mockMode);
+  const SeasonStatusIcon = mockMode ? Clock : CheckCircle;
 
-function LeaderboardScreen() {
   return (
     <div className="page">
       <Header active="leaderboard" />
       <main className="leaderboard-main">
         <section className="season-banner panel-cut">
           <div><small>SEASON 01 —</small><h1>NEON CIRCUIT</h1></div>
-          <IconLabel icon={CheckCircle} title="LIVE SEASON" subtitle="ENDS AUG 18" tone="lime" />
+          <IconLabel
+            icon={SeasonStatusIcon}
+            title={presentation.seasonStatus.title}
+            subtitle={presentation.seasonStatus.subtitle}
+            tone={mockMode ? "cyan" : "lime"}
+          />
           <img className="season-track" src="/assets/neon-circuit-map-simple-v2.webp" alt="Neon Circuit track layout" />
-          <IconLabel icon={Trophy} title="$1,000" subtitle="TOTAL PRIZE POOL" tone="lime" />
-          <ActionButton tone="cyan">VIEW RULES</ActionButton>
+          <IconLabel
+            icon={Trophy}
+            title={presentation.prize.title}
+            subtitle={presentation.prize.subtitle}
+            tone={mockMode ? "cyan" : "lime"}
+          />
+          <Link className="action-button action-cyan" href="/how-it-works">
+            <span>VIEW RULES</span>
+            <ArrowRight size={21} weight="bold" />
+          </Link>
         </section>
         <div className="leaderboard-layout">
           <section className="ranking-table data-panel">
             <div className="table-row table-head">
               <span>RANK</span><span>DRIVER</span><span>BEST LAP</span><span>GAP</span><span>DATE</span><span>STATUS</span>
             </div>
-            {leaderboard.map(([driver, lap, gap, date, status], index) => (
-              <div className={`table-row ${index < 3 ? `podium podium-${index + 1}` : ""}`} key={driver}>
-                <strong>{index + 1}</strong>
-                <b>{driver}</b>
-                <strong>{lap}</strong>
-                <span>{gap}</span>
-                <small>{date}</small>
-                <em className={status === "CONFIRMED" ? "confirmed" : "pending"}>{status}</em>
+            {presentation.emptyMessage ? (
+              <div className="leaderboard-empty-note" role="status">
+                {presentation.emptyMessage}
+              </div>
+            ) : null}
+            {presentation.rows.map((row, index) => (
+              <div
+                className={`table-row ${!row.placeholder && index < 3 ? `podium podium-${index + 1}` : ""} ${row.placeholder ? "placeholder-row" : ""}`}
+                key={row.key}
+              >
+                <strong>{row.rank}</strong>
+                <b>{row.driver}</b>
+                <strong>{row.lap}</strong>
+                <span>{row.gap}</span>
+                <small>{row.date}</small>
+                <em className={row.placeholder ? "" : row.status === "CONFIRMED" ? "confirmed" : "pending"}>{row.status}</em>
               </div>
             ))}
-            <div className="table-row you-row">
-              <strong>27</strong><b>GRIDRUNNER</b><strong>00:47.306</strong><span>+04.489</span><small>MAY 10 · 01:15</small><em>CONFIRMED</em>
-            </div>
+            {presentation.personalRow ? (
+              <div className="table-row you-row">
+                <strong>{presentation.personalRow.rank}</strong>
+                <b>{presentation.personalRow.driver}</b>
+                <strong>{presentation.personalRow.lap}</strong>
+                <span>{presentation.personalRow.gap}</span>
+                <small>{presentation.personalRow.date}</small>
+                <em>{presentation.personalRow.status}</em>
+              </div>
+            ) : null}
           </section>
           <div className="season-side">
             <aside className="your-season data-panel">
               <h2>YOUR SEASON</h2>
-              <small>RANK</small><strong>#27</strong>
-              <small>PERSONAL BEST</small><b>00:47.306</b>
-              <IconLabel icon={Gauge} title="32" subtitle="VALID LAPS" />
-              <IconLabel icon={ChartBar} title="-01.204" subtitle="THIS WEEK" tone="lime" />
+              <small>RANK</small><strong>{presentation.personal.rank}</strong>
+              <small>PERSONAL BEST</small><b>{presentation.personal.bestLap}</b>
+              <IconLabel icon={Gauge} title={presentation.personal.validLaps} subtitle="VALID LAPS" />
+              <IconLabel icon={ChartBar} title={presentation.personal.weeklyChange} subtitle="THIS WEEK" tone="lime" />
             </aside>
-            <ActionButton tone="ghost">PAST SEASONS</ActionButton>
           </div>
         </div>
       </main>
@@ -1029,7 +1049,7 @@ export function SimulationScreen({
 }) {
   if (screen === "pricing") return <PricingScreen />;
   if (screen === "how-it-works") return <HowItWorksScreen />;
-  if (screen === "leaderboard") return <LeaderboardScreen />;
+  if (screen === "leaderboard") return <LeaderboardScreen mockMode={mockMode} />;
   if (screen === "preflight") return <PreflightScreen />;
   if (screen === "queue") return <QueueScreen />;
   if (screen === "ride") return <RideScreen mockMode={mockMode} />;

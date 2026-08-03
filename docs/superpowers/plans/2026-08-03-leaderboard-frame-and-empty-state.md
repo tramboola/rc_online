@@ -25,8 +25,8 @@
 
 - Create `apps/web/app/leaderboard-presentation.ts`: pure mock/non-mock leaderboard presentation model.
 - Create `apps/web/app/leaderboard-presentation.test.ts`: behavior tests for honest mock data and retained non-mock data.
-- Create `apps/web/app/leaderboard-screen.test.tsx`: rendered HTML regression checks for rules navigation, mock content, and removed Past Seasons action.
-- Create `apps/web/app/frame-styles.test.ts`: source-level regression checks for the single frame-color channel.
+- Create `apps/web/app/leaderboard-screen.test.ts`: rendered HTML regression checks for rules navigation, mock content, and removed Past Seasons action.
+- Verify frame rendering in a real browser: computed native-border and pseudo-corner colors must match before and after the hover-channel change.
 - Modify `apps/web/app/simulation-screen.tsx`: render the presentation model, semantic rules link, placeholder rows, and no Past Seasons control.
 - Modify `apps/web/app/styles.css`: synchronize clipped frames and style the pre-launch table state.
 
@@ -233,7 +233,8 @@ git commit -m "Add leaderboard pre-launch presentation"
 ### Task 2: Render the Honest Mock Leaderboard and Navigation
 
 **Files:**
-- Create: `apps/web/app/leaderboard-screen.test.tsx`
+- Create: `apps/web/app/leaderboard-screen.test.ts`
+- Create: `apps/web/vitest.config.ts`
 - Modify: `apps/web/app/simulation-screen.tsx`
 - Modify: `apps/web/app/styles.css`
 
@@ -244,7 +245,8 @@ git commit -m "Add leaderboard pre-launch presentation"
 
 - [ ] **Step 1: Write failing rendered semantic tests**
 
-```tsx
+```ts
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { describe, expect, test, vi } from "vitest";
@@ -257,9 +259,10 @@ vi.mock("./account-control", () => ({
 
 describe("leaderboard screen", () => {
   test("renders honest mock content without premature season actions", () => {
-    const html = renderToStaticMarkup(
-      <SimulationScreen mockMode screen="leaderboard" />,
-    );
+    const html = renderToStaticMarkup(createElement(SimulationScreen, {
+      mockMode: true,
+      screen: "leaderboard",
+    }));
 
     expect(html).toContain("SEASON HASN&#x27;T STARTED YET");
     expect(html).toContain("COMING SOON");
@@ -268,9 +271,10 @@ describe("leaderboard screen", () => {
   });
 
   test("renders View Rules as a link to How It Works", () => {
-    const html = renderToStaticMarkup(
-      <SimulationScreen mockMode screen="leaderboard" />,
-    );
+    const html = renderToStaticMarkup(createElement(SimulationScreen, {
+      mockMode: true,
+      screen: "leaderboard",
+    }));
 
     expect(html).toMatch(/<a[^>]*href="\/how-it-works"[^>]*>.*VIEW RULES.*<\/a>/su);
   });
@@ -279,7 +283,7 @@ describe("leaderboard screen", () => {
 
 - [ ] **Step 2: Run the targeted tests and verify RED**
 
-Run: `pnpm --filter @rc/web exec vitest run app/leaderboard-screen.test.tsx`
+Run: `pnpm --filter @rc/web test -- app/leaderboard-screen.test.ts`
 
 Expected: both tests fail because the current screen ignores `mockMode`, renders Past Seasons, and uses a button without the How It Works link.
 
@@ -408,7 +412,7 @@ Add focused empty-state CSS:
 
 - [ ] **Step 4: Run focused presentation and semantic tests**
 
-Run: `pnpm --filter @rc/web exec vitest run app/leaderboard-presentation.test.ts app/leaderboard-screen.test.tsx`
+Run: `pnpm --filter @rc/web test -- app/leaderboard-presentation.test.ts app/leaderboard-screen.test.ts`
 
 Expected: 4 tests pass.
 
@@ -421,7 +425,7 @@ Expected: exit 0.
 - [ ] **Step 6: Commit the leaderboard UI**
 
 ```bash
-git add apps/web/app/simulation-screen.tsx apps/web/app/styles.css apps/web/app/leaderboard-screen.test.tsx
+git add apps/web/app/simulation-screen.tsx apps/web/app/styles.css apps/web/app/leaderboard-screen.test.ts apps/web/vitest.config.ts
 git commit -m "Render honest mock leaderboard"
 ```
 
@@ -430,54 +434,19 @@ git commit -m "Render honest mock leaderboard"
 ### Task 3: Make Frame Color a Single Rendering Channel
 
 **Files:**
-- Create: `apps/web/app/frame-styles.test.ts`
 - Modify: `apps/web/app/styles.css`
 
 **Interfaces:**
 - Consumes: the existing registered `--frame-color` CSS custom property.
 - Produces: native borders and diagonal pseudo-element strokes driven by the same property.
 
-- [ ] **Step 1: Write failing frame-style regression tests**
+- [ ] **Step 1: Verify the frame mismatch in the browser**
 
-```ts
-import { readFile } from "node:fs/promises";
+Inspect computed styles for `.how-hero` and the `View Rules` action. Confirm that the native `borderTopColor` and the `::before` corner gradient currently use different color channels.
 
-import { describe, expect, test } from "vitest";
+Expected: the current implementation reproduces the mismatch before the CSS change.
 
-const stylesUrl = new URL("./styles.css", import.meta.url);
-
-describe("clipped frame colors", () => {
-  test("derives native borders from the same frame color as diagonal corners", async () => {
-    const css = await readFile(stylesUrl, "utf8");
-
-    expect(css).toMatch(
-      /\.account-chip,\s*\.panel-cut,[\s\S]*?\.readiness-box\s*\{[^}]*border-color:\s*var\(--frame-color\);/u,
-    );
-    expect(css).toMatch(
-      /\.how-hero\s*\{[^}]*--frame-color:\s*var\(--cyan\);[^}]*border:\s*1px solid var\(--frame-color\);/su,
-    );
-  });
-
-  test("hover changes only the shared frame variable", async () => {
-    const css = await readFile(stylesUrl, "utf8");
-
-    const hoverBlock = css.match(
-      /\.hero-link:not\([^}]+?\.action-button:hover:not\(:disabled\)\s*\{([^}]*)\}/su,
-    )?.[1] ?? "";
-
-    expect(hoverBlock).toContain("--frame-color: var(--frame-hover-color)");
-    expect(hoverBlock).not.toContain("border-color:");
-  });
-});
-```
-
-- [ ] **Step 2: Run the targeted test and verify RED**
-
-Run: `pnpm --filter @rc/web exec vitest run app/frame-styles.test.ts`
-
-Expected: FAIL because shared frames do not derive native borders from `--frame-color` and hover still sets `border-color` separately.
-
-- [ ] **Step 3: Unify the frame color source**
+- [ ] **Step 2: Unify the frame color source**
 
 In the shared frame declaration, add:
 
@@ -517,22 +486,20 @@ Apply these exact selector changes so later rules cannot override the shared cha
 
 Remove only the redundant direct `border-color` tokens from `.tone-lime`, `.tone-red`, `.tone-amber`, `.home-cards .challenge-card`, `.product-card.popular`, `.queue-position`, `.queue-closed`, and `.stop-panel`; their existing `--frame-color` declarations preserve the palette. Leave unrelated borders such as table separators, inputs, telemetry controls, and non-clipped panels unchanged.
 
-- [ ] **Step 4: Run the targeted test and verify GREEN**
+- [ ] **Step 3: Verify matching computed frame colors**
 
-Run: `pnpm --filter @rc/web exec vitest run app/frame-styles.test.ts`
+In the browser, compare each framed element's computed `--frame-color`, native `borderTopColor`, and `::before` gradient. Confirm they resolve to the same color and that hover only changes the registered custom property.
 
-Expected: 2 tests pass.
-
-- [ ] **Step 5: Run all web tests and TypeScript checks**
+- [ ] **Step 4: Run all web tests and TypeScript checks**
 
 Run: `pnpm --filter @rc/web test && pnpm --filter @rc/web typecheck`
 
 Expected: all web tests pass and TypeScript exits 0.
 
-- [ ] **Step 6: Commit the frame fix**
+- [ ] **Step 5: Commit the frame fix**
 
 ```bash
-git add apps/web/app/styles.css apps/web/app/frame-styles.test.ts
+git add apps/web/app/styles.css
 git commit -m "Unify clipped frame colors"
 ```
 
