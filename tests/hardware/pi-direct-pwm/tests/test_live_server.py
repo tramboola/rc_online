@@ -40,6 +40,26 @@ class CommandMailboxTests(unittest.TestCase):
 
         self.assertEqual(frame.throttle_limit_percent, 40)
 
+    def test_invalid_throttle_limit_cannot_take_over_or_reset_sequence(self) -> None:
+        mailbox = CommandMailbox(takeover_s=1.0)
+        mailbox.publish("browser-a", 5, True, 0, 0, now=10.0)
+
+        with self.assertRaises(ValueError):
+            mailbox.publish(
+                "browser-b",
+                1,
+                True,
+                0,
+                1,
+                throttle_limit_percent=101,
+                now=11.01,
+            )
+
+        self.assertEqual(mailbox.owner, "browser-a")
+        frame = mailbox.publish("browser-a", 6, True, 0, 1, now=11.02)
+        self.assertEqual(frame.throttle_limit_percent, 100)
+        self.assertEqual(mailbox.owner, "browser-a")
+
     def test_rejects_stale_sequence_from_owner(self) -> None:
         mailbox = CommandMailbox(takeover_s=1.0)
         mailbox.publish("browser-a", 5, True, 0, 0, now=20.0)
