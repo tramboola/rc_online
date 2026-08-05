@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import unittest
 import urllib.error
@@ -45,6 +46,17 @@ class LivePageTests(unittest.TestCase):
             self.page,
         )
 
+    def test_page_keeps_a_thin_track_inside_a_24px_slider_target(self) -> None:
+        slider = re.search(
+            r"#throttle-limit\s*\{(?:(?!\}).)*\}", self.page, re.DOTALL
+        )
+
+        self.assertIsNotNone(slider)
+        self.assertRegex(slider.group(), r"height:\s*24px")
+        self.assertRegex(slider.group(), r"background-size:\s*100% 4px")
+        self.assertIn("#throttle-limit::-webkit-slider-runnable-track {", self.page)
+        self.assertIn("#throttle-limit::-moz-range-track {", self.page)
+
 
 class CommandMailboxTests(unittest.TestCase):
     def test_accepts_monotonic_frames_from_one_client(self) -> None:
@@ -71,23 +83,26 @@ class CommandMailboxTests(unittest.TestCase):
 
         self.assertEqual(frame.throttle_limit_percent, 40)
 
-    def test_invalid_throttle_limit_cannot_take_over_or_reset_sequence(self) -> None:
+    def test_invalid_throttle_limit_does_not_mutate_owner_sequence(self) -> None:
         mailbox = CommandMailbox(takeover_s=1.0)
         mailbox.publish("browser-a", 5, True, 0, 0, now=10.0)
 
         with self.assertRaises(ValueError):
             mailbox.publish(
-                "browser-b",
-                1,
+                "browser-a",
+                6,
                 True,
                 0,
                 1,
                 throttle_limit_percent=101,
-                now=11.01,
+                now=10.5,
             )
 
+        with self.assertRaises(StaleSequenceError):
+            mailbox.publish("browser-a", 5, True, 0, 1, now=10.6)
+
         self.assertEqual(mailbox.owner, "browser-a")
-        frame = mailbox.publish("browser-a", 6, True, 0, 1, now=11.02)
+        frame = mailbox.publish("browser-a", 6, True, 0, 1, now=10.7)
         self.assertEqual(frame.throttle_limit_percent, 100)
         self.assertEqual(mailbox.owner, "browser-a")
 
