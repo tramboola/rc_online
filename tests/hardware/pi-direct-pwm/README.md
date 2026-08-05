@@ -88,6 +88,12 @@ The command prints a tokenized URL. Open it on the controlling computer, click
 - `D` / right arrow: 2000 microseconds steering;
 - `Space` or `Escape`: neutral and disarm.
 
+The **Throttle limit** slider applies equally to forward and reverse and can
+be changed while a throttle key is held. Its 10-100% scale is relative to the
+bench's verified 1250-1750 microsecond cap: 100% remains 1750 forward / 1250
+reverse, while 10% produces 1525 forward / 1475 reverse. Reloading the page
+returns the slider to 100%. It never unlocks the ESC's full pulse range.
+
 For real GPIO, omit `--dry-run`. Keep the car suspended and stop immediately
 if the steering linkage reaches a mechanical stop:
 

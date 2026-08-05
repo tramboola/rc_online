@@ -241,6 +241,63 @@
       box-shadow: 0 0 22px rgba(60, 219, 255, .15), inset 0 -1px 0 rgba(0, 0, 0, .35);
     }
 
+    .throttle-limit-control {
+      margin: 0 0 22px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: rgba(5, 9, 13, .5);
+    }
+
+    .throttle-limit-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--muted);
+      font: 800 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    #throttle-limit-value { color: var(--cyan); font-size: 16px; }
+
+    #throttle-limit {
+      width: 100%;
+      height: 4px;
+      margin: 18px 0 12px;
+      appearance: none;
+      cursor: pointer;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        var(--cyan) 0 var(--limit-fill, 100%),
+        #30434d var(--limit-fill, 100%) 100%
+      );
+      transition: background 120ms ease-out;
+    }
+
+    #throttle-limit::-webkit-slider-thumb {
+      width: 18px;
+      height: 18px;
+      appearance: none;
+      border: 2px solid var(--bg);
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 14px rgba(60, 219, 255, .35);
+    }
+
+    #throttle-limit::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--bg);
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 14px rgba(60, 219, 255, .35);
+    }
+
+    #throttle-limit:focus-visible { outline: 2px solid white; outline-offset: 6px; }
+    #throttle-limit-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+
     .actions { display: grid; gap: 10px; }
 
     .button {
@@ -354,6 +411,14 @@
             <div class="key" data-key="S" data-active="false">S</div>
             <div class="key" data-key="D" data-active="false">D</div>
           </div>
+          <div class="throttle-limit-control">
+            <div class="throttle-limit-head">
+              <label for="throttle-limit">Throttle limit</label>
+              <output id="throttle-limit-value" for="throttle-limit">100%</output>
+            </div>
+            <input id="throttle-limit" type="range" min="10" max="100" step="1" value="100" aria-describedby="throttle-limit-note">
+            <p id="throttle-limit-note">100% = current stand cap · 1750 / 1250 µs</p>
+          </div>
           <div class="actions">
             <button class="button" id="arm-button" type="button">Arm keyboard</button>
             <button class="button stop" id="stop-button" type="button">Stop / disarm</button>
@@ -392,6 +457,8 @@
       const connection = document.querySelector("#connection");
       const armButton = document.querySelector("#arm-button");
       const stopButton = document.querySelector("#stop-button");
+      const throttleLimit = document.querySelector("#throttle-limit");
+      const throttleLimitValue = document.querySelector("#throttle-limit-value");
 
       function axes() {
         const left = pressed.has("A");
@@ -414,6 +481,14 @@
         document.querySelectorAll("[data-key]").forEach((element) => {
           element.dataset.active = String(armed && pressed.has(element.dataset.key));
         });
+      }
+
+      function updateThrottleLimitUi() {
+        const value = Number(throttleLimit.value);
+        const fill = ((value - 10) / 90) * 100;
+        throttleLimitValue.value = `${value}%`;
+        throttleLimitValue.textContent = `${value}%`;
+        throttleLimit.style.setProperty("--limit-fill", `${fill}%`);
       }
 
       function setConnection(online, label) {
@@ -454,6 +529,7 @@
               armed,
               steering: armed ? current.steering : 0,
               throttle: armed ? current.throttle : 0,
+              throttle_limit_percent: Number(throttleLimit.value),
             }),
           });
           const state = await response.json();
@@ -534,6 +610,10 @@
 
       armButton.addEventListener("click", arm);
       stopButton.addEventListener("click", disarm);
+      throttleLimit.addEventListener("input", () => {
+        updateThrottleLimitUi();
+        if (armed) void sendControl();
+      });
       window.addEventListener("keydown", onKeyDown, { passive: false });
       window.addEventListener("keyup", onKeyUp, { passive: false });
       window.addEventListener("blur", disarm);
@@ -545,12 +625,13 @@
           method: "POST",
           keepalive: true,
           headers: { "Content-Type": "application/json", "X-Bench-Token": token },
-          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0 }),
+          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0, throttle_limit_percent: Number(throttleLimit.value) }),
         });
       });
       setInterval(() => { if (armed) void sendControl(); }, 50);
       setInterval(() => { if (!armed) void fetchState(); }, 500);
 
+      updateThrottleLimitUi();
       updateLocalUi();
       void fetchState();
     })();

@@ -5,6 +5,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from rc_bench.live_server import (
     ClientBusyError,
@@ -13,6 +14,36 @@ from rc_bench.live_server import (
     StaleSequenceError,
     create_http_server,
 )
+
+
+class LivePageTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.page = (
+            Path(__file__).resolve().parents[1] / "web" / "live.html"
+        ).read_text(encoding="utf-8")
+
+    def test_page_exposes_safe_throttle_limit_slider(self) -> None:
+        self.assertIn('id="throttle-limit"', self.page)
+        self.assertIn('min="10"', self.page)
+        self.assertIn('max="100"', self.page)
+        self.assertIn('step="1"', self.page)
+        self.assertIn('value="100"', self.page)
+        self.assertIn('id="throttle-limit-value"', self.page)
+        self.assertIn("100% = current stand cap", self.page)
+
+    def test_page_sends_limit_and_reacts_while_armed(self) -> None:
+        self.assertIn(
+            "throttle_limit_percent: Number(throttleLimit.value)",
+            self.page,
+        )
+        self.assertIn(
+            'throttleLimit.addEventListener("input", () => {\n'
+            "        updateThrottleLimitUi();\n"
+            "        if (armed) void sendControl();\n"
+            "      });",
+            self.page,
+        )
 
 
 class CommandMailboxTests(unittest.TestCase):
