@@ -25,6 +25,21 @@ class CommandMailboxTests(unittest.TestCase):
         self.assertEqual((frame.armed, frame.steering, frame.throttle), (True, 1, 0))
         self.assertEqual(mailbox.snapshot(), frame)
 
+    def test_preserves_throttle_limit_in_published_frame(self) -> None:
+        mailbox = CommandMailbox()
+
+        frame = mailbox.publish(
+            "browser-a",
+            1,
+            True,
+            0,
+            1,
+            throttle_limit_percent=40,
+            now=12.0,
+        )
+
+        self.assertEqual(frame.throttle_limit_percent, 40)
+
     def test_rejects_stale_sequence_from_owner(self) -> None:
         mailbox = CommandMailbox(takeover_s=1.0)
         mailbox.publish("browser-a", 5, True, 0, 0, now=20.0)
@@ -157,6 +172,7 @@ class LiveHttpTests(unittest.TestCase):
                 "armed": True,
                 "steering": -1,
                 "throttle": 1,
+                "throttle_limit_percent": 40,
             },
         )
 
@@ -165,6 +181,55 @@ class LiveHttpTests(unittest.TestCase):
         frame = self.mailbox.snapshot()
         self.assertIsNotNone(frame)
         self.assertEqual((frame.steering, frame.throttle), (-1, 1))
+        self.assertEqual(frame.throttle_limit_percent, 40)
+
+    def test_missing_throttle_limit_defaults_to_100_percent(self) -> None:
+        status, _response = self.request(
+            "/api/control",
+            method="POST",
+            payload={
+                "client_id": "browser-a",
+                "sequence": 1,
+                "armed": True,
+                "steering": 0,
+                "throttle": 1,
+            },
+        )
+
+        self.assertEqual(status, 202)
+        self.assertEqual(self.mailbox.snapshot().throttle_limit_percent, 100)
+
+    def test_invalid_throttle_limit_does_not_replace_last_valid_frame(self) -> None:
+        self.request(
+            "/api/control",
+            method="POST",
+            payload={
+                "client_id": "browser-a",
+                "sequence": 1,
+                "armed": True,
+                "steering": 0,
+                "throttle": 1,
+                "throttle_limit_percent": 40,
+            },
+        )
+
+        for sequence, value in enumerate((True, 9, 101, 10.5), start=2):
+            with self.subTest(value=value):
+                status, error = self.request(
+                    "/api/control",
+                    method="POST",
+                    payload={
+                        "client_id": "browser-a",
+                        "sequence": sequence,
+                        "armed": True,
+                        "steering": 0,
+                        "throttle": 1,
+                        "throttle_limit_percent": value,
+                    },
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(error["error"], "invalid_request")
+                self.assertEqual(self.mailbox.snapshot().throttle_limit_percent, 40)
 
     def test_invalid_axis_is_rejected_without_replacing_last_frame(self) -> None:
         self.request(

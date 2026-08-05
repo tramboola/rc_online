@@ -54,6 +54,7 @@ class CommandMailbox:
         armed: bool,
         steering: int,
         throttle: int,
+        throttle_limit_percent: int = 100,
         *,
         now: float,
     ) -> InputFrame:
@@ -67,7 +68,13 @@ class CommandMailbox:
             raise ValueError("steering must be an integer")
         if isinstance(throttle, bool) or not isinstance(throttle, int):
             raise ValueError("throttle must be an integer")
-        frame = InputFrame(armed, steering, throttle, now)
+        frame = InputFrame(
+            armed=armed,
+            steering=steering,
+            throttle=throttle,
+            received_at=now,
+            throttle_limit_percent=throttle_limit_percent,
+        )
 
         with self._lock:
             owner_is_stale = (
@@ -148,6 +155,7 @@ def create_http_server(
                     payload["armed"],
                     payload["steering"],
                     payload["throttle"],
+                    throttle_limit_percent=payload.get("throttle_limit_percent", 100),
                     now=clock(),
                 )
             except ClientBusyError as error:
