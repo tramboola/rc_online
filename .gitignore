@@ -13,6 +13,7 @@ client_secret_*.apps.googleusercontent.com.json
 .DS_Store
 .idea/
 .vscode/
+.worktrees/
 .pio/
 __pycache__/
 .pytest_cache/
