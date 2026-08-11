@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -51,7 +51,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://rc:ci-only@localhost:5432/rc_racing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -72,7 +72,7 @@ jobs:
       matrix:
         app: ["@rc/web", "@rc/api", "@rc/worker", "@rc/edge"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
