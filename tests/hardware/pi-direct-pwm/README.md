@@ -82,19 +82,20 @@ rc-bench-live --dry-run --host 0.0.0.0 --public-host office.local
 The command prints a tokenized URL. Open it on the controlling computer, click
 **Arm keyboard**, then use:
 
-- `W` / up arrow: slider-limited forward;
-- `S` / down arrow: 60 ms fixed brake, 60 ms neutral, then slider-limited reverse;
-- `Space`: fixed brake while held; steering stays active and releasing Space
-  immediately resumes a still-held throttle key;
+- `W` / up arrow: forward at 63%;
+- hold `N` together with `W` / up arrow: forward Nitro at 100%; `N` alone,
+  during reverse, or while braking has no effect;
+- `S` / down arrow: 60 ms fixed brake, 60 ms neutral, then reverse at 63%;
+- `Space`: direction-aware brake while held; after forward it sends the reverse
+  brake endpoint, after reverse it sends the forward brake endpoint, and
+  steering stays active;
 - `A` / left arrow and `D` / right arrow: full steering, including while braking;
 - `Escape` or Stop: neutral and disarm.
 
-The **Throttle limit** slider applies equally to forward and reverse and can
-be changed while a throttle key is held. Its 10-100% scale is relative to the
-bench's verified 1250-1750 microsecond cap: 100% remains 1750 forward / 1250
-reverse, while 10% produces 1525 forward / 1475 reverse. Reloading the page
-returns the slider to 100%. It never unlocks the ESC's full pulse range. The
-slider limits forward and reverse drive, but not the fixed brake command.
+The 63% drive setting means 1658 microseconds forward and 1342 microseconds
+reverse, relative to the verified 1250-1750 microsecond stand cap. Nitro is
+1750 microseconds forward. These commands never unlock the ESC's full pulse
+range.
 
 The brake and neutral phases each default to 60 milliseconds. Tune them for a
 particular ESC, within the 20-1000 millisecond bounds, for example:
