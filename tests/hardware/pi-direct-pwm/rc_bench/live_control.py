@@ -11,6 +11,7 @@ class InputFrame:
     throttle: int
     received_at: float
     throttle_limit_percent: int = 100
+    brake: bool = False
 
     def __post_init__(self) -> None:
         if self.steering not in (-1, 0, 1):
@@ -25,6 +26,8 @@ class InputFrame:
             or not 10 <= self.throttle_limit_percent <= 100
         ):
             raise ValueError("throttle_limit_percent must be an integer from 10 to 100")
+        if not isinstance(self.brake, bool):
+            raise ValueError("brake must be boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,8 +39,8 @@ class LiveConfig:
     throttle_neutral_us: int = 1500
     throttle_forward_us: int = 1750
     watchdog_s: float = 0.2
-    reverse_brake_s: float = 0.3
-    reverse_neutral_s: float = 0.5
+    reverse_brake_s: float = 0.06
+    reverse_neutral_s: float = 0.06
 
     def __post_init__(self) -> None:
         if not self.steering_left_us < self.steering_neutral_us < self.steering_right_us:
@@ -80,6 +83,7 @@ class LiveControl:
         }[frame.steering]
         throttle_us = self._throttle(
             frame.throttle,
+            frame.brake,
             frame.throttle_limit_percent,
             now,
         )
@@ -91,7 +95,13 @@ class LiveControl:
             reverse_phase=self._reverse_phase,
         )
 
-    def _throttle(self, throttle: int, limit_percent: int, now: float) -> int:
+    def _throttle(
+        self,
+        throttle: int,
+        brake: bool,
+        limit_percent: int,
+        now: float,
+    ) -> int:
         forward_us = self._scaled_throttle_us(
             self._config.throttle_forward_us,
             limit_percent,
@@ -100,6 +110,9 @@ class LiveControl:
             self._config.throttle_reverse_us,
             limit_percent,
         )
+        if brake:
+            self._reset_reverse()
+            return self._config.throttle_reverse_us
         if throttle == 1:
             self._reset_reverse()
             return forward_us
@@ -110,12 +123,12 @@ class LiveControl:
         if self._reverse_phase == "idle":
             self._reverse_phase = "brake"
             self._reverse_phase_started = now
-            return reverse_us
+            return self._config.throttle_reverse_us
 
         elapsed = now - self._reverse_phase_started
         if self._reverse_phase == "brake":
             if elapsed < self._config.reverse_brake_s:
-                return reverse_us
+                return self._config.throttle_reverse_us
             self._reverse_phase = "neutral"
             self._reverse_phase_started = now
             return self._config.throttle_neutral_us
