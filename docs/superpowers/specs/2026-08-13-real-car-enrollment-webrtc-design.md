@@ -256,4 +256,3 @@ Deployment verification covers:
 - administrator selection and direct WebRTC video;
 - controls remaining neutral while the traction battery is disconnected;
 - disconnect and watchdog fail paths.
-
