@@ -83,6 +83,30 @@ class CommandMailboxTests(unittest.TestCase):
 
         self.assertEqual(frame.throttle_limit_percent, 40)
 
+    def test_preserves_manual_brake_in_published_frame(self) -> None:
+        mailbox = CommandMailbox()
+
+        frame = mailbox.publish(
+            "browser-a",
+            1,
+            True,
+            0,
+            1,
+            brake=True,
+            now=12.0,
+        )
+
+        self.assertTrue(frame.brake)
+
+    def test_invalid_brake_does_not_replace_last_valid_frame(self) -> None:
+        mailbox = CommandMailbox()
+        mailbox.publish("browser-a", 1, True, 0, 0, brake=True, now=12.0)
+
+        with self.assertRaisesRegex(ValueError, "brake"):
+            mailbox.publish("browser-a", 2, True, 0, 1, brake=1, now=12.1)
+
+        self.assertTrue(mailbox.snapshot().brake)
+
     def test_invalid_throttle_limit_does_not_mutate_owner_sequence(self) -> None:
         mailbox = CommandMailbox(takeover_s=1.0)
         mailbox.publish("browser-a", 5, True, 0, 0, now=10.0)
@@ -264,6 +288,70 @@ class LiveHttpTests(unittest.TestCase):
 
         self.assertEqual(status, 202)
         self.assertEqual(self.mailbox.snapshot().throttle_limit_percent, 100)
+
+    def test_control_frame_carries_manual_brake(self) -> None:
+        status, response = self.request(
+            "/api/control",
+            method="POST",
+            payload={
+                "client_id": "browser-a",
+                "sequence": 1,
+                "armed": True,
+                "steering": -1,
+                "throttle": 1,
+                "brake": True,
+            },
+        )
+
+        self.assertEqual(status, 202)
+        self.assertTrue(response["accepted"])
+        self.assertTrue(self.mailbox.snapshot().brake)
+
+    def test_missing_brake_defaults_to_false(self) -> None:
+        status, _response = self.request(
+            "/api/control",
+            method="POST",
+            payload={
+                "client_id": "browser-a",
+                "sequence": 1,
+                "armed": True,
+                "steering": 0,
+                "throttle": 0,
+            },
+        )
+
+        self.assertEqual(status, 202)
+        self.assertFalse(self.mailbox.snapshot().brake)
+
+    def test_non_boolean_brake_is_rejected_without_replacing_frame(self) -> None:
+        self.request(
+            "/api/control",
+            method="POST",
+            payload={
+                "client_id": "browser-a",
+                "sequence": 1,
+                "armed": True,
+                "steering": 0,
+                "throttle": 0,
+                "brake": True,
+            },
+        )
+        status, error = self.request(
+            "/api/control",
+            method="POST",
+            payload={
+                "client_id": "browser-a",
+                "sequence": 2,
+                "armed": True,
+                "steering": 0,
+                "throttle": 0,
+                "brake": 1,
+            },
+        )
+
+        self.assertEqual(status, 400)
+        self.assertEqual(error["error"], "invalid_request")
+        self.assertTrue(self.mailbox.snapshot().brake)
 
     def test_invalid_throttle_limit_does_not_replace_last_valid_frame(self) -> None:
         self.request(
