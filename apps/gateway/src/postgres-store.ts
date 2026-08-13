@@ -2,10 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 
 import { createDatabase, schema } from "@rc/database";
 import type { DeviceHealth } from "@rc/contracts";
-import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import type {
   AuthenticatedDevice,
+  AuthorizeDriveSessionInput,
   ConsumeEnrollmentInput,
   EnrollmentResult,
   GatewayStore,
@@ -181,6 +182,30 @@ export class PostgresGatewayStore implements GatewayStore {
       ));
     for (const device of stale) await this.markDeviceOffline(device.id, now);
     return stale.length;
+  }
+
+  async authorizeDriveSession(input: AuthorizeDriveSessionInput): Promise<{ expiresAt: Date } | null> {
+    const [session] = await this.#database.db
+      .update(schema.driveSessions)
+      .set({ status: "negotiating", startedAt: input.now, updatedAt: input.now })
+      .where(and(
+        eq(schema.driveSessions.id, input.sessionId),
+        eq(schema.driveSessions.userId, input.userId),
+        eq(schema.driveSessions.carId, input.carId),
+        eq(schema.driveSessions.status, "created"),
+        gt(schema.driveSessions.expiresAt, input.now)
+      ))
+      .returning({ expiresAt: schema.driveSessions.expiresAt });
+    return session ?? null;
+  }
+
+  async endDriveSession(sessionId: string, _reason: string, now: Date): Promise<void> {
+    await this.#database.db.update(schema.driveSessions)
+      .set({ status: "ended", endedAt: now, updatedAt: now })
+      .where(and(
+        eq(schema.driveSessions.id, sessionId),
+        inArray(schema.driveSessions.status, ["created", "negotiating", "active"])
+      ));
   }
 
   async provisionCar(input: ProvisionCarInput): Promise<{ siteId: string; carId: string }> {

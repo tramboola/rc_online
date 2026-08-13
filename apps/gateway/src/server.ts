@@ -2,11 +2,12 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { z } from "zod";
 
-import { GatewayClientMessageSchema, type GatewayServerMessage } from "@rc/contracts";
-import { generateOpaqueSecret, hashOpaqueSecret } from "@rc/device-auth";
+import { GatewayClientMessageSchema, type GatewayClientMessage, type GatewayServerMessage } from "@rc/contracts";
+import { generateOpaqueSecret, hashOpaqueSecret, verifyBrowserTicket } from "@rc/device-auth";
 
 import type { GatewayConfig } from "./config.js";
 import { PresenceRegistry } from "./presence.js";
+import { SessionRegistry, type GatewayPeer } from "./sessions.js";
 import type { AuthenticatedDevice, GatewayStore } from "./store.js";
 
 const enrollmentSchema = z.object({
@@ -19,6 +20,7 @@ const enrollmentSchema = z.object({
 export function createGatewayServer(config: GatewayConfig, store: GatewayStore): FastifyInstance {
   const app = Fastify({ logger: process.env.NODE_ENV !== "test", bodyLimit: 64 * 1024 });
   const presence = new PresenceRegistry(store, config.staleAfterMs);
+  const sessions = new SessionRegistry();
   const devices = new Map<string, WebSocket>();
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 1_100_000, perMessageDeflate: false });
 
@@ -64,10 +66,15 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
   });
 
   sockets.on("connection", (socket) => {
-    let authenticated: AuthenticatedDevice | null = null;
+    let authenticatedDevice: AuthenticatedDevice | null = null;
+    let authenticatedSessionId: string | null = null;
     let closed = false;
+    const peer: GatewayPeer = {
+      send: (message) => send(socket, message),
+      close: (code, reason) => socket.close(code, reason)
+    };
     const authenticationTimeout = setTimeout(() => {
-      if (!authenticated) socket.close(4401, "authentication required");
+      if (!authenticatedDevice && !authenticatedSessionId) socket.close(4401, "authentication required");
     }, config.authTimeoutMs);
     authenticationTimeout.unref();
 
@@ -76,29 +83,66 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
         if (binary) throw new Error("Binary messages are unsupported");
         const message = GatewayClientMessageSchema.parse(JSON.parse(raw.toString()));
 
-        if (!authenticated) {
-          if (message.type !== "device.authenticate") {
-            send(socket, { v: 1, type: "auth.rejected", reason: "device authentication required" });
-            socket.close(4401, "authentication required");
+        if (!authenticatedDevice && !authenticatedSessionId) {
+          if (message.type === "device.authenticate") {
+            const suppliedHash = hashOpaqueSecret(message.secret, config.deviceAuthPepper);
+            authenticatedDevice = await store.authenticateDevice(message.deviceId, suppliedHash, new Date());
+            if (!authenticatedDevice) {
+              send(socket, { v: 1, type: "auth.rejected", reason: "invalid device credentials" });
+              socket.close(4403, "invalid credentials");
+              return;
+            }
+            clearTimeout(authenticationTimeout);
+            const prior = devices.get(authenticatedDevice.deviceId);
+            if (prior && prior !== socket) prior.close(4409, "replaced by a new connection");
+            devices.set(authenticatedDevice.deviceId, socket);
+            sessions.attachDevice(authenticatedDevice.carId, authenticatedDevice.deviceId, peer);
+            send(socket, { v: 1, type: "auth.accepted", peer: "device" });
             return;
           }
-          const suppliedHash = hashOpaqueSecret(message.secret, config.deviceAuthPepper);
-          authenticated = await store.authenticateDevice(message.deviceId, suppliedHash, new Date());
-          if (!authenticated) {
-            send(socket, { v: 1, type: "auth.rejected", reason: "invalid device credentials" });
-            socket.close(4403, "invalid credentials");
+          if (message.type === "browser.authenticate") {
+            const ticket = verifyBrowserTicket(message.ticket, config.browserTicketSecret);
+            const authorized = await store.authorizeDriveSession({
+              sessionId: ticket.sessionId,
+              userId: ticket.sub,
+              carId: ticket.carId,
+              now: new Date()
+            });
+            if (!authorized || !sessions.attachBrowser({
+              sessionId: ticket.sessionId,
+              userId: ticket.sub,
+              carId: ticket.carId,
+              expiresAt: authorized.expiresAt,
+              iceServers: config.iceServers
+            }, peer)) {
+              send(socket, { v: 1, type: "auth.rejected", reason: "drive session unavailable" });
+              socket.close(4409, "drive session unavailable");
+              return;
+            }
+            authenticatedSessionId = ticket.sessionId;
+            clearTimeout(authenticationTimeout);
+            send(socket, { v: 1, type: "auth.accepted", peer: "browser" });
             return;
           }
-          clearTimeout(authenticationTimeout);
-          const prior = devices.get(authenticated.deviceId);
-          if (prior && prior !== socket) prior.close(4409, "replaced by a new connection");
-          devices.set(authenticated.deviceId, socket);
-          send(socket, { v: 1, type: "auth.accepted", peer: "device" });
+          send(socket, { v: 1, type: "auth.rejected", reason: "authentication required" });
+          socket.close(4401, "authentication required");
           return;
         }
 
-        if (message.type === "device.heartbeat") {
-          await presence.heartbeat(authenticated.deviceId, message.health);
+        if (authenticatedDevice && message.type === "device.heartbeat") {
+          await presence.heartbeat(authenticatedDevice.deviceId, message.health);
+          return;
+        }
+        if (authenticatedDevice && isRelayMessage(message)) {
+          if (!sessions.relayFromDevice(authenticatedDevice.carId, message)) {
+            throw new Error("Message does not match the active device session");
+          }
+          return;
+        }
+        if (authenticatedSessionId && isRelayMessage(message)) {
+          if (!sessions.relayFromBrowser(authenticatedSessionId, message)) {
+            throw new Error("Message does not match the active browser session");
+          }
           return;
         }
         send(socket, { v: 1, type: "error", code: "unsupported_message", message: "Message is not valid for this connection" });
@@ -112,9 +156,15 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
       if (closed) return;
       closed = true;
       clearTimeout(authenticationTimeout);
-      if (authenticated && devices.get(authenticated.deviceId) === socket) {
-        devices.delete(authenticated.deviceId);
-        await presence.disconnect(authenticated.deviceId).catch(() => undefined);
+      if (authenticatedDevice && devices.get(authenticatedDevice.deviceId) === socket) {
+        devices.delete(authenticatedDevice.deviceId);
+        const sessionId = sessions.detachDevice(authenticatedDevice.carId, peer);
+        if (sessionId) await store.endDriveSession(sessionId, "device disconnected", new Date()).catch(() => undefined);
+        await presence.disconnect(authenticatedDevice.deviceId).catch(() => undefined);
+      }
+      if (authenticatedSessionId) {
+        sessions.detachBrowser(authenticatedSessionId, "browser disconnected");
+        await store.endDriveSession(authenticatedSessionId, "browser disconnected", new Date()).catch(() => undefined);
       }
     });
     socket.on("error", () => undefined);
@@ -122,6 +172,9 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
 
   const sweepTimer = setInterval(() => {
     void presence.sweep().catch((error: unknown) => app.log.error({ err: error }, "presence sweep failed"));
+    for (const sessionId of sessions.sweep()) {
+      void store.endDriveSession(sessionId, "session expired", new Date()).catch((error: unknown) => app.log.error({ err: error }, "session expiry failed"));
+    }
   }, 5_000);
   sweepTimer.unref();
 
@@ -136,4 +189,8 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
 
 function send(socket: WebSocket, message: GatewayServerMessage): void {
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+}
+
+function isRelayMessage(message: GatewayClientMessage): message is Extract<GatewayClientMessage, { type: "signal.offer" | "signal.answer" | "signal.ice" | "session.end" }> {
+  return message.type === "signal.offer" || message.type === "signal.answer" || message.type === "signal.ice" || message.type === "session.end";
 }

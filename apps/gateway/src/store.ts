@@ -37,6 +37,13 @@ export type ProvisionCarInput = {
   now: Date;
 };
 
+export type AuthorizeDriveSessionInput = {
+  sessionId: string;
+  userId: string;
+  carId: string;
+  now: Date;
+};
+
 export interface GatewayStore {
   ready(): Promise<boolean>;
   consumeEnrollment(input: ConsumeEnrollmentInput): Promise<EnrollmentResult | null>;
@@ -53,5 +60,7 @@ export interface GatewayStore {
   setPresenceState(deviceId: string, state: PresenceState, now: Date): Promise<void>;
   markDeviceOffline(deviceId: string, now: Date): Promise<void>;
   expireStaleDevices(cutoff: Date, now: Date): Promise<number>;
+  authorizeDriveSession(input: AuthorizeDriveSessionInput): Promise<{ expiresAt: Date } | null>;
+  endDriveSession(sessionId: string, reason: string, now: Date): Promise<void>;
   provisionCar(input: ProvisionCarInput): Promise<{ siteId: string; carId: string }>;
 }
