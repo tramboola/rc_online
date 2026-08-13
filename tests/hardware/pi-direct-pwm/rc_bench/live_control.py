@@ -66,6 +66,7 @@ class LiveControl:
         self._config = config or LiveConfig()
         self._reverse_phase = "idle"
         self._reverse_phase_started = 0.0
+        self._reverse_reentry_needs_neutral = False
         self._last_drive_direction: int | None = None
 
     def step(self, frame: InputFrame | None, now: float) -> OutputState:
@@ -112,6 +113,7 @@ class LiveControl:
         )
         if brake:
             self._reset_reverse()
+            self._reverse_reentry_needs_neutral = self._last_drive_direction == -1
             if self._last_drive_direction == 1:
                 return self._config.throttle_reverse_us
             if self._last_drive_direction == -1:
@@ -119,13 +121,25 @@ class LiveControl:
             return self._config.throttle_neutral_us
         if throttle == 1:
             self._reset_reverse()
+            self._reverse_reentry_needs_neutral = False
             self._last_drive_direction = 1
             return self._config.throttle_forward_us if nitro else forward_us
         if throttle == 0:
             self._reset_reverse()
+            self._reverse_reentry_needs_neutral = False
             return self._config.throttle_neutral_us
 
         if self._reverse_phase == "idle":
+            if self._last_drive_direction == -1:
+                if self._reverse_reentry_needs_neutral:
+                    self._reverse_phase = "neutral"
+                    self._reverse_phase_started = now
+                    self._reverse_reentry_needs_neutral = False
+                    return self._config.throttle_neutral_us
+                self._reverse_phase = "reverse"
+                self._reverse_phase_started = now
+                return reverse_us
+            self._reverse_reentry_needs_neutral = False
             self._reverse_phase = "brake"
             self._reverse_phase_started = now
             return self._config.throttle_reverse_us
@@ -168,4 +182,5 @@ class LiveControl:
 
     def _reset_motion(self) -> None:
         self._reset_reverse()
+        self._reverse_reentry_needs_neutral = False
         self._last_drive_direction = None

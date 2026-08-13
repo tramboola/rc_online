@@ -181,6 +181,47 @@ class LiveControlTests(unittest.TestCase):
         self.assertEqual((released.throttle_us, released.reverse_phase), (1500, "idle"))
         self.assertEqual((pressed_again.throttle_us, pressed_again.reverse_phase), (1250, "brake"))
 
+    def test_reverse_after_forward_still_starts_with_full_handshake(self) -> None:
+        self.control.step(self.frame(5.0, throttle=1), now=5.0)
+
+        brake = self.control.step(self.frame(5.01, throttle=-1), now=5.01)
+        neutral = self.control.step(self.frame(5.071, throttle=-1), now=5.071)
+        reverse = self.control.step(self.frame(5.132, throttle=-1), now=5.132)
+
+        self.assertEqual((brake.throttle_us, brake.reverse_phase), (1250, "brake"))
+        self.assertEqual((neutral.throttle_us, neutral.reverse_phase), (1500, "neutral"))
+        self.assertEqual((reverse.throttle_us, reverse.reverse_phase), (1342, "reverse"))
+
+    def test_completed_reverse_reentry_after_ordinary_neutral_skips_handshake(self) -> None:
+        self.control.step(self.frame(6.0, throttle=-1), now=6.0)
+        self.control.step(self.frame(6.061, throttle=-1), now=6.061)
+        self.control.step(self.frame(6.122, throttle=-1), now=6.122)
+
+        neutral = self.control.step(self.frame(6.13, throttle=0), now=6.13)
+        reverse = self.control.step(self.frame(6.14, throttle=-1), now=6.14)
+
+        self.assertEqual((neutral.throttle_us, neutral.reverse_phase), (1500, "idle"))
+        self.assertEqual((reverse.throttle_us, reverse.reverse_phase), (1342, "reverse"))
+
+    def test_releasing_reverse_origin_brake_uses_only_neutral_before_reverse(self) -> None:
+        self.control.step(self.frame(7.0, throttle=-1), now=7.0)
+        self.control.step(self.frame(7.061, throttle=-1), now=7.061)
+        self.control.step(self.frame(7.122, throttle=-1), now=7.122)
+
+        braking = self.control.step(
+            self.frame(7.13, throttle=-1, brake=True),
+            now=7.13,
+        )
+        neutral = self.control.step(self.frame(7.14, throttle=-1), now=7.14)
+        still_neutral = self.control.step(self.frame(7.199, throttle=-1), now=7.199)
+        reverse = self.control.step(self.frame(7.201, throttle=-1), now=7.201)
+
+        self.assertEqual((braking.throttle_us, braking.reverse_phase), (1750, "idle"))
+        self.assertEqual((neutral.throttle_us, neutral.reverse_phase), (1500, "neutral"))
+        self.assertEqual((still_neutral.throttle_us, still_neutral.reverse_phase), (1500, "neutral"))
+        self.assertEqual((reverse.throttle_us, reverse.reverse_phase), (1342, "reverse"))
+        self.assertNotIn(1250, (neutral.throttle_us, still_neutral.throttle_us, reverse.throttle_us))
+
     def test_invalid_normalized_axis_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "steering"):
             InputFrame(True, steering=2, throttle=0, received_at=1.0)

@@ -85,10 +85,13 @@ The command prints a tokenized URL. Open it on the controlling computer, click
 - `W` / up arrow: forward at 63%;
 - hold `N` together with `W` / up arrow: forward Nitro at 100%; `N` alone,
   during reverse, or while braking has no effect;
-- `S` / down arrow: 60 ms fixed brake, 60 ms neutral, then reverse at 63%;
+- `S` / down arrow: from unknown or forward direction, 60 ms fixed brake and
+  60 ms neutral before reverse at 63%; after completed reverse and ordinary
+  neutral, another `S` resumes reverse immediately;
 - `Space`: direction-aware brake while held; after forward it sends the reverse
   brake endpoint, after reverse it sends the forward brake endpoint, and
-  steering stays active;
+  steering stays active; releasing a reverse-origin brake while `S` remains
+  held sends 60 ms neutral before resuming reverse, never 1250 microseconds;
 - `A` / left arrow and `D` / right arrow: full steering, including while braking;
 - `Escape` or Stop: neutral and disarm.
 
@@ -96,6 +99,14 @@ The 63% drive setting means 1658 microseconds forward and 1342 microseconds
 reverse, relative to the verified 1250-1750 microsecond stand cap. Nitro is
 1750 microseconds forward. These commands never unlock the ESC's full pulse
 range.
+
+The initial reverse handshake is used only when the remembered drive direction
+is unknown or forward. Once reverse has completed, ordinary armed neutral keeps
+that direction knowledge, so another `S` request returns directly to the fixed
+1342 microsecond reverse command. If `Space` interrupted completed reverse,
+releasing it while `S` remains held first uses only the configured reverse
+neutral interval, then returns to 1342 microseconds; that re-entry path never
+outputs 1250 microseconds.
 
 The brake and neutral phases each default to 60 milliseconds. Tune them for a
 particular ESC, within the 20-1000 millisecond bounds, for example:

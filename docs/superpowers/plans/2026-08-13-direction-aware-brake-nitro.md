@@ -17,7 +17,9 @@
 - `Space` overrides drive and Nitro while preserving steering and arming.
 - Manual brake after forward is 1250 microseconds; manual brake after reverse is 1750 microseconds; unknown direction produces neutral.
 - Remembered drive direction persists through armed neutral, but resets on disarm and watchdog expiry.
-- Automatic reverse remains full 1250 microsecond brake for 60 ms, neutral for 60 ms, then 1342 microsecond reverse drive.
+- Reverse from an unknown or forward last drive direction remains full 1250 microsecond brake for 60 ms, neutral for 60 ms, then 1342 microsecond reverse drive.
+- Completed reverse followed by ordinary armed neutral and another `S` request resumes 1342 microseconds immediately, without a handshake or 1250 microsecond output.
+- Releasing reverse-origin `Space` while `S` remains held outputs neutral for exactly `reverse_neutral_s` (60 ms by default), then resumes 1342 microseconds without outputting 1250 microseconds.
 - Brake and reverse-handshake endpoints do not update remembered drive direction.
 - `W+S` remains neutral; `Esc`, Stop, blur, hidden/closed tab, stale heartbeat, and shutdown retain neutral-and-disarm behaviour.
 - The 200 ms watchdog, single-client ownership, token checks, 50 Hz output loop, GPIO pins, and 1250-1750 microsecond safety cap must not change.
@@ -247,10 +249,12 @@ def __init__(self, config: LiveConfig | None = None) -> None:
     self._config = config or LiveConfig()
     self._reverse_phase = "idle"
     self._reverse_phase_started = 0.0
+    self._reverse_reentry_needs_neutral = False
     self._last_drive_direction: int | None = None
 
 def _reset_motion(self) -> None:
     self._reset_reverse()
+    self._reverse_reentry_needs_neutral = False
     self._last_drive_direction = None
 ```
 
@@ -274,6 +278,7 @@ def _throttle(
     )
     if brake:
         self._reset_reverse()
+        self._reverse_reentry_needs_neutral = self._last_drive_direction == -1
         if self._last_drive_direction == 1:
             return self._config.throttle_reverse_us
         if self._last_drive_direction == -1:
@@ -281,13 +286,25 @@ def _throttle(
         return self._config.throttle_neutral_us
     if throttle == 1:
         self._reset_reverse()
+        self._reverse_reentry_needs_neutral = False
         self._last_drive_direction = 1
         return self._config.throttle_forward_us if nitro else forward_us
     if throttle == 0:
         self._reset_reverse()
+        self._reverse_reentry_needs_neutral = False
         return self._config.throttle_neutral_us
 
     if self._reverse_phase == "idle":
+        if self._last_drive_direction == -1:
+            if self._reverse_reentry_needs_neutral:
+                self._reverse_phase = "neutral"
+                self._reverse_phase_started = now
+                self._reverse_reentry_needs_neutral = False
+                return self._config.throttle_neutral_us
+            self._reverse_phase = "reverse"
+            self._reverse_phase_started = now
+            return reverse_us
+        self._reverse_reentry_needs_neutral = False
         self._reverse_phase = "brake"
         self._reverse_phase_started = now
         return self._config.throttle_reverse_us
@@ -713,10 +730,13 @@ Replace slider documentation with these exact behaviours:
 - `W` / up arrow: forward at 63%;
 - hold `N` together with `W` / up arrow: forward Nitro at 100%; `N` alone,
   during reverse, or while braking has no effect;
-- `S` / down arrow: 60 ms fixed brake, 60 ms neutral, then reverse at 63%;
+- `S` / down arrow: from unknown or forward direction, 60 ms fixed brake and
+  60 ms neutral before reverse at 63%; after completed reverse and ordinary
+  neutral, another `S` resumes reverse immediately;
 - `Space`: direction-aware brake while held; after forward it sends the reverse
   brake endpoint, after reverse it sends the forward brake endpoint, and
-  steering stays active;
+  steering stays active; releasing a reverse-origin brake while `S` remains
+  held sends 60 ms neutral before resuming reverse, never 1250 microseconds;
 - `A` / left arrow and `D` / right arrow: full steering, including while braking;
 - `Escape` or Stop: neutral and disarm.
 ```

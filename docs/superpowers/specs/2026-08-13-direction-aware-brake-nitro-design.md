@@ -25,7 +25,7 @@ car on the ground.
   reverse, and Nitro. Steering and arming remain active.
 - Releasing `Space` immediately exposes the keys still held. Therefore held
   `W+N` resumes 100% forward, held `W` resumes 63% forward, and held `S`
-  starts the automatic reverse sequence.
+  uses the direction-aware reverse re-entry described below.
 - `Esc`, Stop, browser blur, a hidden or closed tab, stale heartbeat, and
   server shutdown retain their neutral-and-disarm behaviour.
 
@@ -83,18 +83,32 @@ This is direction-aware based on the last command, not wheel-speed sensing.
 The stand has no motion sensor, so the first real verification remains a
 suspended-wheel test.
 
-## Automatic reverse sequence
+## Automatic reverse sequence and re-entry
 
-The existing `S` / down-arrow handshake is preserved:
+When the last drive direction is unknown or forward, the existing `S` /
+down-arrow handshake is preserved:
 
 1. full 1250 microsecond brake for 60 milliseconds;
 2. neutral for 60 milliseconds;
 3. 1342 microsecond reverse drive while reverse remains requested.
 
-Pressing manual brake interrupts and resets this sequence. Releasing `Space`
-while `S` remains held starts a fresh 60/60 millisecond reverse sequence.
-The existing bounded CLI overrides for the two phase durations remain
-available.
+Once a completed 1342 microsecond reverse command has recorded reverse as the
+last drive direction, repeating the initial 1250 microsecond phase would be
+full reverse rather than braking. Reverse re-entry therefore has two distinct
+paths:
+
+- completed reverse, then ordinary armed neutral, then `S` resumes the 1342
+  microsecond reverse phase immediately, with no handshake and no 1250
+  microsecond output;
+- completed reverse, then `Space` at 1750 microseconds, then releasing `Space`
+  while `S` remains held outputs neutral for exactly the configured reverse
+  neutral duration (60 milliseconds by default) before resuming 1342
+  microseconds. It never outputs 1250 microseconds on this path.
+
+The existing bounded CLI overrides for both phase durations remain available.
+The brake-duration override applies to the initial unknown/forward handshake;
+the neutral-duration override also controls the reverse-origin manual-brake
+release path.
 
 ## Control frame and compatibility
 
@@ -115,14 +129,19 @@ lower drive power.
 1. Missing, stale, or disarmed input returns neutral and clears remembered
    direction and the reverse sequence.
 2. Steering is calculated independently.
-3. Manual brake uses the opposite endpoint for the remembered direction and
-   resets the automatic reverse sequence.
+3. Manual brake uses the opposite endpoint for the remembered direction. A
+   reverse-origin brake records that reverse re-entry must first dwell at
+   neutral; other brake origins reset the initial automatic reverse sequence.
 4. Conflicting or neutral throttle returns neutral while retaining remembered
-   direction.
+   direction. Ordinary armed neutral clears any brake-release neutral dwell,
+   so a later known-reverse request resumes reverse immediately.
 5. Forward returns 1658 microseconds, or 1750 only when Nitro is valid and
    active, and records forward direction.
-6. Reverse advances through brake, neutral, and fixed 63% reverse drive,
-   recording reverse direction only in the drive phase.
+6. Reverse advances through brake, neutral, and fixed 63% reverse drive when
+   direction is unknown or forward. Known-reverse re-entry either resumes the
+   drive phase immediately after ordinary neutral or performs only the neutral
+   phase after reverse-origin manual brake. Direction is recorded only in the
+   drive phase.
 
 Ownership, watchdog timing, GPIO shutdown, token authorization, steering, and
 request coalescing do not change.
@@ -150,7 +169,10 @@ The indicator is display-only; mouse interaction cannot activate Nitro.
   neutral, direction persistence through armed neutral, and direction reset on
   disarm and watchdog expiry.
 - Reverse tests prove that handshake brake and neutral phases do not falsely
-  record reverse direction, and that the final reverse phase does.
+  record reverse direction, that the final reverse phase does, that ordinary
+  known-reverse re-entry skips the handshake, and that reverse-origin manual
+  brake release performs only the configured neutral dwell without 1250
+  microsecond output.
 - Mailbox and HTTP tests cover Nitro propagation, safe missing-field default,
   strict boolean validation, last-valid-frame preservation, and the removal of
   adjustable throttle limits.
