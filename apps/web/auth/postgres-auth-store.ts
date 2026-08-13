@@ -13,6 +13,7 @@ import type {
   StoredAuthSession,
   StoredAuthUser,
 } from "./auth-store";
+import { normalizeUserRole } from "./user-role";
 
 type UserRow = typeof users.$inferSelect;
 type SessionRow = typeof authSessions.$inferSelect;
@@ -22,6 +23,7 @@ function mapUser(row: UserRow): StoredAuthUser {
     id: row.id,
     email: row.email,
     displayName: row.displayName,
+    role: normalizeUserRole(row.role),
     emailVerifiedAt: row.emailVerifiedAt,
     disabledAt: row.disabledAt,
   };
@@ -46,6 +48,7 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
           id: user.id,
           email: user.email,
           displayName: user.displayName,
+          role: user.role,
           emailVerifiedAt: user.emailVerifiedAt,
           disabledAt: user.disabledAt,
         }).returning();

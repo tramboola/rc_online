@@ -1,7 +1,10 @@
+import type { UserRole } from "./user-role";
+
 export type StoredAuthUser = {
   id: string;
   email: string;
   displayName: string;
+  role: UserRole;
   emailVerifiedAt: Date | null;
   disabledAt: Date | null;
 };

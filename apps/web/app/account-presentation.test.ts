@@ -15,6 +15,7 @@ describe("getAccountPresentation", () => {
     expect(getAccountPresentation({
       user: {
         id: "user-1",
+        role: "user",
         name: "Test Driver",
         email: "driver@example.com",
         image: null,
@@ -35,6 +36,7 @@ describe("getAccountPresentation", () => {
     const presentation = getAccountPresentation({
       user: {
         id: "user-1",
+        role: "user",
         name: "Driver",
         email: "driver@example.com",
         image: null,
@@ -50,6 +52,7 @@ describe("getAccountPresentation", () => {
     const presentation = getAccountPresentation({
       user: {
         id: "user-1",
+        role: "user",
         name: null,
         email: "driver@example.com",
         image: null,
@@ -68,6 +71,7 @@ describe("getAccountPresentation", () => {
     const presentation = getAccountPresentation({
       user: {
         id: "user-1",
+        role: "user",
         name: "Alexandra Very Long Racing Driver Name",
         email: "driver@example.com",
         image: null,

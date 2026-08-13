@@ -116,6 +116,7 @@ describe("createRcAuthAdapter", () => {
     await store.createUser({
       ...googleUser(),
       displayName: "Test Driver",
+      role: "user",
       emailVerifiedAt: new Date("2026-08-03T00:00:00Z"),
       disabledAt: new Date("2026-08-03T01:00:00Z"),
     });

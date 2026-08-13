@@ -8,6 +8,7 @@ import {
 } from "./auth/config";
 import type { AuthStore } from "./auth/auth-store";
 import { createPostgresAuthStore } from "./auth/postgres-auth-store";
+import { loadSessionUser } from "./auth/session-user";
 
 let authStore: AuthStore | undefined;
 let authStoreUrl: string | undefined;
@@ -52,9 +53,10 @@ const nextAuth: NextAuthResult = NextAuth(() => {
         return Boolean(googleProfile?.email && googleProfile.email_verified);
       },
       async session({ session, user }) {
-        const balance = await store.getBalance(user.id);
-        session.user.id = user.id;
-        session.user.balance = balance;
+        const sessionUser = await loadSessionUser(store, user.id);
+        session.user.id = sessionUser.id;
+        session.user.role = sessionUser.role;
+        session.user.balance = sessionUser.balance;
         return session;
       },
       async redirect({ url }) {
