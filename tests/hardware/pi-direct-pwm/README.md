@@ -82,17 +82,29 @@ rc-bench-live --dry-run --host 0.0.0.0 --public-host office.local
 The command prints a tokenized URL. Open it on the controlling computer, click
 **Arm keyboard**, then use:
 
-- `W` / up arrow: 1750 microseconds forward;
-- `S` / down arrow: brake-neutral-reverse state machine at 1250 microseconds;
-- `A` / left arrow: 1000 microseconds steering;
-- `D` / right arrow: 2000 microseconds steering;
-- `Space` or `Escape`: neutral and disarm.
+- `W` / up arrow: slider-limited forward;
+- `S` / down arrow: 60 ms fixed brake, 60 ms neutral, then slider-limited reverse;
+- `Space`: fixed brake while held; steering stays active and releasing Space
+  immediately resumes a still-held throttle key;
+- `A` / left arrow and `D` / right arrow: full steering, including while braking;
+- `Escape` or Stop: neutral and disarm.
 
 The **Throttle limit** slider applies equally to forward and reverse and can
 be changed while a throttle key is held. Its 10-100% scale is relative to the
 bench's verified 1250-1750 microsecond cap: 100% remains 1750 forward / 1250
 reverse, while 10% produces 1525 forward / 1475 reverse. Reloading the page
-returns the slider to 100%. It never unlocks the ESC's full pulse range.
+returns the slider to 100%. It never unlocks the ESC's full pulse range. The
+slider limits forward and reverse drive, but not the fixed brake command.
+
+The brake and neutral phases each default to 60 milliseconds. Tune them for a
+particular ESC, within the 20-1000 millisecond bounds, for example:
+
+```sh
+rc-bench-live --host 0.0.0.0 --public-host office.local \
+  --reverse-brake-ms 120 --reverse-neutral-ms 80
+```
+
+If the ESC does not recognise reverse, increase the neutral interval first.
 
 For real GPIO, omit `--dry-run`. Keep the car suspended and stop immediately
 if the steering linkage reaches a mechanical stop:
