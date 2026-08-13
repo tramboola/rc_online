@@ -49,6 +49,7 @@ import {
   getVideoStatusLabel,
   getViewerBadgeText,
 } from "./home-presentation";
+import type { OperationalStatus } from "./operational-status";
 import {
   howItWorksRequirements,
   howItWorksSteps,
@@ -73,6 +74,49 @@ const rideId = "30000000-0000-4000-8000-000000000003";
 const offerId = "30000000-0000-4000-8000-000000000002";
 const blueCarId = "40000000-0000-4000-8000-000000000001";
 const redCarId = "40000000-0000-4000-8000-000000000002";
+
+type QueueCarPresentation = {
+  id: string;
+  number: string;
+  name: string;
+  src: string | null;
+  battery: string;
+  connection: string;
+};
+
+const simulationQueueCars: QueueCarPresentation[] = [
+  {
+    id: blueCarId,
+    number: "CAR 01",
+    name: "NIGHT RUNNER",
+    src: "/assets/car-blue.webp",
+    battery: "86%",
+    connection: "EXCELLENT",
+  },
+  {
+    id: redCarId,
+    number: "CAR 02",
+    name: "RED COMET",
+    src: "/assets/car-red.webp",
+    battery: "74%",
+    connection: "GOOD",
+  },
+];
+
+function getQueueCars(
+  operationalStatus: OperationalStatus | undefined,
+): QueueCarPresentation[] {
+  if (!operationalStatus) return simulationQueueCars;
+  if (operationalStatus.state === "unavailable") return [];
+  return operationalStatus.cars.map((car, index) => ({
+    id: car.id,
+    number: `CAR ${String(index + 1).padStart(2, "0")}`,
+    name: car.name.toUpperCase(),
+    src: null,
+    battery: car.batteryPercent === null ? "—" : `${car.batteryPercent}%`,
+    connection: "AVAILABLE",
+  }));
+}
 
 function Header({ active }: { active: ScreenName }) {
   return (
@@ -177,9 +221,33 @@ function MobileGate() {
   );
 }
 
-function HomeScreen({ mockMode }: { mockMode: boolean }) {
-  const presentation = getHomePresentation(mockMode);
+function HomeScreen({
+  adminAccess,
+  mockMode,
+  operationalStatus,
+}: {
+  adminAccess: boolean;
+  mockMode: boolean;
+  operationalStatus?: OperationalStatus | undefined;
+}) {
+  const presentation = getHomePresentation(mockMode, adminAccess);
   const viewerCount = useViewerCount();
+  const useOperationalMetrics = mockMode && adminAccess;
+  const operationalReady = operationalStatus?.state === "ready";
+  const availableCars = useOperationalMetrics
+    ? operationalReady ? operationalStatus.cars.length : "—"
+    : "2";
+  const queueCount = useOperationalMetrics
+    ? operationalReady ? operationalStatus.queueCount : "—"
+    : "4";
+  const waitMinutes = useOperationalMetrics
+    ? operationalReady ? operationalStatus.queueCount * 5 : "—"
+    : "~12";
+  const queueTitle = useOperationalMetrics
+    ? operationalReady
+      ? operationalStatus.cars.length > 0 ? "QUEUE OPEN" : "NO CARS ONLINE"
+      : "STATUS UNAVAILABLE"
+    : "QUEUE OPEN";
 
   return (
     <div className="page">
@@ -230,12 +298,12 @@ function HomeScreen({ mockMode }: { mockMode: boolean }) {
         </section>
 
         <section className="metric-grid" aria-label="Live track metrics">
-          <IconLabel icon={CarProfile} title="2" subtitle="CARS AVAILABLE" />
-          <IconLabel icon={UsersThree} title="4" subtitle="IN QUEUE" />
-          <IconLabel icon={Clock} title="~12" subtitle="MIN WAIT" />
+          <IconLabel icon={CarProfile} title={availableCars} subtitle="CARS AVAILABLE" />
+          <IconLabel icon={UsersThree} title={queueCount} subtitle="IN QUEUE" />
+          <IconLabel icon={Clock} title={waitMinutes} subtitle="MIN WAIT" />
           <IconLabel
             icon={Flag}
-            title="QUEUE OPEN"
+            title={queueTitle}
             subtitle="JOIN THE LINE"
             tone="lime"
           />
@@ -686,10 +754,16 @@ function PreflightScreen() {
   );
 }
 
-function QueueScreen() {
+function QueueScreen({
+  operationalStatus,
+}: {
+  operationalStatus?: OperationalStatus | undefined;
+}) {
   const router = useRouter();
-  const [selectedCar, setSelectedCar] = useState(blueCarId);
+  const queueCars = getQueueCars(operationalStatus);
+  const [selectedCar, setSelectedCar] = useState(queueCars[0]?.id ?? "");
   const [seconds, setSeconds] = useState(24);
+  const fleetUnavailable = operationalStatus?.state === "unavailable";
   const [status, setStatus] = useState("Joining live queue…");
 
   useEffect(() => {
@@ -714,6 +788,7 @@ function QueueScreen() {
   }, []);
 
   async function accept() {
+    if (!selectedCar) return;
     setStatus("Connecting…");
     try {
       await apiRequest(`/v1/ride-offers/${offerId}/accept`, {
@@ -736,7 +811,7 @@ function QueueScreen() {
       <MobileGate />
       <main className="queue-main">
         <section className="queue-left">
-          <div className="title-row"><h1>LIVE QUEUE</h1><IconLabel icon={UsersThree} title="2" subtitle="CARS ONLINE" tone="lime" /></div>
+          <div className="title-row"><h1>LIVE QUEUE</h1><IconLabel icon={UsersThree} title={operationalStatus ? queueCars.length : "2"} subtitle="CARS ONLINE" tone="lime" /></div>
           <article className="data-panel queue-position">
             <div className="queue-position-heading">
               <div><h2>YOU ARE #1</h2><p>NEXT TO DRIVE</p></div>
@@ -779,26 +854,30 @@ function QueueScreen() {
           </div>
           <h3>SELECT YOUR CAR</h3>
           <div className="car-choice-grid">
-            {[
-              [blueCarId, "CAR 01", "NIGHT RUNNER", "/assets/car-blue.webp", "86%", "EXCELLENT"],
-              [redCarId, "CAR 02", "RED COMET", "/assets/car-red.webp", "74%", "GOOD"],
-            ].map(([id, number, name, src, battery, connection]) => (
+            {queueCars.map(({ id, number, name, src, battery, connection }) => (
               <button
                 aria-pressed={selectedCar === id}
                 className={`car-choice ${selectedCar === id ? "selected" : ""}`}
                 key={id}
-                onClick={() => setSelectedCar(id!)}
+                onClick={() => setSelectedCar(id)}
                 type="button"
               >
                 {selectedCar === id ? <CheckCircle className="choice-check" size={32} weight="fill" /> : null}
-                <img src={src} alt={`${name} RC car`} />
+                {src ? <img src={src} alt={`${name} RC car`} /> : <CarProfile aria-hidden="true" size={72} />}
                 <small>{number}</small><strong>{name}</strong>
                 <span><BatteryHigh size={28} /> {battery}</span><span><WifiHigh size={28} /> {connection}</span>
               </button>
             ))}
+            {queueCars.length === 0 ? (
+              <div className="car-choice-empty" role="status">
+                <CarProfile aria-hidden="true" size={54} />
+                <strong>{fleetUnavailable ? "CAR STATUS UNAVAILABLE" : "NO CARS AVAILABLE"}</strong>
+                <span>{fleetUnavailable ? "Live fleet data could not be loaded." : "No production car is currently ready to drive."}</span>
+              </div>
+            ) : null}
           </div>
           <div className="offer-actions">
-            <ActionButton onClick={() => void accept()}>ACCEPT & CONNECT</ActionButton>
+            <ActionButton disabled={!selectedCar} onClick={() => void accept()}>ACCEPT & CONNECT</ActionButton>
             <ActionButton tone="ghost" onClick={() => router.push("/")}>LEAVE QUEUE</ActionButton>
           </div>
           <p className="fine-print"><ShieldCheck size={17} /> First come, first served. Memberships do not receive priority.</p>
@@ -1041,19 +1120,29 @@ function OperatorScreen() {
 }
 
 export function SimulationScreen({
+  adminAccess = false,
   mockMode = false,
+  operationalStatus,
   screen,
 }: {
+  adminAccess?: boolean;
   mockMode?: boolean;
+  operationalStatus?: OperationalStatus | undefined;
   screen: ScreenName;
 }) {
   if (screen === "pricing") return <PricingScreen />;
   if (screen === "how-it-works") return <HowItWorksScreen />;
   if (screen === "leaderboard") return <LeaderboardScreen mockMode={mockMode} />;
   if (screen === "preflight") return <PreflightScreen />;
-  if (screen === "queue") return <QueueScreen />;
+  if (screen === "queue") return <QueueScreen operationalStatus={operationalStatus} />;
   if (screen === "ride") return <RideScreen mockMode={mockMode} />;
   if (screen === "results") return <ResultsScreen />;
   if (screen === "operator") return <OperatorScreen />;
-  return <HomeScreen mockMode={mockMode} />;
+  return (
+    <HomeScreen
+      adminAccess={adminAccess}
+      mockMode={mockMode}
+      operationalStatus={operationalStatus}
+    />
+  );
 }

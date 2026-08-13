@@ -24,6 +24,15 @@ describe("getHomePresentation", () => {
       showLiveBadge: true,
     });
   });
+
+  test("opens preflight for an administrator without relabeling preview video as live", () => {
+    expect(getHomePresentation(true, true)).toEqual({
+      ctaHref: "/preflight",
+      ctaLabel: "START DRIVING",
+      eyebrow: "PREVIEW / COMING SOON",
+      showLiveBadge: false,
+    });
+  });
 });
 
 describe("getViewerBadgeText", () => {

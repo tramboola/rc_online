@@ -5,11 +5,23 @@ export type HomePresentation = {
   showLiveBadge: boolean;
 };
 
-export function getHomePresentation(mockMode: boolean): HomePresentation {
-  if (mockMode) {
+export function getHomePresentation(
+  mockMode: boolean,
+  adminAccess = false,
+): HomePresentation {
+  if (mockMode && !adminAccess) {
     return {
       ctaHref: null,
       ctaLabel: "COMING SOON",
+      eyebrow: "PREVIEW / COMING SOON",
+      showLiveBadge: false,
+    };
+  }
+
+  if (mockMode) {
+    return {
+      ctaHref: "/preflight",
+      ctaLabel: "START DRIVING",
       eyebrow: "PREVIEW / COMING SOON",
       showLiveBadge: false,
     };

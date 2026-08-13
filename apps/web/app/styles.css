@@ -729,6 +729,11 @@ p { color: #a9afb3; }
 .car-choice small { display: block; color: var(--cyan); margin-top: 10px; }
 .car-choice strong { display: block; font: 500 26px var(--font-display); }
 .car-choice span { display: inline-flex; gap: 6px; color: var(--lime); align-items: center; margin: 15px 18px 0 0; font-weight: 700; font-size: 14px; }
+.car-choice > svg:not(.choice-check) { display: block; width: 100%; height: 126px; padding: 28px; color: var(--cyan); background: #061016; }
+.car-choice-empty { grid-column: 1 / -1; min-height: 210px; border: 1px dashed #48535a; display: grid; place-items: center; align-content: center; gap: 8px; padding: 28px; text-align: center; color: var(--muted); }
+.car-choice-empty > svg { color: var(--cyan); }
+.car-choice-empty strong { color: var(--text); font: 500 27px var(--font-display); letter-spacing: 1px; }
+.car-choice-empty span { max-width: 360px; }
 .choice-check { color: var(--cyan); position: absolute; right: 18px; top: 18px; z-index: 2; }
 .offer-actions { display: grid; grid-template-columns: 1.4fr .8fr; gap: 15px; margin-top: 18px; }
 .offer-actions .action-button { width: 100%; }

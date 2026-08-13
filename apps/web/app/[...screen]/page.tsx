@@ -2,6 +2,11 @@ import { redirect } from "next/navigation";
 
 import { auth } from "../../auth";
 import { normalizeUserRole } from "../../auth/user-role";
+import {
+  loadOperationalStatus,
+  type OperationalStatus,
+} from "../operational-status";
+import { getPostgresOperationalStatusStore } from "../postgres-operational-status-store";
 import { canAccessScreen } from "../screen-access";
 import { SimulationScreen, type ScreenName } from "../simulation-screen";
 
@@ -31,9 +36,23 @@ export default async function ScreenPage({
   if (!canAccessScreen(resolvedScreen, mockMode, role)) {
     redirect("/");
   }
+  const adminAccess = role === "admin";
+  let operationalStatus: OperationalStatus | undefined;
+  if (
+    mockMode &&
+    adminAccess &&
+    (resolvedScreen === "home" || resolvedScreen === "queue")
+  ) {
+    const databaseUrl = process.env.DATABASE_URL;
+    operationalStatus = databaseUrl
+      ? await loadOperationalStatus(getPostgresOperationalStatusStore(databaseUrl))
+      : { state: "unavailable", cars: [], queueCount: null };
+  }
   return (
     <SimulationScreen
+      adminAccess={adminAccess}
       mockMode={mockMode}
+      operationalStatus={operationalStatus}
       screen={resolvedScreen}
     />
   );
