@@ -14,7 +14,7 @@ from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from .hardware import LgpioPulseOutput
-from .live_control import InputFrame, LiveControl, OutputState
+from .live_control import InputFrame, LiveConfig, LiveControl, OutputState
 
 
 class ClientBusyError(RuntimeError):
@@ -240,11 +240,12 @@ class LiveRuntime:
         output: PulseOutput,
         *,
         clock: Callable[[], float] = time.monotonic,
+        config: LiveConfig | None = None,
     ) -> None:
         self._mailbox = mailbox
         self._output = output
         self._clock = clock
-        self._control = LiveControl()
+        self._control = LiveControl(config)
         self._lock = threading.Lock()
         self._last_applied: tuple[int, int] | None = None
         self._state = OutputState(1500, 1500, False, True, "idle")
@@ -300,7 +301,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--token")
     parser.add_argument("--ui", type=Path)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--reverse-brake-ms", type=_reverse_timing_ms, default=60)
+    parser.add_argument("--reverse-neutral-ms", type=_reverse_timing_ms, default=60)
     return parser
+
+
+def _reverse_timing_ms(value: str) -> int:
+    milliseconds = int(value)
+    if not 20 <= milliseconds <= 1_000:
+        raise argparse.ArgumentTypeError(
+            "reverse timing must be between 20 and 1000 milliseconds"
+        )
+    return milliseconds
+
+
+def live_config_from_args(args: argparse.Namespace) -> LiveConfig:
+    return LiveConfig(
+        reverse_brake_s=args.reverse_brake_ms / 1_000,
+        reverse_neutral_s=args.reverse_neutral_ms / 1_000,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -310,7 +329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ui_html = ui_path.read_text(encoding="utf-8")
     mailbox = CommandMailbox(takeover_s=1.0)
     output = create_output(args.dry_run)
-    runtime = LiveRuntime(mailbox, output)
+    runtime = LiveRuntime(mailbox, output, config=live_config_from_args(args))
     runtime.tick()
     server = create_http_server(
         args.host,

@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 import threading
 import unittest
 import urllib.error
 import urllib.request
+from contextlib import redirect_stderr
 from pathlib import Path
 
 from rc_bench.live_server import (
     ClientBusyError,
     CommandMailbox,
+    LiveConfig,
     LiveRuntime,
     StaleSequenceError,
+    build_parser,
     create_http_server,
+    live_config_from_args,
 )
 
 
@@ -163,6 +168,37 @@ class FakePulseOutput:
         self.closed = True
 
 
+class LiveCliTests(unittest.TestCase):
+    def test_reverse_timing_defaults_to_sixty_milliseconds(self) -> None:
+        args = build_parser().parse_args([])
+        config = live_config_from_args(args)
+
+        self.assertEqual(args.reverse_brake_ms, 60)
+        self.assertEqual(args.reverse_neutral_ms, 60)
+        self.assertEqual(config.reverse_brake_s, 0.06)
+        self.assertEqual(config.reverse_neutral_s, 0.06)
+
+    def test_reverse_timing_accepts_bounded_overrides(self) -> None:
+        args = build_parser().parse_args(
+            ["--reverse-brake-ms", "120", "--reverse-neutral-ms", "80"]
+        )
+        config = live_config_from_args(args)
+
+        self.assertEqual(config.reverse_brake_s, 0.12)
+        self.assertEqual(config.reverse_neutral_s, 0.08)
+
+    def test_reverse_timing_rejects_values_outside_twenty_to_one_thousand(self) -> None:
+        for option, value in (
+            ("--reverse-brake-ms", "19"),
+            ("--reverse-brake-ms", "1001"),
+            ("--reverse-neutral-ms", "0"),
+        ):
+            with self.subTest(option=option, value=value):
+                with redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        build_parser().parse_args([option, value])
+
+
 class LiveRuntimeTests(unittest.TestCase):
     def test_applies_command_then_watchdog_returns_to_neutral(self) -> None:
         now = [100.0]
@@ -186,6 +222,26 @@ class LiveRuntimeTests(unittest.TestCase):
         runtime.close()
         self.assertEqual(output.applied[-1], (1500, 1500))
         self.assertTrue(output.closed)
+
+    def test_runtime_uses_injected_reverse_timing(self) -> None:
+        now = [200.0]
+        mailbox = CommandMailbox()
+        output = FakePulseOutput()
+        runtime = LiveRuntime(
+            mailbox,
+            output,
+            clock=lambda: now[0],
+            config=LiveConfig(reverse_brake_s=0.1, reverse_neutral_s=0.1),
+        )
+
+        mailbox.publish("browser-a", 1, True, 0, -1, now=now[0])
+        runtime.tick()
+        now[0] += 0.061
+        mailbox.publish("browser-a", 2, True, 0, -1, now=now[0])
+        state = runtime.tick()
+
+        self.assertEqual((state.throttle_us, state.reverse_phase), (1250, "brake"))
+        runtime.close()
 
 
 class LiveHttpTests(unittest.TestCase):
