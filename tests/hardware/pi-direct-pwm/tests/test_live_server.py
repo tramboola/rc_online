@@ -96,7 +96,7 @@ class CommandMailboxTests(unittest.TestCase):
         self.assertEqual((frame.armed, frame.steering, frame.throttle), (True, 1, 0))
         self.assertEqual(mailbox.snapshot(), frame)
 
-    def test_preserves_throttle_limit_in_published_frame(self) -> None:
+    def test_preserves_nitro_in_published_frame(self) -> None:
         mailbox = CommandMailbox()
 
         frame = mailbox.publish(
@@ -105,11 +105,11 @@ class CommandMailboxTests(unittest.TestCase):
             True,
             0,
             1,
-            throttle_limit_percent=40,
+            nitro=True,
             now=12.0,
         )
 
-        self.assertEqual(frame.throttle_limit_percent, 40)
+        self.assertTrue(frame.nitro)
 
     def test_preserves_manual_brake_in_published_frame(self) -> None:
         mailbox = CommandMailbox()
@@ -135,28 +135,14 @@ class CommandMailboxTests(unittest.TestCase):
 
         self.assertTrue(mailbox.snapshot().brake)
 
-    def test_invalid_throttle_limit_does_not_mutate_owner_sequence(self) -> None:
-        mailbox = CommandMailbox(takeover_s=1.0)
-        mailbox.publish("browser-a", 5, True, 0, 0, now=10.0)
+    def test_invalid_nitro_does_not_replace_last_valid_frame(self) -> None:
+        mailbox = CommandMailbox()
+        mailbox.publish("browser-a", 1, True, 0, 0, nitro=True, now=12.0)
 
-        with self.assertRaises(ValueError):
-            mailbox.publish(
-                "browser-a",
-                6,
-                True,
-                0,
-                1,
-                throttle_limit_percent=101,
-                now=10.5,
-            )
+        with self.assertRaisesRegex(ValueError, "nitro"):
+            mailbox.publish("browser-a", 2, True, 0, 1, nitro=1, now=12.1)
 
-        with self.assertRaises(StaleSequenceError):
-            mailbox.publish("browser-a", 5, True, 0, 1, now=10.6)
-
-        self.assertEqual(mailbox.owner, "browser-a")
-        frame = mailbox.publish("browser-a", 6, True, 0, 1, now=10.7)
-        self.assertEqual(frame.throttle_limit_percent, 100)
-        self.assertEqual(mailbox.owner, "browser-a")
+        self.assertTrue(mailbox.snapshot().nitro)
 
     def test_rejects_stale_sequence_from_owner(self) -> None:
         mailbox = CommandMailbox(takeover_s=1.0)
@@ -237,7 +223,7 @@ class LiveRuntimeTests(unittest.TestCase):
 
         self.assertEqual(
             output.applied,
-            [(1500, 1500), (1000, 1750), (1500, 1500)],
+            [(1500, 1500), (1000, 1658), (1500, 1500)],
         )
         self.assertFalse(state.armed)
         self.assertTrue(state.stale)
@@ -341,7 +327,7 @@ class LiveHttpTests(unittest.TestCase):
                 "armed": True,
                 "steering": -1,
                 "throttle": 1,
-                "throttle_limit_percent": 40,
+                "nitro": True,
             },
         )
 
@@ -350,9 +336,9 @@ class LiveHttpTests(unittest.TestCase):
         frame = self.mailbox.snapshot()
         self.assertIsNotNone(frame)
         self.assertEqual((frame.steering, frame.throttle), (-1, 1))
-        self.assertEqual(frame.throttle_limit_percent, 40)
+        self.assertTrue(frame.nitro)
 
-    def test_missing_throttle_limit_defaults_to_100_percent(self) -> None:
+    def test_missing_nitro_defaults_to_false_and_legacy_limit_is_ignored(self) -> None:
         status, _response = self.request(
             "/api/control",
             method="POST",
@@ -362,11 +348,12 @@ class LiveHttpTests(unittest.TestCase):
                 "armed": True,
                 "steering": 0,
                 "throttle": 1,
+                "throttle_limit_percent": 100,
             },
         )
 
         self.assertEqual(status, 202)
-        self.assertEqual(self.mailbox.snapshot().throttle_limit_percent, 100)
+        self.assertFalse(self.mailbox.snapshot().nitro)
 
     def test_control_frame_carries_manual_brake(self) -> None:
         status, response = self.request(
@@ -432,7 +419,7 @@ class LiveHttpTests(unittest.TestCase):
         self.assertEqual(error["error"], "invalid_request")
         self.assertTrue(self.mailbox.snapshot().brake)
 
-    def test_invalid_throttle_limit_does_not_replace_last_valid_frame(self) -> None:
+    def test_non_boolean_nitro_is_rejected_without_replacing_frame(self) -> None:
         self.request(
             "/api/control",
             method="POST",
@@ -442,27 +429,26 @@ class LiveHttpTests(unittest.TestCase):
                 "armed": True,
                 "steering": 0,
                 "throttle": 1,
-                "throttle_limit_percent": 40,
+                "nitro": True,
             },
         )
 
-        for sequence, value in enumerate((True, 9, 101, 10.5), start=2):
-            with self.subTest(value=value):
-                status, error = self.request(
-                    "/api/control",
-                    method="POST",
-                    payload={
-                        "client_id": "browser-a",
-                        "sequence": sequence,
-                        "armed": True,
-                        "steering": 0,
-                        "throttle": 1,
-                        "throttle_limit_percent": value,
-                    },
-                )
-                self.assertEqual(status, 400)
-                self.assertEqual(error["error"], "invalid_request")
-                self.assertEqual(self.mailbox.snapshot().throttle_limit_percent, 40)
+        status, error = self.request(
+            "/api/control",
+            method="POST",
+            payload={
+                "client_id": "browser-a",
+                "sequence": 2,
+                "armed": True,
+                "steering": 0,
+                "throttle": 1,
+                "nitro": 1,
+            },
+        )
+
+        self.assertEqual(status, 400)
+        self.assertEqual(error["error"], "invalid_request")
+        self.assertTrue(self.mailbox.snapshot().nitro)
 
     def test_invalid_axis_is_rejected_without_replacing_last_frame(self) -> None:
         self.request(

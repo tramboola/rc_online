@@ -54,8 +54,8 @@ class CommandMailbox:
         armed: bool,
         steering: int,
         throttle: int,
-        throttle_limit_percent: int = 100,
         brake: bool = False,
+        nitro: bool = False,
         *,
         now: float,
     ) -> InputFrame:
@@ -74,8 +74,8 @@ class CommandMailbox:
             steering=steering,
             throttle=throttle,
             received_at=now,
-            throttle_limit_percent=throttle_limit_percent,
             brake=brake,
+            nitro=nitro,
         )
 
         with self._lock:
@@ -157,8 +157,8 @@ def create_http_server(
                     payload["armed"],
                     payload["steering"],
                     payload["throttle"],
-                    throttle_limit_percent=payload.get("throttle_limit_percent", 100),
                     brake=payload.get("brake", False),
+                    nitro=payload.get("nitro", False),
                     now=clock(),
                 )
             except ClientBusyError as error:
