@@ -51,6 +51,29 @@ class LivePageTests(unittest.TestCase):
             self.page,
         )
 
+    def test_space_is_momentary_brake_and_escape_still_disarms(self) -> None:
+        self.assertIn('["Space", "BRAKE"]', self.page)
+        self.assertIn('if (event.code === "Escape")', self.page)
+        self.assertNotIn(
+            'if (event.code === "Space" || event.code === "Escape")',
+            self.page,
+        )
+        self.assertIn("brake: armed && current.brake", self.page)
+
+    def test_brake_has_local_priority_without_losing_throttle_key_state(self) -> None:
+        self.assertIn('const brake = pressed.has("BRAKE")', self.page)
+        self.assertIn("return {", self.page)
+        self.assertIn("brake,", self.page)
+        self.assertIn(
+            'throttleState.textContent = !armed ? "NEUTRAL" : current.brake ? "BRAKE"',
+            self.page,
+        )
+
+    def test_visible_help_describes_brake_and_emergency_stop(self) -> None:
+        self.assertIn("Space</strong> brake while held", self.page)
+        self.assertIn("Esc</strong> emergency stop", self.page)
+        self.assertIn("60 ms brake", self.page)
+
     def test_page_keeps_a_thin_track_inside_a_24px_slider_target(self) -> None:
         slider = re.search(
             r"#throttle-limit\s*\{(?:(?!\}).)*\}", self.page, re.DOTALL

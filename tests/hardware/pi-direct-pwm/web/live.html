@@ -391,7 +391,7 @@
       <div class="arm-state" data-testid="arm-state" data-armed="false" aria-live="polite">DISARMED</div>
     </section>
 
-    <div class="warning"><span>⚠ Wheels must remain off the ground</span><span>Space / Esc / window blur = neutral</span></div>
+    <div class="warning"><span>⚠ Wheels must remain off the ground</span><span>Space brakes while held / Esc, Stop, or window blur disarms</span></div>
 
     <section class="workspace">
       <article class="panel">
@@ -441,7 +441,7 @@
             <button class="button" id="arm-button" type="button">Arm keyboard</button>
             <button class="button stop" id="stop-button" type="button">Stop / disarm</button>
           </div>
-          <p class="hint"><strong>W / ↑</strong> forward · <strong>S / ↓</strong> brake then reverse<br><strong>A D / ← →</strong> full steering · <strong>Space</strong> emergency stop</p>
+          <p class="hint"><strong>W / ↑</strong> forward · <strong>S / ↓</strong> 60 ms brake + 60 ms neutral then reverse<br><strong>A D / ← →</strong> full steering · <strong>Space</strong> brake while held · <strong>Esc</strong> emergency stop</p>
         </div>
       </aside>
     </section>
@@ -459,6 +459,7 @@
         ["KeyA", "A"], ["ArrowLeft", "A"],
         ["KeyS", "S"], ["ArrowDown", "S"],
         ["KeyD", "D"], ["ArrowRight", "D"],
+        ["Space", "BRAKE"],
       ]);
       let armed = false;
       let sequence = 0;
@@ -483,9 +484,11 @@
         const right = pressed.has("D");
         const forward = pressed.has("W");
         const reverse = pressed.has("S");
+        const brake = pressed.has("BRAKE");
         return {
           steering: left === right ? 0 : left ? -1 : 1,
           throttle: forward === reverse ? 0 : forward ? 1 : -1,
+          brake,
         };
       }
 
@@ -495,7 +498,7 @@
         armState.dataset.armed = String(armed);
         armButton.disabled = armed || !token;
         steeringState.textContent = !armed || current.steering === 0 ? "CENTER" : current.steering < 0 ? "LEFT" : "RIGHT";
-        throttleState.textContent = !armed || current.throttle === 0 ? "NEUTRAL" : current.throttle > 0 ? "FORWARD" : "REVERSE";
+        throttleState.textContent = !armed ? "NEUTRAL" : current.brake ? "BRAKE" : current.throttle === 0 ? "NEUTRAL" : current.throttle > 0 ? "FORWARD" : "REVERSE";
         document.querySelectorAll("[data-key]").forEach((element) => {
           element.dataset.active = String(armed && pressed.has(element.dataset.key));
         });
@@ -548,6 +551,7 @@
               steering: armed ? current.steering : 0,
               throttle: armed ? current.throttle : 0,
               throttle_limit_percent: Number(throttleLimit.value),
+              brake: armed && current.brake,
             }),
           });
           const state = await response.json();
@@ -601,14 +605,15 @@
       }
 
       function onKeyDown(event) {
-        if (event.code === "Space" || event.code === "Escape") {
+        if (event.code === "Escape") {
           event.preventDefault();
           disarm();
           return;
         }
         const key = keyMap.get(event.code);
-        if (!key || !armed) return;
+        if (!key) return;
         event.preventDefault();
+        if (!armed) return;
         if (!pressed.has(key)) {
           pressed.add(key);
           updateLocalUi();
@@ -643,7 +648,7 @@
           method: "POST",
           keepalive: true,
           headers: { "Content-Type": "application/json", "X-Bench-Token": token },
-          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0, throttle_limit_percent: Number(throttleLimit.value) }),
+          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0, throttle_limit_percent: Number(throttleLimit.value), brake: false }),
         });
       });
       setInterval(() => { if (armed) void sendControl(); }, 50);
