@@ -55,6 +55,8 @@ import {
   howItWorksSteps,
 } from "./how-it-works-content";
 import { getLeaderboardPresentation } from "./leaderboard-presentation";
+import { RealRideScreen } from "./real-ride-screen";
+import { createAdminDriveSession, saveDriveSession } from "./ride-session-client";
 import { useViewerCount } from "./use-viewer-count";
 
 export type ScreenName =
@@ -755,8 +757,10 @@ function PreflightScreen() {
 }
 
 function QueueScreen({
+  adminAccess,
   operationalStatus,
 }: {
+  adminAccess: boolean;
   operationalStatus?: OperationalStatus | undefined;
 }) {
   const router = useRouter();
@@ -789,6 +793,17 @@ function QueueScreen({
 
   async function accept() {
     if (!selectedCar) return;
+    if (adminAccess && operationalStatus?.state === "ready") {
+      try {
+        setStatus("Connecting to RC Mania One…");
+        const session = await createAdminDriveSession(selectedCar);
+        saveDriveSession(session);
+        router.push("/ride");
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Could not connect to the car");
+      }
+      return;
+    }
     setStatus("Connecting…");
     try {
       await apiRequest(`/v1/ride-offers/${offerId}/accept`, {
@@ -1134,8 +1149,8 @@ export function SimulationScreen({
   if (screen === "how-it-works") return <HowItWorksScreen />;
   if (screen === "leaderboard") return <LeaderboardScreen mockMode={mockMode} />;
   if (screen === "preflight") return <PreflightScreen />;
-  if (screen === "queue") return <QueueScreen operationalStatus={operationalStatus} />;
-  if (screen === "ride") return <RideScreen mockMode={mockMode} />;
+  if (screen === "queue") return <QueueScreen adminAccess={adminAccess} operationalStatus={operationalStatus} />;
+  if (screen === "ride") return mockMode && adminAccess ? <RealRideScreen /> : <RideScreen mockMode={mockMode} />;
   if (screen === "results") return <ResultsScreen />;
   if (screen === "operator") return <OperatorScreen />;
   return (

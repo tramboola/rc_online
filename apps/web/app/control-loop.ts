@@ -1,14 +1,17 @@
 export interface DriveCommand {
-  readonly rideId: string;
+  readonly v: 1;
+  readonly type: "control";
+  readonly sessionId: string;
   readonly sequence: number;
   readonly steering: number;
   readonly throttle: number;
   readonly brake: number;
-  readonly receivedMonotonicMs: number;
+  readonly nitro: boolean;
+  readonly armed: boolean;
 }
 
 export class BrowserControlLoop {
-  readonly #rideId: string;
+  readonly #sessionId: string;
   #fastChannel: RTCDataChannel | null = null;
   #reliableChannel: RTCDataChannel | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -16,9 +19,11 @@ export class BrowserControlLoop {
   #steering = 0;
   #throttle = 0;
   #brake = 0;
+  #nitro = false;
+  #armed = false;
 
-  public constructor(rideId: string) {
-    this.#rideId = rideId;
+  public constructor(sessionId: string) {
+    this.#sessionId = sessionId;
   }
 
   public bindChannels(
@@ -33,27 +38,37 @@ export class BrowserControlLoop {
     steering?: number;
     throttle?: number;
     brake?: number;
+    nitro?: boolean;
   }): void {
-    this.#steering = input.steering ?? this.#steering;
-    this.#throttle = input.throttle ?? this.#throttle;
-    this.#brake = input.brake ?? this.#brake;
+    this.#steering = clamp(input.steering ?? this.#steering, -1000, 1000);
+    this.#throttle = clamp(input.throttle ?? this.#throttle, -1000, 1000);
+    this.#brake = clamp(input.brake ?? this.#brake, 0, 1000);
+    this.#nitro = input.nitro ?? this.#nitro;
+  }
+
+  public arm(): void {
+    this.#armed = true;
+    this.sendReliable({ v: 1, type: "arm", sessionId: this.#sessionId });
+  }
+
+  public disarm(reason: string): void {
+    this.#armed = false;
+    this.neutral(reason);
   }
 
   public start(): void {
     if (this.#timer) {
       return;
     }
-    this.#timer = setInterval(() => this.sendLatest(), 20);
+    this.#timer = setInterval(() => this.sendLatest(), 50);
   }
 
   public neutral(reason: string): void {
     this.#steering = 0;
     this.#throttle = 0;
     this.#brake = 1000;
-    const message = JSON.stringify({ type: "neutral", reason, rideId: this.#rideId });
-    if (this.#reliableChannel?.readyState === "open") {
-      this.#reliableChannel.send(message);
-    }
+    this.#nitro = false;
+    this.sendReliable({ v: 1, type: "neutral", reason, sessionId: this.#sessionId });
     this.sendLatest();
   }
 
@@ -67,12 +82,15 @@ export class BrowserControlLoop {
 
   private sendLatest(): void {
     const command: DriveCommand = {
-      rideId: this.#rideId,
+      v: 1,
+      type: "control",
+      sessionId: this.#sessionId,
       sequence: ++this.#sequence,
       steering: this.#steering,
-      throttle: this.#throttle,
+      throttle: this.#armed ? this.#throttle : 0,
       brake: this.#brake,
-      receivedMonotonicMs: Math.round(performance.now()),
+      nitro: this.#armed && this.#nitro,
+      armed: this.#armed,
     };
     if (this.#fastChannel?.readyState === "open") {
       this.#fastChannel.send(JSON.stringify(command));
@@ -91,6 +109,16 @@ export class BrowserControlLoop {
       keepalive: true,
     }).catch(() => undefined);
   }
+
+  private sendReliable(message: object): void {
+    if (this.#reliableChannel?.readyState === "open") {
+      this.#reliableChannel.send(JSON.stringify(message));
+    }
+  }
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.round(Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : 0)));
 }
 
 export function createRidePeerConnection(

@@ -786,6 +786,15 @@ p { color: #a9afb3; }
 .ride-telemetry { transform-origin: top right; }
 .ride-actions { transform-origin: bottom center; }
 .end-ride { transform-origin: bottom right; }
+.real-ride-status { position: absolute; right: 34px; top: 130px; width: min(430px, calc(100vw - 68px)); padding: 20px 24px; background: rgba(2, 10, 14, .9); }
+.real-ride-status p { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 9px; margin: 10px 0; color: var(--muted); font-weight: 700; }
+.real-ride-status strong { color: var(--text); font-family: var(--font-display); }
+.real-ride-status strong.ok { color: var(--lime); }
+.real-ride-status .real-ride-error { display: block; color: #ff7568; border-top: 1px solid #563233; padding-top: 14px; }
+.real-control-readout { position: absolute; left: 34px; bottom: 34px; padding: 15px 20px; border: 1px solid var(--cyan); background: rgba(2, 10, 14, .9); color: var(--cyan); font: 600 20px var(--font-display); }
+.real-ride-actions { position: absolute; right: 34px; bottom: 34px; display: flex; gap: 12px; }
+.real-ride-actions .action-button { min-width: 230px; min-height: 70px; }
+.real-ride-actions .end-ride { position: static; min-width: 230px; height: 70px; scale: 1; }
 
 .results-main { padding-bottom: 25px; }
 .result-heading { display: flex; justify-content: space-between; align-items: center; }
