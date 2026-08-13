@@ -4,14 +4,17 @@ import math
 from dataclasses import dataclass
 
 
+NORMAL_DRIVE_PERCENT = 63
+
+
 @dataclass(frozen=True, slots=True)
 class InputFrame:
     armed: bool
     steering: int
     throttle: int
     received_at: float
-    throttle_limit_percent: int = 100
     brake: bool = False
+    nitro: bool = False
 
     def __post_init__(self) -> None:
         if self.steering not in (-1, 0, 1):
@@ -20,14 +23,10 @@ class InputFrame:
             raise ValueError("throttle must be -1, 0, or 1")
         if not math.isfinite(self.received_at):
             raise ValueError("received_at must be finite")
-        if (
-            isinstance(self.throttle_limit_percent, bool)
-            or not isinstance(self.throttle_limit_percent, int)
-            or not 10 <= self.throttle_limit_percent <= 100
-        ):
-            raise ValueError("throttle_limit_percent must be an integer from 10 to 100")
         if not isinstance(self.brake, bool):
             raise ValueError("brake must be boolean")
+        if not isinstance(self.nitro, bool):
+            raise ValueError("nitro must be boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,13 +66,14 @@ class LiveControl:
         self._config = config or LiveConfig()
         self._reverse_phase = "idle"
         self._reverse_phase_started = 0.0
+        self._last_drive_direction: int | None = None
 
     def step(self, frame: InputFrame | None, now: float) -> OutputState:
         if frame is None or now - frame.received_at > self._config.watchdog_s:
-            self._reset_reverse()
+            self._reset_motion()
             return self._neutral(stale=True)
         if not frame.armed:
-            self._reset_reverse()
+            self._reset_motion()
             return self._neutral(stale=False)
 
         steering_us = {
@@ -84,7 +84,7 @@ class LiveControl:
         throttle_us = self._throttle(
             frame.throttle,
             frame.brake,
-            frame.throttle_limit_percent,
+            frame.nitro,
             now,
         )
         return OutputState(
@@ -99,23 +99,28 @@ class LiveControl:
         self,
         throttle: int,
         brake: bool,
-        limit_percent: int,
+        nitro: bool,
         now: float,
     ) -> int:
         forward_us = self._scaled_throttle_us(
             self._config.throttle_forward_us,
-            limit_percent,
+            NORMAL_DRIVE_PERCENT,
         )
         reverse_us = self._scaled_throttle_us(
             self._config.throttle_reverse_us,
-            limit_percent,
+            NORMAL_DRIVE_PERCENT,
         )
         if brake:
             self._reset_reverse()
-            return self._config.throttle_reverse_us
+            if self._last_drive_direction == 1:
+                return self._config.throttle_reverse_us
+            if self._last_drive_direction == -1:
+                return self._config.throttle_forward_us
+            return self._config.throttle_neutral_us
         if throttle == 1:
             self._reset_reverse()
-            return forward_us
+            self._last_drive_direction = 1
+            return self._config.throttle_forward_us if nitro else forward_us
         if throttle == 0:
             self._reset_reverse()
             return self._config.throttle_neutral_us
@@ -139,6 +144,7 @@ class LiveControl:
             self._reverse_phase = "reverse"
             self._reverse_phase_started = now
 
+        self._last_drive_direction = -1
         return reverse_us
 
     def _scaled_throttle_us(self, endpoint_us: int, limit_percent: int) -> int:
@@ -159,3 +165,7 @@ class LiveControl:
     def _reset_reverse(self) -> None:
         self._reverse_phase = "idle"
         self._reverse_phase_started = 0.0
+
+    def _reset_motion(self) -> None:
+        self._reset_reverse()
+        self._last_drive_direction = None
