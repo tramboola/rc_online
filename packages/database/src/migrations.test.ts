@@ -56,4 +56,20 @@ describe("versioned SQL migrations", () => {
     expect(sql).toMatch(/create table account_balances\b/i);
     expect(sql).toMatch(/check \(amount_minor >= 0\)/i);
   });
+
+  it("adds physical car enrollment, credentials, health, and drive sessions", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0004_device_gateway.sql"),
+      "utf8",
+    );
+
+    expect(sql).toMatch(/create table device_enrollment_tokens\b/i);
+    expect(sql).toMatch(/token_hash text not null unique/i);
+    expect(sql).toMatch(/create table device_credentials\b/i);
+    expect(sql).toMatch(/secret_hash text not null unique/i);
+    expect(sql).toMatch(/create table drive_sessions\b/i);
+    expect(sql).toMatch(/alter table devices[\s\S]+agent_version text/i);
+    expect(sql).toMatch(/health jsonb not null default '\{\}'::jsonb/i);
+    expect(sql).toMatch(/drive_sessions_one_active_car_uidx/i);
+  });
 });

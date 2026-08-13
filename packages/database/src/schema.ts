@@ -196,6 +196,59 @@ export const cars = pgTable("cars", {
   index("cars_site_state_idx").on(table.siteId, table.state),
 ]);
 
+export const devices = pgTable("devices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  carId: uuid("car_id").references(() => cars.id),
+  siteId: uuid("site_id").notNull().references(() => sites.id),
+  kind: text("kind").notNull(),
+  serialNumber: text("serial_number").notNull().unique(),
+  state: text("state").notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  agentVersion: text("agent_version"),
+  health: jsonb("health").$type<Record<string, unknown>>().notNull().default({}),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  ...auditColumns,
+}, (table) => [
+  index("devices_car_presence_idx").on(table.carId, table.state, table.lastSeenAt),
+]);
+
+export const deviceEnrollmentTokens = pgTable("device_enrollment_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  carId: uuid("car_id").notNull().references(() => cars.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("device_enrollment_tokens_open_idx").on(table.expiresAt),
+]);
+
+export const deviceCredentials = pgTable("device_credentials", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  deviceId: uuid("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+  secretHash: text("secret_hash").notNull().unique(),
+  status: text("status").notNull().default("active"),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  lastAuthenticatedAt: timestamp("last_authenticated_at", { withTimezone: true }),
+  ...auditColumns,
+});
+
+export const driveSessions = pgTable("drive_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  carId: uuid("car_id").notNull().references(() => cars.id),
+  status: text("status").notNull().default("created"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  ...auditColumns,
+}, (table) => [
+  index("drive_sessions_expiry_idx").on(table.expiresAt),
+]);
+
 export const queueEntries = pgTable("queue_entries", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id),

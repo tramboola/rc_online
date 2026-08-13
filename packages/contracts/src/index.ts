@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export * from "./device-gateway.js";
+
 export const CarStateSchema = z.enum([
   "OFFLINE",
   "INITIALIZING",
