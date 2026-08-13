@@ -241,80 +241,42 @@
       box-shadow: 0 0 22px rgba(60, 219, 255, .15), inset 0 -1px 0 rgba(0, 0, 0, .35);
     }
 
-    .throttle-limit-control {
+    .nitro-indicator {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      align-items: center;
+      gap: 14px;
       margin: 0 0 22px;
-      padding: 16px;
+      padding: 14px;
       border: 1px solid var(--line);
       background: rgba(5, 9, 13, .5);
-    }
-
-    .throttle-limit-head {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 16px;
       color: var(--muted);
-      font: 800 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
-      letter-spacing: .1em;
-      text-transform: uppercase;
+      transition: border-color 100ms ease, color 100ms ease, box-shadow 100ms ease;
     }
 
-    #throttle-limit-value { color: var(--cyan); font-size: 16px; }
-
-    #throttle-limit {
-      width: 100%;
-      height: 24px;
-      margin: 8px 0 6px;
-      padding: 0;
-      appearance: none;
-      cursor: pointer;
-      border-radius: 999px;
-      background: linear-gradient(
-        90deg,
-        var(--cyan) 0 var(--limit-fill, 100%),
-        #30434d var(--limit-fill, 100%) 100%
-      );
-      background-repeat: no-repeat;
-      background-position: center;
-      background-size: 100% 4px;
-      transition: background 120ms ease-out;
+    .nitro-key {
+      display: grid;
+      place-items: center;
+      height: 48px;
+      border: 1px solid #344a56;
+      background: #0b151b;
+      color: #b8c6cd;
+      font: 900 20px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .35);
     }
 
-    #throttle-limit::-webkit-slider-runnable-track {
-      height: 4px;
-      border: 0;
-      border-radius: 999px;
-      background: transparent;
+    .nitro-label strong { display: block; color: var(--text); letter-spacing: .12em; }
+    .nitro-label span { display: block; margin-top: 6px; font-size: 10px; line-height: 1.4; }
+    .nitro-indicator[data-active="true"] {
+      border-color: var(--lime);
+      color: var(--lime);
+      box-shadow: 0 0 28px rgba(199, 255, 62, .12);
     }
-
-    #throttle-limit::-moz-range-track {
-      height: 4px;
-      border: 0;
-      border-radius: 999px;
-      background: transparent;
+    .nitro-indicator[data-active="true"] .nitro-key {
+      border-color: var(--lime);
+      background: rgba(199, 255, 62, .12);
+      color: var(--lime);
     }
-
-    #throttle-limit::-webkit-slider-thumb {
-      width: 18px;
-      height: 18px;
-      appearance: none;
-      border: 2px solid var(--bg);
-      border-radius: 50%;
-      background: var(--cyan);
-      box-shadow: 0 0 14px rgba(60, 219, 255, .35);
-    }
-
-    #throttle-limit::-moz-range-thumb {
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--bg);
-      border-radius: 50%;
-      background: var(--cyan);
-      box-shadow: 0 0 14px rgba(60, 219, 255, .35);
-    }
-
-    #throttle-limit:focus-visible { outline: 2px solid white; outline-offset: 6px; }
-    #throttle-limit-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
 
     .actions { display: grid; gap: 10px; }
 
@@ -391,7 +353,7 @@
       <div class="arm-state" data-testid="arm-state" data-armed="false" aria-live="polite">DISARMED</div>
     </section>
 
-    <div class="warning"><span>⚠ Wheels must remain off the ground</span><span>Space brakes while held / Esc, Stop, or window blur disarms</span></div>
+    <div class="warning"><span>⚠ Wheels must remain off the ground</span><span>63% forward and reverse at 63% / N is inactive without forward and during reverse / Space brakes while held / Esc, Stop, or window blur disarms</span></div>
 
     <section class="workspace">
       <article class="panel">
@@ -429,19 +391,18 @@
             <div class="key" data-key="S" data-active="false">S</div>
             <div class="key" data-key="D" data-active="false">D</div>
           </div>
-          <div class="throttle-limit-control">
-            <div class="throttle-limit-head">
-              <label for="throttle-limit">Throttle limit</label>
-              <output id="throttle-limit-value" for="throttle-limit">100%</output>
+          <div class="nitro-indicator" id="nitro-indicator" data-active="false" aria-live="polite">
+            <div class="nitro-key" data-key="NITRO" data-active="false">N</div>
+            <div class="nitro-label">
+              <strong>NITRO</strong>
+              <span>Hold N with forward for 100% · otherwise 63%</span>
             </div>
-            <input id="throttle-limit" type="range" min="10" max="100" step="1" value="100" aria-describedby="throttle-limit-note">
-            <p id="throttle-limit-note">100% = current stand cap · 1750 / 1250 µs</p>
           </div>
           <div class="actions">
             <button class="button" id="arm-button" type="button">Arm keyboard</button>
             <button class="button stop" id="stop-button" type="button">Stop / disarm</button>
           </div>
-          <p class="hint"><strong>W / ↑</strong> forward · <strong>S / ↓</strong> 60 ms brake + 60 ms neutral then reverse<br><strong>A D / ← →</strong> full steering · <strong>Space</strong> brake while held · <strong>Esc</strong> emergency stop</p>
+          <p class="hint"><strong>W / ↑</strong> 63% forward · <strong>S / ↓</strong> reverse at 63%<br><strong>N</strong> Nitro 100% with forward only; inactive without forward and during reverse<br><strong>A D / ← →</strong> full steering · <strong>Space</strong> brake while held · <strong>Esc</strong> emergency stop</p>
         </div>
       </aside>
     </section>
@@ -460,6 +421,7 @@
         ["KeyS", "S"], ["ArrowDown", "S"],
         ["KeyD", "D"], ["ArrowRight", "D"],
         ["Space", "BRAKE"],
+        ["KeyN", "NITRO"],
       ]);
       let armed = false;
       let sequence = 0;
@@ -476,8 +438,7 @@
       const connection = document.querySelector("#connection");
       const armButton = document.querySelector("#arm-button");
       const stopButton = document.querySelector("#stop-button");
-      const throttleLimit = document.querySelector("#throttle-limit");
-      const throttleLimitValue = document.querySelector("#throttle-limit-value");
+      const nitroIndicator = document.querySelector("#nitro-indicator");
 
       function axes() {
         const left = pressed.has("A");
@@ -485,10 +446,12 @@
         const forward = pressed.has("W");
         const reverse = pressed.has("S");
         const brake = pressed.has("BRAKE");
+        const nitro = forward && !reverse && !brake && pressed.has("NITRO");
         return {
           steering: left === right ? 0 : left ? -1 : 1,
           throttle: forward === reverse ? 0 : forward ? 1 : -1,
           brake,
+          nitro,
         };
       }
 
@@ -498,18 +461,19 @@
         armState.dataset.armed = String(armed);
         armButton.disabled = armed || !token;
         steeringState.textContent = !armed || current.steering === 0 ? "CENTER" : current.steering < 0 ? "LEFT" : "RIGHT";
-        throttleState.textContent = !armed ? "NEUTRAL" : current.brake ? "BRAKE" : current.throttle === 0 ? "NEUTRAL" : current.throttle > 0 ? "FORWARD" : "REVERSE";
+        throttleState.textContent = !armed
+          ? "NEUTRAL"
+          : current.brake
+    ? "BRAKE"
+    : current.throttle === 0
+      ? "NEUTRAL"
+      : current.throttle > 0
+        ? current.nitro ? "NITRO 100%" : "FORWARD 63%"
+        : "REVERSE 63%";
+        nitroIndicator.dataset.active = String(armed && current.nitro);
         document.querySelectorAll("[data-key]").forEach((element) => {
           element.dataset.active = String(armed && pressed.has(element.dataset.key));
         });
-      }
-
-      function updateThrottleLimitUi() {
-        const value = Number(throttleLimit.value);
-        const fill = ((value - 10) / 90) * 100;
-        throttleLimitValue.value = `${value}%`;
-        throttleLimitValue.textContent = `${value}%`;
-        throttleLimit.style.setProperty("--limit-fill", `${fill}%`);
       }
 
       function setConnection(online, label) {
@@ -550,8 +514,8 @@
               armed,
               steering: armed ? current.steering : 0,
               throttle: armed ? current.throttle : 0,
-              throttle_limit_percent: Number(throttleLimit.value),
               brake: armed && current.brake,
+              nitro: armed && current.nitro,
             }),
           });
           const state = await response.json();
@@ -633,10 +597,6 @@
 
       armButton.addEventListener("click", arm);
       stopButton.addEventListener("click", disarm);
-      throttleLimit.addEventListener("input", () => {
-        updateThrottleLimitUi();
-        if (armed) void sendControl();
-      });
       window.addEventListener("keydown", onKeyDown, { passive: false });
       window.addEventListener("keyup", onKeyUp, { passive: false });
       window.addEventListener("blur", disarm);
@@ -648,13 +608,12 @@
           method: "POST",
           keepalive: true,
           headers: { "Content-Type": "application/json", "X-Bench-Token": token },
-          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0, throttle_limit_percent: Number(throttleLimit.value), brake: false }),
+          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0, brake: false, nitro: false }),
         });
       });
       setInterval(() => { if (armed) void sendControl(); }, 50);
       setInterval(() => { if (!armed) void fetchState(); }, 500);
 
-      updateThrottleLimitUi();
       updateLocalUi();
       void fetchState();
     })();

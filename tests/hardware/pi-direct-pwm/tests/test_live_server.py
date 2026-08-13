@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 import threading
 import unittest
 import urllib.error
@@ -29,25 +28,22 @@ class LivePageTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "web" / "live.html"
         ).read_text(encoding="utf-8")
 
-    def test_page_exposes_safe_throttle_limit_slider(self) -> None:
-        self.assertIn('id="throttle-limit"', self.page)
-        self.assertIn('min="10"', self.page)
-        self.assertIn('max="100"', self.page)
-        self.assertIn('step="1"', self.page)
-        self.assertIn('value="100"', self.page)
-        self.assertIn('id="throttle-limit-value"', self.page)
-        self.assertIn("100% = current stand cap", self.page)
+    def test_page_replaces_slider_with_nitro_indicator(self) -> None:
+        self.assertNotIn('id="throttle-limit"', self.page)
+        self.assertNotIn("throttle_limit_percent", self.page)
+        self.assertIn('id="nitro-indicator"', self.page)
+        self.assertIn('data-key="NITRO"', self.page)
+        self.assertIn("NITRO", self.page)
 
-    def test_page_sends_limit_and_reacts_while_armed(self) -> None:
+    def test_page_sends_forward_only_nitro_state(self) -> None:
+        self.assertIn('["KeyN", "NITRO"]', self.page)
         self.assertIn(
-            "throttle_limit_percent: Number(throttleLimit.value)",
+            'const nitro = forward && !reverse && !brake && pressed.has("NITRO")',
             self.page,
         )
+        self.assertIn("nitro: armed && current.nitro", self.page)
         self.assertIn(
-            'throttleLimit.addEventListener("input", () => {\n'
-            "        updateThrottleLimitUi();\n"
-            "        if (armed) void sendControl();\n"
-            "      });",
+            "nitroIndicator.dataset.active = String(armed && current.nitro)",
             self.page,
         )
 
@@ -64,26 +60,14 @@ class LivePageTests(unittest.TestCase):
         self.assertIn('const brake = pressed.has("BRAKE")', self.page)
         self.assertIn("return {", self.page)
         self.assertIn("brake,", self.page)
-        self.assertIn(
-            'throttleState.textContent = !armed ? "NEUTRAL" : current.brake ? "BRAKE"',
-            self.page,
-        )
+        self.assertIn('current.brake\n    ? "BRAKE"', self.page)
 
-    def test_visible_help_describes_brake_and_emergency_stop(self) -> None:
+    def test_visible_help_describes_fixed_power_nitro_and_brake(self) -> None:
+        self.assertIn("63% forward", self.page)
+        self.assertIn("N</strong> Nitro 100% with forward only", self.page)
+        self.assertIn("reverse at 63%", self.page)
         self.assertIn("Space</strong> brake while held", self.page)
         self.assertIn("Esc</strong> emergency stop", self.page)
-        self.assertIn("60 ms brake", self.page)
-
-    def test_page_keeps_a_thin_track_inside_a_24px_slider_target(self) -> None:
-        slider = re.search(
-            r"#throttle-limit\s*\{(?:(?!\}).)*\}", self.page, re.DOTALL
-        )
-
-        self.assertIsNotNone(slider)
-        self.assertRegex(slider.group(), r"height:\s*24px")
-        self.assertRegex(slider.group(), r"background-size:\s*100% 4px")
-        self.assertIn("#throttle-limit::-webkit-slider-runnable-track {", self.page)
-        self.assertIn("#throttle-limit::-moz-range-track {", self.page)
 
 
 class CommandMailboxTests(unittest.TestCase):
