@@ -14,6 +14,8 @@ describe("VPS authentication deployment", () => {
     expect(compose).toContain("internal: true");
     expect(compose).toContain("rcmania-postgres-data:");
     expect(compose).toContain('"127.0.0.1:3000:3000"');
+    expect(compose).toContain('"127.0.0.1:3002:3002"');
+    expect(compose).toContain("GATEWAY_SESSION_SECRET:");
 
     const postgresService = compose.split(/^  migrate:\s*$/mu)[0] ?? "";
     expect(postgresService).not.toMatch(/^    ports:\s*$/mu);
