@@ -21,6 +21,8 @@ describe("driving setup screens", () => {
     );
 
     expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain('class="keyboard-asset"');
+    expect(markup).toContain('class="control-bindings"');
     expect(markup).toContain("W / ↑");
     expect(markup).toContain("A / D");
     expect(markup).toContain("SPACE");

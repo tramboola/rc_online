@@ -723,7 +723,7 @@ function PreflightScreen() {
                   alt="Configured dual-stick game controller"
                 />
               )}
-              <ul>
+              <ul className="control-bindings">
                 {controller === "keyboard" ? (
                   <>
                     <li><kbd>W / ↑</kbd><span>THROTTLE<small>Forward</small></span></li>
