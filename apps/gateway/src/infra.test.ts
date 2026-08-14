@@ -28,7 +28,8 @@ describe("production gateway infrastructure", () => {
     expect(gateway).toContain("proxy_pass http://127.0.0.1:3002/");
     expect(gateway).toContain("proxy_set_header Upgrade $http_upgrade;");
     expect(gateway).toContain('proxy_set_header Connection "upgrade";');
-    expect(gateway).toContain("proxy_read_timeout 75s;");
+    expect(gateway).toContain("proxy_read_timeout 360s;");
+    expect(gateway).toContain("proxy_send_timeout 360s;");
   });
 
   it("keeps TURN opt-in with a bounded relay range and no browser password", async () => {
