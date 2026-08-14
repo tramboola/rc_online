@@ -16,10 +16,23 @@ type DriveSessionPostDependencies = {
   iceServers: IceServer[];
 };
 
+function getPublicRequestOrigin(request: Request): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",", 1)[0]?.trim();
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",", 1)[0]?.trim();
+  if ((forwardedProto === "http" || forwardedProto === "https") && forwardedHost) {
+    try {
+      return new URL(`${forwardedProto}://${forwardedHost}`).origin;
+    } catch {
+      // Fall back to the request URL when proxy headers are malformed.
+    }
+  }
+  return new URL(request.url).origin;
+}
+
 export function createDriveSessionPost(dependencies: DriveSessionPostDependencies) {
   return async function post(request: Request): Promise<Response> {
     const origin = request.headers.get("origin");
-    if (origin && origin !== new URL(request.url).origin) {
+    if (origin && origin !== getPublicRequestOrigin(request)) {
       return Response.json({ error: "Cross-origin request rejected" }, { status: 403 });
     }
     const user = await dependencies.getUser();
