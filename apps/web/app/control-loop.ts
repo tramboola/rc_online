@@ -1,29 +1,39 @@
 export interface DriveCommand {
-  readonly v: 1;
-  readonly type: "control";
+  readonly v: 2;
+  readonly type: "control.intent";
   readonly sessionId: string;
   readonly sequence: number;
-  readonly steering: number;
-  readonly throttle: number;
-  readonly brake: number;
+  readonly steering: -1 | 0 | 1;
+  readonly throttle: -1 | 0 | 1;
+  readonly brake: boolean;
   readonly nitro: boolean;
   readonly armed: boolean;
 }
 
+interface ControlInput {
+  readonly steering?: number;
+  readonly throttle?: number;
+  readonly brake?: boolean | number;
+  readonly nitro?: boolean;
+}
+
 export class BrowserControlLoop {
   readonly #sessionId: string;
+  readonly #onArmedChange: ((armed: boolean) => void) | undefined;
   #fastChannel: RTCDataChannel | null = null;
   #reliableChannel: RTCDataChannel | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
   #sequence = 0;
-  #steering = 0;
-  #throttle = 0;
-  #brake = 0;
+  #steering: -1 | 0 | 1 = 0;
+  #throttle: -1 | 0 | 1 = 0;
+  #brake = false;
   #nitro = false;
+  #armRequested = false;
   #armed = false;
 
-  public constructor(sessionId: string) {
+  public constructor(sessionId: string, onArmedChange?: (armed: boolean) => void) {
     this.#sessionId = sessionId;
+    this.#onArmedChange = onArmedChange;
   }
 
   public bindChannels(
@@ -32,43 +42,44 @@ export class BrowserControlLoop {
   ): void {
     this.#fastChannel = fastChannel;
     this.#reliableChannel = reliableChannel;
+    reliableChannel.addEventListener("open", this.#tryArm);
+    reliableChannel.addEventListener("close", this.#handleChannelClose);
+    this.#tryArm();
   }
 
-  public setInput(input: {
-    steering?: number;
-    throttle?: number;
-    brake?: number;
-    nitro?: boolean;
-  }): void {
-    this.#steering = clamp(input.steering ?? this.#steering, -1000, 1000);
-    this.#throttle = clamp(input.throttle ?? this.#throttle, -1000, 1000);
-    this.#brake = clamp(input.brake ?? this.#brake, 0, 1000);
+  public setInput(input: ControlInput): void {
+    this.#steering = discreteAxis(input.steering ?? this.#steering);
+    this.#throttle = discreteAxis(input.throttle ?? this.#throttle);
+    this.#brake = input.brake === undefined
+      ? this.#brake
+      : typeof input.brake === "boolean"
+        ? input.brake
+        : input.brake > 0;
     this.#nitro = input.nitro ?? this.#nitro;
   }
 
   public arm(): void {
-    this.#armed = true;
-    this.sendReliable({ v: 1, type: "arm", sessionId: this.#sessionId });
+    this.#armRequested = true;
+    this.#tryArm();
   }
 
   public disarm(reason: string): void {
-    this.#armed = false;
+    this.#armRequested = false;
+    this.#setArmed(false);
     this.neutral(reason);
   }
 
   public start(): void {
-    if (this.#timer) {
-      return;
-    }
-    this.#timer = setInterval(() => this.sendLatest(), 50);
+    if (this.#timer) return;
+    this.#timer = setInterval(() => this.sendLatest(), 20);
   }
 
   public neutral(reason: string): void {
     this.#steering = 0;
     this.#throttle = 0;
-    this.#brake = 1000;
+    this.#brake = false;
     this.#nitro = false;
-    this.sendReliable({ v: 1, type: "neutral", reason, sessionId: this.#sessionId });
+    this.sendReliable({ v: 2, type: "neutral", reason, sessionId: this.#sessionId });
     this.sendLatest();
   }
 
@@ -77,18 +88,36 @@ export class BrowserControlLoop {
       clearInterval(this.#timer);
       this.#timer = null;
     }
+    this.#armRequested = false;
+    this.#setArmed(false);
     this.neutral("control_loop_stopped");
+  }
+
+  readonly #tryArm = (): void => {
+    if (!this.#armRequested || this.#reliableChannel?.readyState !== "open") return;
+    this.sendReliable({ v: 2, type: "arm", sessionId: this.#sessionId });
+    this.#setArmed(true);
+  };
+
+  readonly #handleChannelClose = (): void => {
+    this.#setArmed(false);
+  };
+
+  #setArmed(armed: boolean): void {
+    if (this.#armed === armed) return;
+    this.#armed = armed;
+    this.#onArmedChange?.(armed);
   }
 
   private sendLatest(): void {
     const command: DriveCommand = {
-      v: 1,
-      type: "control",
+      v: 2,
+      type: "control.intent",
       sessionId: this.#sessionId,
       sequence: ++this.#sequence,
-      steering: this.#steering,
+      steering: this.#armed ? this.#steering : 0,
       throttle: this.#armed ? this.#throttle : 0,
-      brake: this.#brake,
+      brake: this.#armed && this.#brake,
       nitro: this.#armed && this.#nitro,
       armed: this.#armed,
     };
@@ -99,9 +128,7 @@ export class BrowserControlLoop {
     const edgeOrigin =
       process.env.NEXT_PUBLIC_EDGE_ORIGIN ??
       (process.env.NODE_ENV === "development" ? "http://localhost:3002" : null);
-    if (!edgeOrigin) {
-      return;
-    }
+    if (!edgeOrigin) return;
     void fetch(`${edgeOrigin}/v1/edge/control`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -117,8 +144,9 @@ export class BrowserControlLoop {
   }
 }
 
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.round(Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : 0)));
+function discreteAxis(value: number): -1 | 0 | 1 {
+  if (!Number.isFinite(value) || value === 0) return 0;
+  return value < 0 ? -1 : 1;
 }
 
 export function createRidePeerConnection(

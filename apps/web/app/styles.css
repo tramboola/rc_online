@@ -791,9 +791,22 @@ p { color: #a9afb3; }
 .real-ride-status strong { color: var(--text); font-family: var(--font-display); }
 .real-ride-status strong.ok { color: var(--lime); }
 .real-ride-status .real-ride-error { display: block; color: #ff7568; border-top: 1px solid #563233; padding-top: 14px; }
-.real-control-readout { position: absolute; left: 34px; bottom: 34px; padding: 15px 20px; border: 1px solid var(--cyan); background: rgba(2, 10, 14, .9); color: var(--cyan); font: 600 20px var(--font-display); }
+.real-keyboard-panel { position: absolute; left: 34px; bottom: 34px; width: min(600px, calc(100vw - 68px)); padding: 16px 18px 14px; border: 1px solid var(--cyan); background: rgba(2, 10, 14, .92); color: var(--cyan); box-shadow: 0 0 30px rgba(0, 215, 255, .08); }
+.real-control-readout { margin-bottom: 13px; font: 600 18px var(--font-display); letter-spacing: .025em; }
+.real-keyboard-layout { display: flex; align-items: end; gap: 10px; }
+.real-wasd { display: grid; grid-template-columns: repeat(3, 44px); gap: 6px; }
+.real-wasd .key-w { grid-column: 2; grid-row: 1; }
+.real-wasd .key-a { grid-column: 1; grid-row: 2; }
+.real-wasd .key-s { grid-column: 2; grid-row: 2; }
+.real-wasd .key-d { grid-column: 3; grid-row: 2; }
+.real-keycap { display: grid; place-items: center; min-width: 44px; height: 40px; padding: 0 10px; border: 1px solid #3a5662; background: #07151b; color: #9aacb3; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .4); transition: 80ms ease; }
+.real-keycap b { font: 700 17px var(--font-display); }
+.real-keycap small { margin-top: -5px; font: 700 8px var(--font-body); letter-spacing: .12em; }
+.real-keycap[data-active="true"] { transform: translateY(2px); border-color: var(--lime); background: rgba(194, 255, 0, .15); color: var(--lime); box-shadow: 0 0 18px rgba(194, 255, 0, .22); }
+.real-keycap.key-wide { min-width: 112px; }
+.real-keycap.key-nitro { min-width: 76px; border-color: #53700a; }
+.real-keyboard-panel > p { margin: 12px 0 0; color: var(--muted); font: 600 11px var(--font-body); letter-spacing: .06em; }
 .real-ride-actions { position: absolute; right: 34px; bottom: 34px; display: flex; gap: 12px; }
-.real-ride-actions .action-button { min-width: 230px; min-height: 70px; }
 .real-ride-actions .end-ride { position: static; min-width: 230px; height: 70px; scale: 1; }
 
 .results-main { padding-bottom: 25px; }
