@@ -1,0 +1,55 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+import { SimulationScreen } from "./simulation-screen";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+vi.mock("next-auth/react", () => ({
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}));
+
+describe("driving setup screens", () => {
+  it("renders keyboard controls as the default preflight setup", () => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen adminAccess mockMode screen="preflight" />,
+    );
+
+    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain("W / ↑");
+    expect(markup).toContain("A / D");
+    expect(markup).toContain("SPACE");
+    expect(markup).toContain("NITRO");
+    expect(markup).not.toContain("controller-gamepad.webp");
+  });
+
+  it("renders a queue offer without an acceptance countdown", () => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen
+        adminAccess
+        mockMode
+        operationalStatus={{
+          state: "ready",
+          cars: [{
+            id: "40000000-0000-4000-8000-000000000001",
+            name: "RC Mania One",
+            slug: "rc-mania-one",
+            batteryPercent: null,
+          }],
+          queueCount: 0,
+        }}
+        screen="queue"
+      />,
+    );
+
+    expect(markup).toContain("Choose a car when you&#x27;re ready.");
+    expect(markup).not.toContain("Accept within");
+    expect(markup).not.toContain("countdown");
+    expect(markup).toContain("LEAVE QUEUE");
+  });
+});

@@ -646,7 +646,7 @@ function StepRail({ active }: { active: number }) {
 
 function PreflightScreen() {
   const router = useRouter();
-  const [controller, setController] = useState<"keyboard" | "gamepad">("gamepad");
+  const [controller, setController] = useState<"keyboard" | "gamepad">("keyboard");
   const [profile, setProfile] = useState<"soft" | "normal" | "aggressive">("normal");
   const [testing, setTesting] = useState(false);
   const [ready, setReady] = useState(true);
@@ -709,17 +709,39 @@ function PreflightScreen() {
                   </button>
                 </div>
               </div>
-              <img
-                className="controller-asset"
-                src="/assets/controller-gamepad.webp"
-                alt="Configured dual-stick game controller"
-              />
+              {controller === "keyboard" ? (
+                <div className="keyboard-asset" aria-label="Keyboard driving controls">
+                  <span /><kbd>W</kbd><span />
+                  <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+                  <kbd className="keyboard-space">SPACE</kbd>
+                  <kbd>N</kbd>
+                </div>
+              ) : (
+                <img
+                  className="controller-asset"
+                  src="/assets/controller-gamepad.webp"
+                  alt="Configured dual-stick game controller"
+                />
+              )}
               <ul>
-                <li><kbd>LT</kbd><span>STEER<small>Left / Right</small></span></li>
-                <li><kbd>RT</kbd><span>THROTTLE<small>Forward</small></span></li>
-                <li><kbd>RB</kbd><span>BRAKE / REVERSE<small>Backward</small></span></li>
-                <li><kbd>≡</kbd><span>END RIDE<small>Menu</small></span></li>
-                <li><kbd>M</kbd><span>MUTE<small>Toggle audio</small></span></li>
+                {controller === "keyboard" ? (
+                  <>
+                    <li><kbd>W / ↑</kbd><span>THROTTLE<small>Forward</small></span></li>
+                    <li><kbd>A / D</kbd><span>STEER<small>Left / Right</small></span></li>
+                    <li><kbd>S / ↓</kbd><span>REVERSE<small>Backward</small></span></li>
+                    <li><kbd>SPACE</kbd><span>BRAKE<small>Hold to brake</small></span></li>
+                    <li><kbd>N</kbd><span>NITRO<small>Hold with forward</small></span></li>
+                    <li><kbd>ESC</kbd><span>END RIDE<small>Emergency stop</small></span></li>
+                  </>
+                ) : (
+                  <>
+                    <li><kbd>LT</kbd><span>STEER<small>Left / Right</small></span></li>
+                    <li><kbd>RT</kbd><span>THROTTLE<small>Forward</small></span></li>
+                    <li><kbd>RB</kbd><span>BRAKE / REVERSE<small>Backward</small></span></li>
+                    <li><kbd>≡</kbd><span>END RIDE<small>Menu</small></span></li>
+                    <li><kbd>M</kbd><span>MUTE<small>Toggle audio</small></span></li>
+                  </>
+                )}
               </ul>
               <p className="success-line"><CheckCircle size={22} /> All required inputs assigned</p>
             </article>
@@ -766,7 +788,6 @@ function QueueScreen({
   const router = useRouter();
   const queueCars = getQueueCars(operationalStatus);
   const [selectedCar, setSelectedCar] = useState(queueCars[0]?.id ?? "");
-  const [seconds, setSeconds] = useState(24);
   const fleetUnavailable = operationalStatus?.state === "unavailable";
   const [status, setStatus] = useState("Joining live queue…");
 
@@ -784,11 +805,6 @@ function QueueScreen({
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000);
-    return () => clearInterval(timer);
   }, []);
 
   async function accept() {
@@ -864,8 +880,7 @@ function QueueScreen({
         </section>
         <section className="offer-panel">
           <div className="offer-heading">
-            <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car and accept within 30 seconds.</span></div>
-            <div className="countdown">{`00:${seconds.toString().padStart(2, "0")}`}<small>Accept within<br />30 seconds</small></div>
+            <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car when you&apos;re ready.</span></div>
           </div>
           <h3>SELECT YOUR CAR</h3>
           <div className="car-choice-grid">
