@@ -1,0 +1,283 @@
+"use client";
+
+import {
+  ArrowCounterClockwise,
+  ArrowLeft,
+  DotsThree,
+  TerminalWindow,
+} from "@phosphor-icons/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+
+import { apiRequest } from "./api-client";
+import type { OperationalStatus } from "./operational-status";
+import {
+  createAdminDriveSession,
+  saveDriveSession,
+} from "./ride-session-client";
+
+type LoadingStatus = "connecting" | "connected" | "failed";
+
+type SystemLogEntry = {
+  time: string;
+  code: string;
+  message: string;
+  tone?: "default" | "success" | "danger";
+};
+
+const fallbackCarId = "40000000-0000-4000-8000-000000000001";
+const rideId = "30000000-0000-4000-8000-000000000003";
+const offerId = "30000000-0000-4000-8000-000000000002";
+
+const systemLogEntries: SystemLogEntry[] = [
+  { time: "14:24:01", code: "BOOT", message: "Boot sequence started" },
+  { time: "14:24:02", code: "SYS", message: "Initializing core modules" },
+  { time: "14:24:03", code: "NET", message: "Connecting to RC Mania servers" },
+  { time: "14:24:04", code: "AUTH", message: "Verifying driver profile" },
+  { time: "14:24:05", code: "DATA", message: "Syncing live track telemetry" },
+  { time: "14:24:06", code: "CFG", message: "Loading vehicle configurations" },
+  { time: "14:24:07", code: "DB", message: "Accessing driver database" },
+  { time: "14:24:08", code: "UI", message: "Preparing user interface" },
+  { time: "14:24:09", code: "ASSET", message: "Streaming environment assets" },
+  { time: "14:24:10", code: "PHYS", message: "Calibrating physics engine" },
+  { time: "14:24:11", code: "NET", message: "P2P matchmaking initialized" },
+  { time: "14:24:12", code: "SEC", message: "Security handshake complete" },
+  { time: "14:24:13", code: "SYNC", message: "Time synchronization complete" },
+  { time: "14:24:14", code: "LIVE", message: "Live track services online" },
+  { time: "14:24:15", code: "RC", message: "RC systems online", tone: "success" },
+  { time: "14:24:16", code: "HUD", message: "Loading heads-up display" },
+  { time: "14:24:17", code: "SOUND", message: "Initializing audio systems" },
+  { time: "14:24:18", code: "FINAL", message: "Final checks complete", tone: "danger" },
+  { time: "14:24:19", code: "READY", message: "System ready — entering garage", tone: "danger" },
+];
+
+export function getActiveLoadingSegments(step: number): [number, number] {
+  const start = ((step % 7) + 7) % 7;
+  return [start, start + 1];
+}
+
+export function getConnectionUrl(carId: string): string {
+  return `/loading?car=${encodeURIComponent(carId)}`;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+export function ConnectionLoadingScreen({
+  adminAccess,
+  mockMode,
+  operationalStatus,
+}: {
+  adminAccess: boolean;
+  mockMode: boolean;
+  operationalStatus?: OperationalStatus | undefined;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const demoMode = searchParams.get("demo") === "1";
+  const carId = searchParams.get("car") ?? fallbackCarId;
+  const [activeStep, setActiveStep] = useState(0);
+  const [visibleLogCount, setVisibleLogCount] = useState(1);
+  const [status, setStatus] = useState<LoadingStatus>("connecting");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const activeSegments = useMemo(
+    () => getActiveLoadingSegments(activeStep),
+    [activeStep],
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotionPreference = () => setReducedMotion(media.matches);
+    updateMotionPreference();
+    media.addEventListener("change", updateMotionPreference);
+    return () => media.removeEventListener("change", updateMotionPreference);
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setVisibleLogCount(systemLogEntries.length);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setVisibleLogCount((count) => Math.min(count + 1, systemLogEntries.length));
+    }, 360);
+    return () => window.clearInterval(timer);
+  }, [attempt, reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion || status !== "connecting") return;
+    const timer = window.setInterval(() => {
+      setActiveStep((step) => (step + 1) % 7);
+    }, 420);
+    return () => window.clearInterval(timer);
+  }, [reducedMotion, status]);
+
+  useEffect(() => {
+    if (demoMode) return;
+
+    let cancelled = false;
+    let completionTimer: number | undefined;
+
+    const launchTimer = window.setTimeout(() => {
+      void (async () => {
+        const startedAt = Date.now();
+        setStatus("connecting");
+        setErrorMessage("");
+        setActiveStep(0);
+        setVisibleLogCount(reducedMotion ? systemLogEntries.length : 1);
+
+        try {
+          if (adminAccess && operationalStatus?.state === "ready") {
+            const session = await createAdminDriveSession(carId);
+            saveDriveSession(session);
+          } else {
+            try {
+              await apiRequest(`/v1/ride-offers/${offerId}/accept`, {
+                method: "POST",
+                body: JSON.stringify({ carId }),
+              });
+              await apiRequest(`/v1/rides/${rideId}/negotiate`, {
+                method: "POST",
+                body: "{}",
+              });
+            } catch {
+              // Simulation remains deterministic when the API is intentionally offline.
+            }
+          }
+
+          const remaining = Math.max(0, 3200 - (Date.now() - startedAt));
+          await wait(remaining);
+          if (cancelled) return;
+
+          setVisibleLogCount(systemLogEntries.length);
+          setStatus("connected");
+          completionTimer = window.setTimeout(() => {
+            if (!cancelled) router.replace("/ride");
+          }, 700);
+        } catch (error) {
+          if (cancelled) return;
+          setVisibleLogCount(systemLogEntries.length);
+          setErrorMessage(
+            error instanceof Error ? error.message : "Could not connect to the car",
+          );
+          setStatus("failed");
+        }
+      })();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(launchTimer);
+      if (completionTimer !== undefined) window.clearTimeout(completionTimer);
+    };
+  }, [
+    adminAccess,
+    attempt,
+    carId,
+    demoMode,
+    mockMode,
+    operationalStatus,
+    reducedMotion,
+    router,
+  ]);
+
+  const visibleEntries = systemLogEntries.slice(0, visibleLogCount);
+  const statusLabel = status === "connected"
+    ? "CONNECTED"
+    : status === "failed"
+      ? "CONNECTION FAILED"
+      : "CONNECTING";
+
+  return (
+    <main className={`connection-loading-page status-${status}`}>
+      <img
+        alt=""
+        aria-hidden="true"
+        className="connection-background"
+        fetchPriority="high"
+        src="/assets/loading-background.webp"
+      />
+      <section className="connection-loading-shell" aria-labelledby="connection-title">
+        <img
+          alt="RC Mania"
+          className="connection-logo"
+          src="/assets/loading-logo.webp"
+        />
+
+        <div className="connection-kicker">
+          <span aria-hidden="true" />
+          <h1 id="connection-title">CONNECTING TO CAR</h1>
+          <span aria-hidden="true" />
+        </div>
+
+        <div
+          aria-label="Car connection in progress"
+          aria-valuemax={8}
+          aria-valuemin={0}
+          aria-valuenow={status === "connected" ? 8 : activeSegments[1] + 1}
+          className="loading-rail"
+          role="progressbar"
+        >
+          {Array.from({ length: 8 }, (_, index) => {
+            const active = activeSegments.includes(index);
+            return (
+              <span
+                className={`loading-segment ${active ? "is-active" : ""}`}
+                data-loading-segment={index + 1}
+                key={index}
+              />
+            );
+          })}
+        </div>
+
+        <section className="system-log-panel" aria-label="Connection system log">
+          <header className="system-log-header">
+            <strong><TerminalWindow aria-hidden="true" size={19} /> SYSTEM LOG</strong>
+            <div aria-live="polite" className="connection-status">
+              <span>STATUS:</span>
+              <b>{statusLabel}</b>
+              <DotsThree aria-hidden="true" size={25} weight="bold" />
+            </div>
+          </header>
+
+          <div aria-live="off" className="system-log-lines" role="log">
+            {visibleEntries.map((entry) => (
+              <p className={`log-line tone-${entry.tone ?? "default"}`} key={`${entry.time}-${entry.code}`}>
+                <time>[{entry.time}]</time>
+                <b>[{entry.code}]</b>
+                <span>{entry.message}</span>
+              </p>
+            ))}
+            {status === "failed" ? (
+              <p className="log-line tone-danger">
+                <time>[14:24:20]</time>
+                <b>[ERROR]</b>
+                <span>{errorMessage}</span>
+              </p>
+            ) : null}
+          </div>
+
+          {status === "failed" ? (
+            <div className="connection-error-actions">
+              <button
+                onClick={() => setAttempt((current) => current + 1)}
+                type="button"
+              >
+                <ArrowCounterClockwise aria-hidden="true" size={18} weight="bold" />
+                RETRY CONNECTION
+              </button>
+              <button onClick={() => router.push("/queue")} type="button">
+                <ArrowLeft aria-hidden="true" size={18} weight="bold" />
+                RETURN TO QUEUE
+              </button>
+            </div>
+          ) : null}
+        </section>
+      </section>
+    </main>
+  );
+}
