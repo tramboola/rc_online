@@ -26,6 +26,8 @@ describe("driving setup screens", () => {
 
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('class="keyboard-asset"');
+    expect(markup).toContain('class="keyboard-wasd"');
+    expect(markup).toContain('class="keyboard-nitro-key"');
     expect(markup).toContain('class="control-bindings"');
     expect(markup).toContain("W / ↑");
     expect(markup).toContain("A / ←");

@@ -714,11 +714,17 @@ function PreflightScreen() {
                 </div>
               </div>
               <div className="keyboard-asset" aria-label="Keyboard driving controls">
-                <span /><PreflightKey active={isDriveKeyActive(pressedKeys, "W")} label="W" alias="↑" /><span />
-                <PreflightKey active={isDriveKeyActive(pressedKeys, "A")} label="A" alias="←" />
-                <PreflightKey active={isDriveKeyActive(pressedKeys, "S")} label="S" alias="↓" />
-                <PreflightKey active={isDriveKeyActive(pressedKeys, "D")} label="D" alias="→" />
-                <span /><PreflightKey active={isDriveKeyActive(pressedKeys, "NITRO")} label="N" /><span />
+                <div className="keyboard-wasd">
+                  <span /><PreflightKey active={isDriveKeyActive(pressedKeys, "W")} label="W" alias="↑" /><span />
+                  <PreflightKey active={isDriveKeyActive(pressedKeys, "A")} label="A" alias="←" />
+                  <PreflightKey active={isDriveKeyActive(pressedKeys, "S")} label="S" alias="↓" />
+                  <PreflightKey active={isDriveKeyActive(pressedKeys, "D")} label="D" alias="→" />
+                </div>
+                <PreflightKey
+                  active={isDriveKeyActive(pressedKeys, "NITRO")}
+                  className="keyboard-nitro-key"
+                  label="N"
+                />
               </div>
               <ul className="control-bindings">
                 <li><kbd>W / ↑</kbd><span>THROTTLE<small>Forward</small></span></li>
@@ -740,8 +746,20 @@ function PreflightScreen() {
   );
 }
 
-function PreflightKey({ active, alias, label }: { readonly active: boolean; readonly alias?: string; readonly label: string }) {
-  return <kbd aria-pressed={active} className={active ? "pressed" : ""}>{label}{alias ? <small>/{alias}</small> : null}</kbd>;
+function PreflightKey({
+  active,
+  alias,
+  className = "",
+  label,
+}: {
+  readonly active: boolean;
+  readonly alias?: string;
+  readonly className?: string;
+  readonly label: string;
+}) {
+  const classes = [className, active ? "pressed" : ""].filter(Boolean).join(" ");
+
+  return <kbd aria-pressed={active} className={classes}>{label}{alias ? <small>/{alias}</small> : null}</kbd>;
 }
 
 function QueueScreen({

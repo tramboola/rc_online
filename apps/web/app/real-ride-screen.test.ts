@@ -29,6 +29,7 @@ describe("real ride keyboard UI", () => {
     expect(source).not.toContain('"STOP"');
     expect(source).not.toContain("ESC STOP");
     expect(styles).toMatch(/\.real-keycap \{[^}]*display: flex;/s);
+    expect(styles).toMatch(/\.real-keyboard-layout \{[^}]*gap: 30px;/s);
   });
 
   it("renders the keyboard overlay without a surrounding dark frame", () => {

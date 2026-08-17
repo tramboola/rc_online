@@ -666,13 +666,18 @@ p { color: #a9afb3; }
   width: 52%;
   height: 245px;
   margin: 10px 22px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+}
+.keyboard-wasd {
   display: grid;
   grid-template-columns: repeat(3, 64px);
   grid-auto-rows: 54px;
-  align-content: center;
-  justify-content: center;
   gap: 9px;
 }
+.keyboard-nitro-key { flex: 0 0 auto; }
 .keyboard-asset kbd {
   box-sizing: border-box;
   display: flex;
@@ -806,7 +811,7 @@ p { color: #a9afb3; }
 .real-ride-status .real-ride-error { display: block; color: #ff7568; border-top: 1px solid #563233; padding-top: 14px; }
 .real-keyboard-panel { position: absolute; left: 34px; bottom: 34px; width: min(600px, calc(100vw - 68px)); padding: 0; border: 0; background: transparent; color: var(--cyan); box-shadow: none; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .9)); }
 .real-control-readout { margin-bottom: 13px; font: 600 18px var(--font-display); letter-spacing: .025em; text-shadow: 0 2px 8px #000; }
-.real-keyboard-layout { display: flex; align-items: end; gap: 10px; }
+.real-keyboard-layout { display: flex; align-items: end; gap: 30px; }
 .real-wasd { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; }
 .real-wasd .key-w { grid-column: 2; grid-row: 1; }
 .real-wasd .key-a { grid-column: 1; grid-row: 2; }
