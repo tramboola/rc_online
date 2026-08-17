@@ -45,6 +45,10 @@ import { apiRequest } from "./api-client";
 import { AccountControl } from "./account-control";
 import { BrowserControlLoop } from "./control-loop";
 import {
+  ConnectionLoadingScreen,
+  getRideUrl,
+} from "./connection-loading-screen";
+import {
   getHomePresentation,
   getVideoStatusLabel,
   getViewerBadgeText,
@@ -56,7 +60,6 @@ import {
 } from "./how-it-works-content";
 import { getLeaderboardPresentation } from "./leaderboard-presentation";
 import { RealRideScreen } from "./real-ride-screen";
-import { createAdminDriveSession, saveDriveSession } from "./ride-session-client";
 import { useViewerCount } from "./use-viewer-count";
 
 export type ScreenName =
@@ -66,6 +69,7 @@ export type ScreenName =
   | "leaderboard"
   | "preflight"
   | "queue"
+  | "loading"
   | "ride"
   | "results"
   | "operator";
@@ -73,7 +77,6 @@ export type ScreenName =
 type IconType = ComponentType<{ size?: number; weight?: "regular" | "bold" | "fill" }>;
 
 const rideId = "30000000-0000-4000-8000-000000000003";
-const offerId = "30000000-0000-4000-8000-000000000002";
 const blueCarId = "40000000-0000-4000-8000-000000000001";
 const redCarId = "40000000-0000-4000-8000-000000000002";
 
@@ -779,10 +782,8 @@ function PreflightScreen() {
 }
 
 function QueueScreen({
-  adminAccess,
   operationalStatus,
 }: {
-  adminAccess: boolean;
   operationalStatus?: OperationalStatus | undefined;
 }) {
   const router = useRouter();
@@ -807,33 +808,10 @@ function QueueScreen({
     };
   }, []);
 
-  async function accept() {
+  function accept() {
     if (!selectedCar) return;
-    if (adminAccess && operationalStatus?.state === "ready") {
-      try {
-        setStatus("Connecting to RC Mania One…");
-        const session = await createAdminDriveSession(selectedCar);
-        saveDriveSession(session);
-        router.push("/ride");
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Could not connect to the car");
-      }
-      return;
-    }
     setStatus("Connecting…");
-    try {
-      await apiRequest(`/v1/ride-offers/${offerId}/accept`, {
-        method: "POST",
-        body: JSON.stringify({ carId: selectedCar }),
-      });
-      await apiRequest(`/v1/rides/${rideId}/negotiate`, {
-        method: "POST",
-        body: "{}",
-      });
-    } catch {
-      // The UI stays deterministic when the API is intentionally offline.
-    }
-    router.push("/ride");
+    router.push(getRideUrl(selectedCar));
   }
 
   return (
@@ -907,7 +885,7 @@ function QueueScreen({
             ) : null}
           </div>
           <div className="offer-actions">
-            <ActionButton disabled={!selectedCar} onClick={() => void accept()}>ACCEPT & CONNECT</ActionButton>
+            <ActionButton disabled={!selectedCar} onClick={accept}>ACCEPT & CONNECT</ActionButton>
             <ActionButton tone="ghost" onClick={() => router.push("/")}>LEAVE QUEUE</ActionButton>
           </div>
           <p className="fine-print"><ShieldCheck size={17} /> First come, first served. Memberships do not receive priority.</p>
@@ -1164,7 +1142,16 @@ export function SimulationScreen({
   if (screen === "how-it-works") return <HowItWorksScreen />;
   if (screen === "leaderboard") return <LeaderboardScreen mockMode={mockMode} />;
   if (screen === "preflight") return <PreflightScreen />;
-  if (screen === "queue") return <QueueScreen adminAccess={adminAccess} operationalStatus={operationalStatus} />;
+  if (screen === "queue") return <QueueScreen operationalStatus={operationalStatus} />;
+  if (screen === "loading") {
+    return (
+      <ConnectionLoadingScreen
+        adminAccess={adminAccess}
+        mockMode={mockMode}
+        operationalStatus={operationalStatus}
+      />
+    );
+  }
   if (screen === "ride") return mockMode && adminAccess ? <RealRideScreen /> : <RideScreen mockMode={mockMode} />;
   if (screen === "results") return <ResultsScreen />;
   if (screen === "operator") return <OperatorScreen />;
