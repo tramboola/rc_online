@@ -1,11 +1,10 @@
 export interface DriveCommand {
-  readonly v: 2;
+  readonly v: 3;
   readonly type: "control.intent";
   readonly sessionId: string;
   readonly sequence: number;
   readonly steering: -1 | 0 | 1;
   readonly throttle: -1 | 0 | 1;
-  readonly brake: boolean;
   readonly nitro: boolean;
   readonly armed: boolean;
 }
@@ -13,7 +12,6 @@ export interface DriveCommand {
 interface ControlInput {
   readonly steering?: number;
   readonly throttle?: number;
-  readonly brake?: boolean | number;
   readonly nitro?: boolean;
 }
 
@@ -26,7 +24,6 @@ export class BrowserControlLoop {
   #sequence = 0;
   #steering: -1 | 0 | 1 = 0;
   #throttle: -1 | 0 | 1 = 0;
-  #brake = false;
   #nitro = false;
   #armRequested = false;
   #armed = false;
@@ -50,11 +47,6 @@ export class BrowserControlLoop {
   public setInput(input: ControlInput): void {
     this.#steering = discreteAxis(input.steering ?? this.#steering);
     this.#throttle = discreteAxis(input.throttle ?? this.#throttle);
-    this.#brake = input.brake === undefined
-      ? this.#brake
-      : typeof input.brake === "boolean"
-        ? input.brake
-        : input.brake > 0;
     this.#nitro = input.nitro ?? this.#nitro;
   }
 
@@ -77,9 +69,8 @@ export class BrowserControlLoop {
   public neutral(reason: string): void {
     this.#steering = 0;
     this.#throttle = 0;
-    this.#brake = false;
     this.#nitro = false;
-    this.sendReliable({ v: 2, type: "neutral", reason, sessionId: this.#sessionId });
+    this.sendReliable({ v: 3, type: "neutral", reason, sessionId: this.#sessionId });
     this.sendLatest();
   }
 
@@ -95,7 +86,7 @@ export class BrowserControlLoop {
 
   readonly #tryArm = (): void => {
     if (!this.#armRequested || this.#reliableChannel?.readyState !== "open") return;
-    this.sendReliable({ v: 2, type: "arm", sessionId: this.#sessionId });
+    this.sendReliable({ v: 3, type: "arm", sessionId: this.#sessionId });
     this.#setArmed(true);
   };
 
@@ -111,13 +102,12 @@ export class BrowserControlLoop {
 
   private sendLatest(): void {
     const command: DriveCommand = {
-      v: 2,
+      v: 3,
       type: "control.intent",
       sessionId: this.#sessionId,
       sequence: ++this.#sequence,
       steering: this.#armed ? this.#steering : 0,
       throttle: this.#armed ? this.#throttle : 0,
-      brake: this.#armed && this.#brake,
       nitro: this.#armed && this.#nitro,
       armed: this.#armed,
     };

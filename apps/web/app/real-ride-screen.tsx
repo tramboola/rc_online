@@ -24,7 +24,6 @@ const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const NEUTRAL_CONTROL: KeyboardControlIntent = {
   steering: 0,
   throttle: 0,
-  brake: false,
   nitro: false,
 };
 
@@ -204,15 +203,14 @@ export function RealRideScreen() {
         </div>
         <div className="real-keyboard-layout">
           <div className="real-wasd" aria-label="WASD and arrow keys">
-            <KeyCap active={isDriveKeyActive(pressedKeys, "W")} className="key-w" label="W" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "A")} className="key-a" label="A" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "S")} className="key-s" label="S" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "D")} className="key-d" label="D" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "W")} className="key-w" label="W" sublabel="/ ↑" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "A")} className="key-a" label="A" sublabel="/ ←" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "S")} className="key-s" label="S" sublabel="/ ↓" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "D")} className="key-d" label="D" sublabel="/ →" />
           </div>
-          <KeyCap active={isDriveKeyActive(pressedKeys, "BRAKE")} className="key-wide" label="SPACE" sublabel="BRAKE" />
           <KeyCap active={isDriveKeyActive(pressedKeys, "NITRO")} className="key-nitro" label="N" sublabel="NITRO" />
         </div>
-        <p>WASD / ARROWS TO DRIVE · SPACE BRAKE · N NITRO · ESC STOP</p>
+        <p>WASD / ARROWS TO DRIVE · N NITRO · ESC STOP</p>
       </section>
       <div className="real-ride-actions">
         <button className="end-ride" onClick={end} type="button"><Flag size={28} /> END SESSION</button>
@@ -256,7 +254,6 @@ function steeringLabel(steering: -1 | 0 | 1): string {
 }
 
 function throttleLabel(control: KeyboardControlIntent): string {
-  if (control.brake) return "BRAKE";
   if (control.throttle < 0) return "REVERSE 63%";
   if (control.throttle > 0) return control.nitro ? "NITRO 100%" : "FORWARD 63%";
   return "NEUTRAL";

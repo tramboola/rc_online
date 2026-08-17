@@ -1,9 +1,8 @@
-export type DriveKey = "W" | "A" | "S" | "D" | "BRAKE" | "NITRO" | "STOP";
+export type DriveKey = "W" | "A" | "S" | "D" | "NITRO" | "STOP";
 
 export interface KeyboardControlIntent {
   readonly steering: -1 | 0 | 1;
   readonly throttle: -1 | 0 | 1;
-  readonly brake: boolean;
   readonly nitro: boolean;
 }
 
@@ -16,7 +15,6 @@ const CODE_TO_KEY = new Map<string, DriveKey>([
   ["ArrowDown", "S"],
   ["KeyD", "D"],
   ["ArrowRight", "D"],
-  ["Space", "BRAKE"],
   ["KeyN", "NITRO"],
   ["Escape", "STOP"],
 ]);
@@ -45,21 +43,19 @@ export function controlIntentFromPressedKeys(
   const right = has("D");
   const forward = has("W");
   const reverse = has("S");
-  const brake = has("BRAKE");
   const steering: -1 | 0 | 1 = left === right ? 0 : left ? -1 : 1;
   const throttle: -1 | 0 | 1 = forward === reverse ? 0 : forward ? 1 : -1;
 
   return {
     steering,
     throttle,
-    brake,
-    nitro: forward && !reverse && !brake && has("NITRO"),
+    nitro: forward && !reverse && has("NITRO"),
   };
 }
 
 export function isDriveKeyActive(
   pressed: ReadonlySet<string>,
-  key: Exclude<DriveKey, "STOP">,
+  key: DriveKey,
 ): boolean {
   return [...pressed].some((code) => controlKeyForCode(code) === key);
 }

@@ -54,7 +54,6 @@ class CommandMailbox:
         armed: bool,
         steering: int,
         throttle: int,
-        brake: bool = False,
         nitro: bool = False,
         *,
         now: float,
@@ -74,7 +73,6 @@ class CommandMailbox:
             steering=steering,
             throttle=throttle,
             received_at=now,
-            brake=brake,
             nitro=nitro,
         )
 
@@ -151,13 +149,14 @@ def create_http_server(
                 return
             try:
                 payload = self._read_json()
+                if "brake" in payload:
+                    raise ValueError("brake is not part of the direct control protocol")
                 mailbox.publish(
                     payload["client_id"],
                     payload["sequence"],
                     payload["armed"],
                     payload["steering"],
                     payload["throttle"],
-                    brake=payload.get("brake", False),
                     nitro=payload.get("nitro", False),
                     now=clock(),
                 )
@@ -248,7 +247,7 @@ class LiveRuntime:
         self._control = LiveControl(config)
         self._lock = threading.Lock()
         self._last_applied: tuple[int, int] | None = None
-        self._state = OutputState(1500, 1500, False, True, "idle")
+        self._state = OutputState(1500, 1500, False, True)
 
     def tick(self) -> OutputState:
         state = self._control.step(self._mailbox.snapshot(), self._clock())
@@ -268,7 +267,6 @@ class LiveRuntime:
             "stale": state.stale,
             "steering_us": state.steering_us,
             "throttle_us": state.throttle_us,
-            "reverse_phase": state.reverse_phase,
         }
 
     def close(self) -> None:
@@ -301,25 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--token")
     parser.add_argument("--ui", type=Path)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--reverse-brake-ms", type=_reverse_timing_ms, default=60)
-    parser.add_argument("--reverse-neutral-ms", type=_reverse_timing_ms, default=60)
     return parser
-
-
-def _reverse_timing_ms(value: str) -> int:
-    milliseconds = int(value)
-    if not 20 <= milliseconds <= 1_000:
-        raise argparse.ArgumentTypeError(
-            "reverse timing must be between 20 and 1000 milliseconds"
-        )
-    return milliseconds
-
-
-def live_config_from_args(args: argparse.Namespace) -> LiveConfig:
-    return LiveConfig(
-        reverse_brake_s=args.reverse_brake_ms / 1_000,
-        reverse_neutral_s=args.reverse_neutral_ms / 1_000,
-    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -329,7 +309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ui_html = ui_path.read_text(encoding="utf-8")
     mailbox = CommandMailbox(takeover_s=1.0)
     output = create_output(args.dry_run)
-    runtime = LiveRuntime(mailbox, output, config=live_config_from_args(args))
+    runtime = LiveRuntime(mailbox, output)
     runtime.tick()
     server = create_http_server(
         args.host,

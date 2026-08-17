@@ -28,10 +28,21 @@ describe("driving setup screens", () => {
     expect(markup).toContain('class="keyboard-asset"');
     expect(markup).toContain('class="control-bindings"');
     expect(markup).toContain("W / ↑");
-    expect(markup).toContain("A / D");
-    expect(markup).toContain("SPACE");
+    expect(markup).toContain("A / ←");
+    expect(markup).toContain("S / ↓");
+    expect(markup).toContain("D / →");
     expect(markup).toContain("NITRO");
     expect(markup).not.toContain("controller-gamepad.webp");
+    expect(markup).not.toContain("SPACE");
+    expect(markup).not.toContain("BRAKE");
+    expect(markup).not.toContain("CALIBRATION");
+    expect(markup).not.toContain("RETEST");
+    expect(markup).not.toContain("HTTPS SECURE");
+    expect(markup).toContain("COMING SOON");
+    expect(markup).toContain("disabled");
+    expect(source).toContain('window.addEventListener("keydown"');
+    expect(source).toContain('window.addEventListener("keyup"');
+    expect(source).toContain('window.addEventListener("blur"');
   });
 
   it("renders a queue offer without an acceptance countdown", () => {

@@ -34,9 +34,6 @@ PROFILES = {
     "motor-reverse": TestCommand(1500, 1250, duration_s=2.0, settle_s=0.5),
 }
 
-REVERSE_BRAKE = TestCommand(1500, 1250, duration_s=0.3, settle_s=3.0)
-
-
 class ConsolePulseOutput:
     def __init__(self) -> None:
         self._last: tuple[int, int] | None = None
@@ -91,8 +88,6 @@ def main(
     try:
         if args.action == "gpio-check":
             return 0
-        if args.action == "motor-reverse":
-            execute_test(output, clock, sleeper, LIMITS, REVERSE_BRAKE)
         execute_test(output, clock, sleeper, LIMITS, PROFILES[args.action])
         sleeper(0.1)
     finally:
