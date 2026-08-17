@@ -137,9 +137,11 @@ screen.
 - Prove that the control loop remains stopped and disarmed until readiness.
 - Prove the 15-second timeout, retry teardown, stale-attempt isolation, and
   return-to-queue cleanup.
-- Browser-test the successful connection with deterministic injected WebSocket,
-  WebRTC, MediaStream, and video events; a live Raspberry Pi is not required for
-  automated acceptance.
+- Test the successful connection with deterministic injected WebSocket, WebRTC,
+  MediaStream, and video events; a live Raspberry Pi is not required for
+  automated acceptance. Browser QA covers the shared loading presentation,
+  while the two-signal production gate is covered by controller and component
+  tests until the Pi is available for a live end-to-end check.
 - Compare the rendered desktop screenshot with `loading_page_imgs/ref.PNG`, record mismatches in `design-qa.md`, and fix all P0/P1/P2 issues before handoff.
 - Keep the local preview running and provide the clickable demo URL.
 
