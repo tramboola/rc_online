@@ -46,7 +46,7 @@ import { AccountControl } from "./account-control";
 import { BrowserControlLoop } from "./control-loop";
 import {
   ConnectionLoadingScreen,
-  getConnectionUrl,
+  getRideUrl,
 } from "./connection-loading-screen";
 import {
   getHomePresentation,
@@ -811,7 +811,7 @@ function QueueScreen({
   function accept() {
     if (!selectedCar) return;
     setStatus("Connecting…");
-    router.push(getConnectionUrl(selectedCar));
+    router.push(getRideUrl(selectedCar));
   }
 
   return (

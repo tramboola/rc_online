@@ -6,6 +6,7 @@ import {
   ConnectionLoadingScreen,
   getActiveLoadingSegments,
   getConnectionUrl,
+  getRideUrl,
 } from "./connection-loading-screen";
 
 vi.mock("next/navigation", () => ({
@@ -41,6 +42,10 @@ describe("connection loading screen", () => {
     expect(markup.match(/data-loading-segment=/g)).toHaveLength(8);
     expect(markup.match(/is-active/g)).toHaveLength(2);
     expect(markup).toContain("Boot sequence started");
+  });
+
+  it("builds a direct ride route for the selected real car", () => {
+    expect(getRideUrl("car id/01")).toBe("/ride?car=car%20id%2F01");
   });
 
   it("renders controlled connected state without failure actions", () => {

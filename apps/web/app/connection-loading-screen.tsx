@@ -51,6 +51,10 @@ export function getConnectionUrl(carId: string): string {
   return `/loading?car=${encodeURIComponent(carId)}`;
 }
 
+export function getRideUrl(carId: string): string {
+  return `/ride?car=${encodeURIComponent(carId)}`;
+}
+
 export type ConnectionLoadingOverlayProps = {
   activeStep: number;
   entries: readonly ConnectionLogEntry[];

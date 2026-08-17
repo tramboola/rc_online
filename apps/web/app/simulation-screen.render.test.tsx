@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { SimulationScreen } from "./simulation-screen";
+
+const source = readFileSync(new URL("./simulation-screen.tsx", import.meta.url), "utf8");
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -52,6 +55,8 @@ describe("driving setup screens", () => {
     expect(markup).not.toContain("Accept within");
     expect(markup).not.toContain("countdown");
     expect(markup).toContain("LEAVE QUEUE");
+    expect(source).toContain("router.push(getRideUrl(selectedCar))");
+    expect(source).not.toContain("router.push(getConnectionUrl(selectedCar))");
   });
 
   it("renders the car connection loading screen", () => {

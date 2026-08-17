@@ -1002,6 +1002,16 @@ p { color: #a9afb3; }
   color: #eef1ef;
   isolation: isolate;
 }
+.connection-loading-overlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  overflow: auto;
+  background: #030607;
+}
+.connection-loading-overlay .connection-loading-page {
+  min-height: 100%;
+}
 .connection-background {
   position: absolute;
   z-index: -2;
