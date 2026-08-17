@@ -1,4 +1,4 @@
-export type DriveKey = "W" | "A" | "S" | "D" | "NITRO" | "STOP";
+export type DriveKey = "W" | "A" | "S" | "D" | "NITRO";
 
 export interface KeyboardControlIntent {
   readonly steering: -1 | 0 | 1;
@@ -16,7 +16,6 @@ const CODE_TO_KEY = new Map<string, DriveKey>([
   ["KeyD", "D"],
   ["ArrowRight", "D"],
   ["KeyN", "NITRO"],
-  ["Escape", "STOP"],
 ]);
 
 export function controlKeyForCode(code: string): DriveKey | null {

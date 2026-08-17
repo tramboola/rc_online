@@ -32,6 +32,7 @@ describe("driving setup screens", () => {
     expect(markup).toContain("S / ↓");
     expect(markup).toContain("D / →");
     expect(markup).toContain("NITRO");
+    expect(markup).not.toContain("ESC");
     expect(markup).not.toContain("controller-gamepad.webp");
     expect(markup).not.toContain("SPACE");
     expect(markup).not.toContain("BRAKE");
@@ -43,6 +44,7 @@ describe("driving setup screens", () => {
     expect(source).toContain('window.addEventListener("keydown"');
     expect(source).toContain('window.addEventListener("keyup"');
     expect(source).toContain('window.addEventListener("blur"');
+    expect(source).not.toContain('logicalKey === "STOP"');
   });
 
   it("renders a queue offer without an acceptance countdown", () => {

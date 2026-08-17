@@ -138,10 +138,6 @@ export function RealRideScreen() {
       const key = controlKeyForCode(event.code);
       if (!key) return;
       event.preventDefault();
-      if (key === "STOP") {
-        if (pressed) neutralize("escape pressed");
-        return;
-      }
       if (pressed && !armedRef.current) loop.arm();
       applyPressedKeys(updatePressedKeys(pressedRef.current, event.code, pressed));
     };
@@ -203,14 +199,14 @@ export function RealRideScreen() {
         </div>
         <div className="real-keyboard-layout">
           <div className="real-wasd" aria-label="WASD and arrow keys">
-            <KeyCap active={isDriveKeyActive(pressedKeys, "W")} className="key-w" label="W" sublabel="/ ↑" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "A")} className="key-a" label="A" sublabel="/ ←" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "S")} className="key-s" label="S" sublabel="/ ↓" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "D")} className="key-d" label="D" sublabel="/ →" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "W")} className="key-w" label="W" sublabel="/↑" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "A")} className="key-a" label="A" sublabel="/←" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "S")} className="key-s" label="S" sublabel="/↓" />
+            <KeyCap active={isDriveKeyActive(pressedKeys, "D")} className="key-d" label="D" sublabel="/→" />
           </div>
           <KeyCap active={isDriveKeyActive(pressedKeys, "NITRO")} className="key-nitro" label="N" sublabel="NITRO" />
         </div>
-        <p>WASD / ARROWS TO DRIVE · N NITRO · ESC STOP</p>
+        <p>WASD / ARROWS TO DRIVE · N NITRO</p>
       </section>
       <div className="real-ride-actions">
         <button className="end-ride" onClick={end} type="button"><Flag size={28} /> END SESSION</button>

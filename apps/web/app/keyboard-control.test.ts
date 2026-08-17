@@ -7,7 +7,7 @@ import {
 } from "./keyboard-control";
 
 describe("keyboard controls", () => {
-  it("maps WASD, arrows, N, and Escape while leaving Space unmapped", () => {
+  it("maps WASD, arrows, and N while leaving Space and Escape unmapped", () => {
     expect(controlKeyForCode("KeyW")).toBe("W");
     expect(controlKeyForCode("ArrowUp")).toBe("W");
     expect(controlKeyForCode("KeyA")).toBe("A");
@@ -15,7 +15,7 @@ describe("keyboard controls", () => {
     expect(controlKeyForCode("KeyD")).toBe("D");
     expect(controlKeyForCode("Space")).toBeNull();
     expect(controlKeyForCode("KeyN")).toBe("NITRO");
-    expect(controlKeyForCode("Escape")).toBe("STOP");
+    expect(controlKeyForCode("Escape")).toBeNull();
     expect(controlKeyForCode("KeyQ")).toBeNull();
   });
 

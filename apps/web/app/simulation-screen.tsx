@@ -718,7 +718,7 @@ function PreflightScreen() {
                 <PreflightKey active={isDriveKeyActive(pressedKeys, "A")} label="A" alias="←" />
                 <PreflightKey active={isDriveKeyActive(pressedKeys, "S")} label="S" alias="↓" />
                 <PreflightKey active={isDriveKeyActive(pressedKeys, "D")} label="D" alias="→" />
-                <span /><PreflightKey active={isDriveKeyActive(pressedKeys, "NITRO")} label="N" /><PreflightKey active={isDriveKeyActive(pressedKeys, "STOP")} label="ESC" />
+                <span /><PreflightKey active={isDriveKeyActive(pressedKeys, "NITRO")} label="N" /><span />
               </div>
               <ul className="control-bindings">
                 <li><kbd>W / ↑</kbd><span>THROTTLE<small>Forward</small></span></li>
@@ -726,7 +726,6 @@ function PreflightScreen() {
                 <li><kbd>S / ↓</kbd><span>REVERSE<small>Backward</small></span></li>
                 <li><kbd>D / →</kbd><span>STEER RIGHT<small>Right</small></span></li>
                 <li><kbd>N</kbd><span>NITRO<small>Hold with forward</small></span></li>
-                <li><kbd>ESC</kbd><span>END RIDE<small>Emergency stop</small></span></li>
               </ul>
               <p className="success-line"><CheckCircle size={22} /> Keyboard input is ready</p>
             </article>
@@ -742,7 +741,7 @@ function PreflightScreen() {
 }
 
 function PreflightKey({ active, alias, label }: { readonly active: boolean; readonly alias?: string; readonly label: string }) {
-  return <kbd aria-pressed={active} className={active ? "pressed" : ""}>{label}{alias ? <small>/ {alias}</small> : null}</kbd>;
+  return <kbd aria-pressed={active} className={active ? "pressed" : ""}>{label}{alias ? <small>/{alias}</small> : null}</kbd>;
 }
 
 function QueueScreen({
@@ -903,15 +902,6 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
       const logicalKey = controlKeyForCode(event.code);
       if (!logicalKey) return;
       event.preventDefault();
-      if (logicalKey === "STOP") {
-        if (pressed) {
-          pressedRef.current = new Set();
-          const neutral = { steering: 0 as const, throttle: 0 as const, nitro: false };
-          setControl(neutral);
-          loopRef.current?.disarm("escape_pressed");
-        }
-        return;
-      }
       pressedRef.current = updatePressedKeys(pressedRef.current, event.code, pressed);
       const next = controlIntentFromPressedKeys(pressedRef.current);
       setControl(next);
