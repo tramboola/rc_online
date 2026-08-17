@@ -6,30 +6,21 @@ import {
   DotsThree,
   TerminalWindow,
 } from "@phosphor-icons/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { apiRequest } from "./api-client";
 import type { OperationalStatus } from "./operational-status";
-import {
-  createAdminDriveSession,
-  saveDriveSession,
-} from "./ride-session-client";
 
-type LoadingStatus = "connecting" | "connected" | "failed";
+export type ConnectionLoadingStatus = "connecting" | "connected" | "failed";
 
-type SystemLogEntry = {
+export type ConnectionLogEntry = {
   time: string;
   code: string;
   message: string;
   tone?: "default" | "success" | "danger";
 };
 
-const fallbackCarId = "40000000-0000-4000-8000-000000000001";
-const rideId = "30000000-0000-4000-8000-000000000003";
-const offerId = "30000000-0000-4000-8000-000000000002";
-
-const systemLogEntries: SystemLogEntry[] = [
+const systemLogEntries: ConnectionLogEntry[] = [
   { time: "14:24:01", code: "BOOT", message: "Boot sequence started" },
   { time: "14:24:02", code: "SYS", message: "Initializing core modules" },
   { time: "14:24:03", code: "NET", message: "Connecting to RC Mania servers" },
@@ -60,132 +51,27 @@ export function getConnectionUrl(carId: string): string {
   return `/loading?car=${encodeURIComponent(carId)}`;
 }
 
-function wait(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-}
+export type ConnectionLoadingOverlayProps = {
+  activeStep: number;
+  entries: readonly ConnectionLogEntry[];
+  errorMessage: string;
+  onRetry: () => void;
+  onReturn: () => void;
+  status: ConnectionLoadingStatus;
+};
 
-export function ConnectionLoadingScreen({
-  adminAccess,
-  mockMode,
-  operationalStatus,
-}: {
-  adminAccess: boolean;
-  mockMode: boolean;
-  operationalStatus?: OperationalStatus | undefined;
-}) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const demoMode = searchParams.get("demo") === "1";
-  const carId = searchParams.get("car") ?? fallbackCarId;
-  const [activeStep, setActiveStep] = useState(0);
-  const [visibleLogCount, setVisibleLogCount] = useState(1);
-  const [status, setStatus] = useState<LoadingStatus>("connecting");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [attempt, setAttempt] = useState(0);
-  const [reducedMotion, setReducedMotion] = useState(false);
+export function ConnectionLoadingOverlay({
+  activeStep,
+  entries,
+  errorMessage,
+  onRetry,
+  onReturn,
+  status,
+}: ConnectionLoadingOverlayProps) {
   const activeSegments = useMemo(
     () => getActiveLoadingSegments(activeStep),
     [activeStep],
   );
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotionPreference = () => setReducedMotion(media.matches);
-    updateMotionPreference();
-    media.addEventListener("change", updateMotionPreference);
-    return () => media.removeEventListener("change", updateMotionPreference);
-  }, []);
-
-  useEffect(() => {
-    if (reducedMotion) {
-      setVisibleLogCount(systemLogEntries.length);
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setVisibleLogCount((count) => Math.min(count + 1, systemLogEntries.length));
-    }, 360);
-    return () => window.clearInterval(timer);
-  }, [attempt, reducedMotion]);
-
-  useEffect(() => {
-    if (reducedMotion || status !== "connecting") return;
-    const timer = window.setInterval(() => {
-      setActiveStep((step) => (step + 1) % 7);
-    }, 420);
-    return () => window.clearInterval(timer);
-  }, [reducedMotion, status]);
-
-  useEffect(() => {
-    if (demoMode) return;
-
-    let cancelled = false;
-    let completionTimer: number | undefined;
-
-    const launchTimer = window.setTimeout(() => {
-      void (async () => {
-        const startedAt = Date.now();
-        setStatus("connecting");
-        setErrorMessage("");
-        setActiveStep(0);
-        setVisibleLogCount(reducedMotion ? systemLogEntries.length : 1);
-
-        try {
-          if (adminAccess && operationalStatus?.state === "ready") {
-            const session = await createAdminDriveSession(carId);
-            saveDriveSession(session);
-          } else {
-            try {
-              await apiRequest(`/v1/ride-offers/${offerId}/accept`, {
-                method: "POST",
-                body: JSON.stringify({ carId }),
-              });
-              await apiRequest(`/v1/rides/${rideId}/negotiate`, {
-                method: "POST",
-                body: "{}",
-              });
-            } catch {
-              // Simulation remains deterministic when the API is intentionally offline.
-            }
-          }
-
-          const remaining = Math.max(0, 3200 - (Date.now() - startedAt));
-          await wait(remaining);
-          if (cancelled) return;
-
-          setVisibleLogCount(systemLogEntries.length);
-          setStatus("connected");
-          completionTimer = window.setTimeout(() => {
-            if (!cancelled) router.replace("/ride");
-          }, 700);
-        } catch (error) {
-          if (cancelled) return;
-          setVisibleLogCount(systemLogEntries.length);
-          setErrorMessage(
-            error instanceof Error ? error.message : "Could not connect to the car",
-          );
-          setStatus("failed");
-        }
-      })();
-    }, 0);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(launchTimer);
-      if (completionTimer !== undefined) window.clearTimeout(completionTimer);
-    };
-  }, [
-    adminAccess,
-    attempt,
-    carId,
-    demoMode,
-    mockMode,
-    operationalStatus,
-    reducedMotion,
-    router,
-  ]);
-
-  const visibleEntries = systemLogEntries.slice(0, visibleLogCount);
   const statusLabel = status === "connected"
     ? "CONNECTED"
     : status === "failed"
@@ -245,16 +131,16 @@ export function ConnectionLoadingScreen({
           </header>
 
           <div aria-live="off" className="system-log-lines" role="log">
-            {visibleEntries.map((entry) => (
-              <p className={`log-line tone-${entry.tone ?? "default"}`} key={`${entry.time}-${entry.code}`}>
+            {entries.map((entry) => (
+              <p className={`log-line tone-${entry.tone ?? "default"}`} key={`${entry.time}-${entry.code}-${entry.message}`}>
                 <time>[{entry.time}]</time>
                 <b>[{entry.code}]</b>
                 <span>{entry.message}</span>
               </p>
             ))}
-            {status === "failed" ? (
+            {status === "failed" && errorMessage && !entries.some((entry) => entry.message === errorMessage) ? (
               <p className="log-line tone-danger">
-                <time>[14:24:20]</time>
+                <time>[--:--:--]</time>
                 <b>[ERROR]</b>
                 <span>{errorMessage}</span>
               </p>
@@ -263,14 +149,11 @@ export function ConnectionLoadingScreen({
 
           {status === "failed" ? (
             <div className="connection-error-actions">
-              <button
-                onClick={() => setAttempt((current) => current + 1)}
-                type="button"
-              >
+              <button onClick={onRetry} type="button">
                 <ArrowCounterClockwise aria-hidden="true" size={18} weight="bold" />
                 RETRY CONNECTION
               </button>
-              <button onClick={() => router.push("/queue")} type="button">
+              <button onClick={onReturn} type="button">
                 <ArrowLeft aria-hidden="true" size={18} weight="bold" />
                 RETURN TO QUEUE
               </button>
@@ -279,5 +162,57 @@ export function ConnectionLoadingScreen({
         </section>
       </section>
     </main>
+  );
+}
+
+export function ConnectionLoadingScreen(_props: {
+  adminAccess: boolean;
+  mockMode: boolean;
+  operationalStatus?: OperationalStatus | undefined;
+}) {
+  const router = useRouter();
+  const [activeStep, setActiveStep] = useState(0);
+  const [visibleLogCount, setVisibleLogCount] = useState(1);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotionPreference = () => setReducedMotion(media.matches);
+    updateMotionPreference();
+    media.addEventListener("change", updateMotionPreference);
+    return () => media.removeEventListener("change", updateMotionPreference);
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setVisibleLogCount(systemLogEntries.length);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setVisibleLogCount((count) => Math.min(count + 1, systemLogEntries.length));
+    }, 360);
+    return () => window.clearInterval(timer);
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion) return;
+    const timer = window.setInterval(() => {
+      setActiveStep((step) => (step + 1) % 7);
+    }, 420);
+    return () => window.clearInterval(timer);
+  }, [reducedMotion]);
+
+  const visibleEntries = systemLogEntries.slice(0, visibleLogCount);
+
+  return (
+    <ConnectionLoadingOverlay
+      activeStep={activeStep}
+      entries={visibleEntries}
+      errorMessage=""
+      onRetry={() => undefined}
+      onReturn={() => router.push("/queue")}
+      status="connecting"
+    />
   );
 }
