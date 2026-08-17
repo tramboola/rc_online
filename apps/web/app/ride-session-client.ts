@@ -8,6 +8,15 @@ export type StoredDriveSession = {
   iceServers: IceServer[];
 };
 
+export type RideConnectionProgress =
+  | "gateway.connecting"
+  | "gateway.connected"
+  | "session.started"
+  | "webrtc.offer-sent"
+  | "webrtc.answer-applied"
+  | "webrtc.direct"
+  | "video.track-received";
+
 type RideSessionClientDependencies = {
   createSocket(url: string): WebSocket;
   createPeer(configuration: RTCConfiguration): RTCPeerConnection;
@@ -30,6 +39,7 @@ export class RideSessionClient {
   onStream: (stream: MediaStream) => void = () => undefined;
   onState: (state: "CONNECTING" | "DIRECT" | "DISCONNECTED") => void = () => undefined;
   onError: (message: string) => void = () => undefined;
+  onProgress: (event: RideConnectionProgress) => void = () => undefined;
 
   constructor(session: StoredDriveSession, dependencies: RideSessionClientDependencies = defaultDependencies) {
     this.#session = session;
@@ -43,6 +53,7 @@ export class RideSessionClient {
   connect(): void {
     if (this.#socket || this.#closed) return;
     this.onState("CONNECTING");
+    this.onProgress("gateway.connecting");
     const iceServers: RTCIceServer[] = this.#session.iceServers.map((server) => ({
       urls: server.urls,
       ...(server.username === undefined ? {} : { username: server.username }),
@@ -55,7 +66,10 @@ export class RideSessionClient {
     this.#reliable = peer.createDataChannel("control-reliable", { ordered: true });
     peer.ontrack = (event) => {
       const stream = event.streams[0];
-      if (stream) this.onStream(stream);
+      if (stream) {
+        this.onProgress("video.track-received");
+        this.onStream(stream);
+      }
     };
     peer.onicecandidate = (event) => {
       if (!event.candidate) return;
@@ -69,13 +83,19 @@ export class RideSessionClient {
       });
     };
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === "connected") this.onState("DIRECT");
+      if (peer.connectionState === "connected") {
+        this.onProgress("webrtc.direct");
+        this.onState("DIRECT");
+      }
       if (["failed", "closed", "disconnected"].includes(peer.connectionState)) this.onState("DISCONNECTED");
     };
 
     const socket = this.#dependencies.createSocket(this.#session.gatewayUrl);
     this.#socket = socket;
-    socket.onopen = () => socket.send(JSON.stringify({ v: 1, type: "browser.authenticate", ticket: this.#session.ticket }));
+    socket.onopen = () => {
+      this.onProgress("gateway.connected");
+      socket.send(JSON.stringify({ v: 1, type: "browser.authenticate", ticket: this.#session.ticket }));
+    };
     socket.onmessage = (event) => void this.#handleMessage(String(event.data));
     socket.onerror = () => this.onError("Gateway connection failed");
     socket.onclose = () => this.onState("DISCONNECTED");
@@ -101,17 +121,20 @@ export class RideSessionClient {
       }
       if (message.type === "session.start") {
         if (message.sessionId !== this.#session.sessionId) throw new Error("Unexpected session");
+        this.onProgress("session.started");
         const offer = await this.#peer?.createOffer();
         if (!offer || !this.#peer) throw new Error("Could not create WebRTC offer");
         await this.#peer.setLocalDescription(offer);
         const sdp = this.#peer.localDescription?.sdp;
         if (!sdp) throw new Error("WebRTC offer has no SDP");
         this.#send({ v: 1, type: "signal.offer", sessionId: this.#session.sessionId, sdp });
+        this.onProgress("webrtc.offer-sent");
         return;
       }
       if (message.type === "signal.answer") {
         if (message.sessionId !== this.#session.sessionId) throw new Error("Unexpected session");
         await this.#peer?.setRemoteDescription({ type: "answer", sdp: message.sdp });
+        this.onProgress("webrtc.answer-applied");
         return;
       }
       if (message.type === "signal.ice") {
