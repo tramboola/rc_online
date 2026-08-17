@@ -94,7 +94,7 @@ class CliTests(unittest.TestCase):
         self.assertAlmostEqual(clock.now, 6.1)
         self.assertTrue(output.closed)
 
-    def test_motor_reverse_releases_brake_then_requests_reverse_for_two_seconds(self) -> None:
+    def test_motor_reverse_requests_reverse_directly_for_two_seconds(self) -> None:
         clock = FakeClock()
         output = FakeOutput()
         result = main(
@@ -110,12 +110,10 @@ class CliTests(unittest.TestCase):
                 (1500, 1500),
                 (1500, 1250),
                 (1500, 1500),
-                (1500, 1250),
-                (1500, 1500),
             ],
         )
         self.assertEqual(output.commands[-1], (1500, 1500))
-        self.assertAlmostEqual(clock.now, 6.9)
+        self.assertAlmostEqual(clock.now, 3.6)
         self.assertTrue(output.closed)
 
 

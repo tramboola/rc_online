@@ -42,22 +42,22 @@ describe("BrowserControlLoop", () => {
     const loop = new BrowserControlLoop(sessionId);
     loop.bindChannels(fast, reliable);
     loop.arm();
-    loop.setInput({ steering: -1, throttle: 1, brake: false, nitro: true });
+    loop.setInput({ steering: -1, throttle: 1, nitro: true });
     loop.start();
     vi.advanceTimersByTime(20);
 
     expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).toMatchObject({
-      v: 2,
+      v: 3,
       type: "control.intent",
       sessionId,
       sequence: 1,
       steering: -1,
       throttle: 1,
-      brake: false,
       nitro: true,
       armed: true
     });
-    expect(JSON.parse(String(vi.mocked(reliable.send).mock.calls[0]?.[0]))).toMatchObject({ v: 2, type: "arm", sessionId });
+    expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).not.toHaveProperty("brake");
+    expect(JSON.parse(String(vi.mocked(reliable.send).mock.calls[0]?.[0]))).toMatchObject({ v: 3, type: "arm", sessionId });
     loop.stop();
     expect(JSON.parse(String(vi.mocked(reliable.send).mock.calls.at(-1)?.[0]))).toMatchObject({ type: "neutral", sessionId });
   });
@@ -76,7 +76,7 @@ describe("BrowserControlLoop", () => {
     (reliable as RTCDataChannel & { emit(event: string): void }).emit("open");
 
     expect(JSON.parse(String(vi.mocked(reliable.send).mock.calls[0]?.[0]))).toMatchObject({
-      v: 2,
+      v: 3,
       type: "arm",
       sessionId: "session-1",
     });

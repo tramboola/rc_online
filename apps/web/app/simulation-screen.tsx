@@ -59,6 +59,12 @@ import {
   howItWorksSteps,
 } from "./how-it-works-content";
 import { getLeaderboardPresentation } from "./leaderboard-presentation";
+import {
+  controlIntentFromPressedKeys,
+  controlKeyForCode,
+  isDriveKeyActive,
+  updatePressedKeys,
+} from "./keyboard-control";
 import { RealRideScreen } from "./real-ride-screen";
 import { useViewerCount } from "./use-viewer-count";
 
@@ -649,25 +655,31 @@ function StepRail({ active }: { active: number }) {
 
 function PreflightScreen() {
   const router = useRouter();
-  const [controller, setController] = useState<"keyboard" | "gamepad">("keyboard");
-  const [profile, setProfile] = useState<"soft" | "normal" | "aggressive">("normal");
-  const [testing, setTesting] = useState(false);
-  const [ready, setReady] = useState(true);
+  const [pressedKeys, setPressedKeys] = useState<ReadonlySet<string>>(new Set());
 
-  async function retest() {
-    setTesting(true);
-    try {
-      const result = await apiRequest<{ ready: boolean }>("/v1/preflight-results", {
-        method: "POST",
-        body: JSON.stringify({ latencyMs: 68, controller, profile }),
-      });
-      setReady(result.ready);
-    } catch {
-      setReady(true);
-    } finally {
-      setTesting(false);
-    }
-  }
+  useEffect(() => {
+    const update = (event: KeyboardEvent, pressed: boolean) => {
+      if (!controlKeyForCode(event.code)) return;
+      if (event.code.startsWith("Arrow")) event.preventDefault();
+      setPressedKeys((current) => updatePressedKeys(current, event.code, pressed));
+    };
+    const keyDown = (event: KeyboardEvent) => update(event, true);
+    const keyUp = (event: KeyboardEvent) => update(event, false);
+    const clear = () => setPressedKeys(new Set());
+    const visibility = () => {
+      if (document.visibilityState !== "visible") clear();
+    };
+    window.addEventListener("keydown", keyDown);
+    window.addEventListener("keyup", keyUp);
+    window.addEventListener("blur", clear);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.removeEventListener("keydown", keyDown);
+      window.removeEventListener("keyup", keyUp);
+      window.removeEventListener("blur", clear);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, []);
 
   return (
     <div className="page desktop-flow">
@@ -677,17 +689,7 @@ function PreflightScreen() {
         <StepRail active={3} />
         <div className="flow-content">
           <div className="title-row preflight-title">
-            <div><h1>PRE-FLIGHT CHECK</h1><p>Make sure your setup is ready before entering the live queue.</p></div>
-            <div className="readiness-box">
-              <span><small>LATENCY</small><strong>68 <em>ms</em></strong></span>
-              <span><small>STABILITY</small><strong>GOOD</strong></span>
-              <span><small>OVERALL</small><strong>{ready ? "READY TO DRIVE" : "NOT READY"}</strong></span>
-            </div>
-          </div>
-          <div className="check-strip">
-            {["HTTPS SECURE", "WEBSOCKET CONNECTED", "WEBRTC CONNECTED", "STUN / TURN REACHABLE", "VIDEO DECODE SUPPORTED"].map((check) => (
-              <span key={check}><CheckCircle size={28} weight="fill" />{check}</span>
-            ))}
+            <div><h1>PRE-FLIGHT CHECK</h1><p>Press the controls once to confirm your keyboard responds in the browser.</p></div>
           </div>
           <section className="preflight-grid">
             <article className="data-panel controller-card">
@@ -695,90 +697,52 @@ function PreflightScreen() {
                 <h2>CONTROLLER SETUP</h2>
                 <div className="segmented">
                   <button
-                    aria-pressed={controller === "keyboard"}
-                    className={controller === "keyboard" ? "selected" : ""}
-                    onClick={() => setController("keyboard")}
+                    aria-pressed="true"
+                    className="selected"
                     type="button"
                   >
                     <Keyboard size={18} /> KEYBOARD
                   </button>
                   <button
-                    aria-pressed={controller === "gamepad"}
-                    className={controller === "gamepad" ? "selected" : ""}
-                    onClick={() => setController("gamepad")}
+                    aria-disabled="true"
+                    aria-pressed="false"
+                    disabled
                     type="button"
                   >
-                    <GameController size={18} /> GAMEPAD
+                    <GameController size={18} /> GAMEPAD <small>COMING SOON</small>
                   </button>
                 </div>
               </div>
-              {controller === "keyboard" ? (
-                <div className="keyboard-asset" aria-label="Keyboard driving controls">
-                  <span /><kbd>W</kbd><span />
-                  <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
-                  <kbd className="keyboard-space">SPACE</kbd>
-                  <kbd>N</kbd>
-                </div>
-              ) : (
-                <img
-                  className="controller-asset"
-                  src="/assets/controller-gamepad.webp"
-                  alt="Configured dual-stick game controller"
-                />
-              )}
+              <div className="keyboard-asset" aria-label="Keyboard driving controls">
+                <span /><PreflightKey active={isDriveKeyActive(pressedKeys, "W")} label="W" alias="↑" /><span />
+                <PreflightKey active={isDriveKeyActive(pressedKeys, "A")} label="A" alias="←" />
+                <PreflightKey active={isDriveKeyActive(pressedKeys, "S")} label="S" alias="↓" />
+                <PreflightKey active={isDriveKeyActive(pressedKeys, "D")} label="D" alias="→" />
+                <span /><PreflightKey active={isDriveKeyActive(pressedKeys, "NITRO")} label="N" /><PreflightKey active={isDriveKeyActive(pressedKeys, "STOP")} label="ESC" />
+              </div>
               <ul className="control-bindings">
-                {controller === "keyboard" ? (
-                  <>
-                    <li><kbd>W / ↑</kbd><span>THROTTLE<small>Forward</small></span></li>
-                    <li><kbd>A / D</kbd><span>STEER<small>Left / Right</small></span></li>
-                    <li><kbd>S / ↓</kbd><span>REVERSE<small>Backward</small></span></li>
-                    <li><kbd>SPACE</kbd><span>BRAKE<small>Hold to brake</small></span></li>
-                    <li><kbd>N</kbd><span>NITRO<small>Hold with forward</small></span></li>
-                    <li><kbd>ESC</kbd><span>END RIDE<small>Emergency stop</small></span></li>
-                  </>
-                ) : (
-                  <>
-                    <li><kbd>LT</kbd><span>STEER<small>Left / Right</small></span></li>
-                    <li><kbd>RT</kbd><span>THROTTLE<small>Forward</small></span></li>
-                    <li><kbd>RB</kbd><span>BRAKE / REVERSE<small>Backward</small></span></li>
-                    <li><kbd>≡</kbd><span>END RIDE<small>Menu</small></span></li>
-                    <li><kbd>M</kbd><span>MUTE<small>Toggle audio</small></span></li>
-                  </>
-                )}
+                <li><kbd>W / ↑</kbd><span>THROTTLE<small>Forward</small></span></li>
+                <li><kbd>A / ←</kbd><span>STEER LEFT<small>Left</small></span></li>
+                <li><kbd>S / ↓</kbd><span>REVERSE<small>Backward</small></span></li>
+                <li><kbd>D / →</kbd><span>STEER RIGHT<small>Right</small></span></li>
+                <li><kbd>N</kbd><span>NITRO<small>Hold with forward</small></span></li>
+                <li><kbd>ESC</kbd><span>END RIDE<small>Emergency stop</small></span></li>
               </ul>
-              <p className="success-line"><CheckCircle size={22} /> All required inputs assigned</p>
-            </article>
-            <article className="data-panel calibration-card">
-              <h2>CALIBRATION</h2>
-              <label>STEERING CENTER<input type="range" defaultValue="50" /></label>
-              <label>THROTTLE RANGE<input type="range" defaultValue="100" /></label>
-              <label>DEAD ZONE<input type="range" defaultValue="8" /></label>
-              <h3>DRIVING PROFILE</h3>
-              <div className="profile-options">
-                {(["soft", "normal", "aggressive"] as const).map((item) => (
-                  <button
-                    aria-pressed={profile === item}
-                    className={profile === item ? "selected" : ""}
-                    key={item}
-                    onClick={() => setProfile(item)}
-                    type="button"
-                  >
-                    {item === "soft" ? <ShieldCheck size={28} /> : item === "normal" ? <Gauge size={28} /> : <Lightning size={28} />}
-                    <span>{item.toUpperCase()}</span>
-                  </button>
-                ))}
-              </div>
+              <p className="success-line"><CheckCircle size={22} /> Keyboard input is ready</p>
             </article>
           </section>
           <section className="neutral-panel data-panel">
-            <IconLabel icon={ShieldCheck} title="NEUTRAL TEST PASSED" subtitle="All controls return to neutral. You're good to go." tone="lime" />
-            <ActionButton tone="cyan" onClick={() => void retest()}>{testing ? "TESTING…" : "RETEST"}</ActionButton>
-            <ActionButton disabled={!ready} onClick={() => router.push("/queue")}>CONTINUE TO QUEUE</ActionButton>
+            <IconLabel icon={Keyboard} title="KEYBOARD READY" subtitle="WASD and arrow keys use the same controls." tone="lime" />
+            <ActionButton onClick={() => router.push("/queue")}>CONTINUE TO QUEUE</ActionButton>
           </section>
         </div>
       </main>
     </div>
   );
+}
+
+function PreflightKey({ active, alias, label }: { readonly active: boolean; readonly alias?: string; readonly label: string }) {
+  return <kbd aria-pressed={active} className={active ? "pressed" : ""}>{label}{alias ? <small>/ {alias}</small> : null}</kbd>;
 }
 
 function QueueScreen({
@@ -899,10 +863,11 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
   const router = useRouter();
   const videoStatusLabel = getVideoStatusLabel(mockMode);
   const loopRef = useRef<BrowserControlLoop | null>(null);
+  const pressedRef = useRef<ReadonlySet<string>>(new Set());
   const [muted, setMuted] = useState(mockMode);
   const [remaining, setRemaining] = useState(138);
   const [lapTime, setLapTime] = useState(31842);
-  const [control, setControl] = useState({ steering: 0, throttle: 0, brake: 0 });
+  const [control, setControl] = useState({ steering: 0, throttle: 0, nitro: false });
 
   useEffect(() => {
     const loop = new BrowserControlLoop(rideId);
@@ -910,7 +875,8 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
     loop.start();
     const neutral = () => {
       loop.neutral("browser_focus_lost");
-      setControl({ steering: 0, throttle: 0, brake: 1000 });
+      pressedRef.current = new Set();
+      setControl({ steering: 0, throttle: 0, nitro: false });
     };
     const onVisibility = () => {
       if (document.visibilityState !== "visible") neutral();
@@ -934,18 +900,22 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
 
   useEffect(() => {
     function key(event: KeyboardEvent, pressed: boolean) {
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d"].includes(event.key)) {
-        event.preventDefault();
+      const logicalKey = controlKeyForCode(event.code);
+      if (!logicalKey) return;
+      event.preventDefault();
+      if (logicalKey === "STOP") {
+        if (pressed) {
+          pressedRef.current = new Set();
+          const neutral = { steering: 0 as const, throttle: 0 as const, nitro: false };
+          setControl(neutral);
+          loopRef.current?.disarm("escape_pressed");
+        }
+        return;
       }
-      setControl((current) => {
-        const next = { ...current };
-        if (event.key === "ArrowUp" || event.key.toLowerCase() === "w") next.throttle = pressed ? 700 : 0;
-        if (event.key === "ArrowDown" || event.key.toLowerCase() === "s") next.brake = pressed ? 800 : 0;
-        if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") next.steering = pressed ? -700 : 0;
-        if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") next.steering = pressed ? 700 : 0;
-        loopRef.current?.setInput(next);
-        return next;
-      });
+      pressedRef.current = updatePressedKeys(pressedRef.current, event.code, pressed);
+      const next = controlIntentFromPressedKeys(pressedRef.current);
+      setControl(next);
+      loopRef.current?.setInput(next);
     }
     const down = (event: KeyboardEvent) => key(event, true);
     const up = (event: KeyboardEvent) => key(event, false);

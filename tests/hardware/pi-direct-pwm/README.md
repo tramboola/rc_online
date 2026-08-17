@@ -61,11 +61,10 @@ disable PWM. Stop immediately if the linkage reaches a mechanical stop.
 
 The forward command waits three seconds at neutral, requests a 50% command
 (1750 microseconds) for two seconds, returns to neutral, then disables PWM.
-The reverse command handles common forward/brake/reverse ESC behaviour: it
-requests 1250 microseconds for 0.3 seconds as the brake command, returns to
-neutral for 0.5 seconds, then requests 1250 microseconds for two seconds as
-the reverse command. An ESC configured for forward/brake-only mode will still
-need to be reprogrammed before reverse can work.
+The reverse command requests the configured 1250 microsecond reverse endpoint
+directly for two seconds, returns to neutral, then disables PWM. An ESC that
+uses a double-action reverse interprets the first press itself; the software
+does not insert intermediate phases.
 
 ## Level 2: local browser keyboard control
 
@@ -83,40 +82,16 @@ The command prints a tokenized URL. Open it on the controlling computer, click
 **Arm keyboard**, then use:
 
 - `W` / up arrow: forward at 63%;
-- hold `N` together with `W` / up arrow: forward Nitro at 100%; `N` alone,
-  during reverse, or while braking has no effect;
-- `S` / down arrow: from unknown or forward direction, 60 ms fixed brake and
-  60 ms neutral before reverse at 63%; after completed reverse and ordinary
-  neutral, another `S` resumes reverse immediately;
-- `Space`: direction-aware brake while held; after forward it sends the reverse
-  brake endpoint, after reverse it sends the forward brake endpoint, and
-  steering stays active; releasing a reverse-origin brake while `S` remains
-  held sends 60 ms neutral before resuming reverse, never 1250 microseconds;
-- `A` / left arrow and `D` / right arrow: full steering, including while braking;
+- hold `N` together with `W` / up arrow: forward Nitro at 100%; `N` alone or
+  during reverse has no effect;
+- `S` / down arrow: direct reverse at the configured 1250 microsecond endpoint;
+- releasing `S` / down arrow: immediate neutral at 1500 microseconds;
+- `A` / left arrow and `D` / right arrow: full steering;
 - `Escape` or Stop: neutral and disarm.
 
-The 63% drive setting means 1658 microseconds forward and 1342 microseconds
-reverse, relative to the verified 1250-1750 microsecond stand cap. Nitro is
-1750 microseconds forward. These commands never unlock the ESC's full pulse
-range.
-
-The initial reverse handshake is used only when the remembered drive direction
-is unknown or forward. Once reverse has completed, ordinary armed neutral keeps
-that direction knowledge, so another `S` request returns directly to the fixed
-1342 microsecond reverse command. If `Space` interrupted completed reverse,
-releasing it while `S` remains held first uses only the configured reverse
-neutral interval, then returns to 1342 microseconds; that re-entry path never
-outputs 1250 microseconds.
-
-The brake and neutral phases each default to 60 milliseconds. Tune them for a
-particular ESC, within the 20-1000 millisecond bounds, for example:
-
-```sh
-rc-bench-live --host 0.0.0.0 --public-host office.local \
-  --reverse-brake-ms 120 --reverse-neutral-ms 80
-```
-
-If the ESC does not recognise reverse, increase the neutral interval first.
+Normal forward is 1658 microseconds and Nitro is the 1750 microsecond forward
+endpoint. Reverse is always the configured 1250 microsecond endpoint. The
+software does not remember the prior direction.
 
 For real GPIO, omit `--dry-run`. Keep the car suspended and stop immediately
 if the steering linkage reaches a mechanical stop:
