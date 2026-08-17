@@ -77,6 +77,34 @@ describe("RideSessionClient", () => {
     expect(onStream).toHaveBeenCalledWith(stream);
   });
 
+  it("reports real gateway, signaling, peer, and video milestones", async () => {
+    const { client, socket, peer } = harness();
+    const progress: string[] = [];
+    client.onProgress = (event) => progress.push(event);
+
+    client.connect();
+    socket.readyState = 1;
+    socket.onopen?.();
+    socket.onmessage?.({ data: JSON.stringify({ v: 1, type: "session.start", sessionId: session.sessionId, carId: "566a5cd4-4cd6-4cc5-855e-36bc54c1ae4a", expiresAt: session.expiresAt, iceServers: session.iceServers }) });
+    await vi.waitFor(() => expect(progress).toContain("webrtc.offer-sent"));
+
+    socket.onmessage?.({ data: JSON.stringify({ v: 1, type: "signal.answer", sessionId: session.sessionId, sdp: "v=0 answer" }) });
+    await vi.waitFor(() => expect(progress).toContain("webrtc.answer-applied"));
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+    peer.ontrack?.({ streams: [{} as MediaStream] });
+
+    expect(progress).toEqual([
+      "gateway.connecting",
+      "gateway.connected",
+      "session.started",
+      "webrtc.offer-sent",
+      "webrtc.answer-applied",
+      "webrtc.direct",
+      "video.track-received",
+    ]);
+  });
+
   it("ends and closes every transport", () => {
     const { client, socket, peer, fast, reliable } = harness();
     client.connect();

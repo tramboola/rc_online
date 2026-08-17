@@ -17,6 +17,7 @@ const knownScreens = new Set<ScreenName>([
   "leaderboard",
   "preflight",
   "queue",
+  "loading",
   "ride",
   "results",
   "operator",
@@ -41,7 +42,7 @@ export default async function ScreenPage({
   if (
     mockMode &&
     adminAccess &&
-    (resolvedScreen === "home" || resolvedScreen === "queue")
+    (resolvedScreen === "home" || resolvedScreen === "queue" || resolvedScreen === "loading")
   ) {
     const databaseUrl = process.env.DATABASE_URL;
     operationalStatus = databaseUrl

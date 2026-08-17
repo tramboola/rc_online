@@ -1,9 +1,10 @@
 "use client";
 
 import { Flag, GameController, ShieldCheck, WifiHigh } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { ConnectionLoadingOverlay } from "./connection-loading-screen";
 import { BrowserControlLoop } from "./control-loop";
 import {
   controlIntentFromPressedKeys,
@@ -12,7 +13,13 @@ import {
   type KeyboardControlIntent,
   updatePressedKeys,
 } from "./keyboard-control";
-import { loadDriveSession, RideSessionClient } from "./ride-session-client";
+import {
+  createRideConnectionAttemptDependencies,
+  RideConnectionAttempt,
+  type RideConnectionSnapshot,
+} from "./ride-connection-attempt";
+
+const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 
 const NEUTRAL_CONTROL: KeyboardControlIntent = {
   steering: 0,
@@ -21,10 +28,22 @@ const NEUTRAL_CONTROL: KeyboardControlIntent = {
   nitro: false,
 };
 
+function initialConnectionSnapshot(): RideConnectionSnapshot {
+  return {
+    activeStep: 0,
+    entries: [],
+    errorMessage: "",
+    status: "connecting",
+  };
+}
+
 export function RealRideScreen() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const carId = searchParams.get("car") ?? fallbackCarId;
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const clientRef = useRef<RideSessionClient | null>(null);
+  const videoAttemptRef = useRef<RideConnectionAttempt | null>(null);
+  const attemptRef = useRef<RideConnectionAttempt | null>(null);
   const loopRef = useRef<BrowserControlLoop | null>(null);
   const armedRef = useRef(false);
   const pressedRef = useRef<ReadonlySet<string>>(new Set());
@@ -34,38 +53,70 @@ export function RealRideScreen() {
   const [error, setError] = useState<string | null>(null);
   const [videoMode, setVideoMode] = useState("WAITING FOR VIDEO");
   const [control, setControl] = useState<KeyboardControlIntent>(NEUTRAL_CONTROL);
+  const [connection, setConnection] = useState<RideConnectionSnapshot>(initialConnectionSnapshot);
+  const [attemptKey, setAttemptKey] = useState(0);
+  const [readyLoop, setReadyLoop] = useState<BrowserControlLoop | null>(null);
 
   useEffect(() => {
-    const session = loadDriveSession();
-    if (!session) {
-      setState("DISCONNECTED");
-      setError("No active drive session. Select RC Mania One again.");
-      return;
-    }
-    const client = new RideSessionClient(session);
-    const loop = new BrowserControlLoop(session.sessionId, (isArmed) => {
-      armedRef.current = isArmed;
-      setArmed(isArmed);
-    });
-    clientRef.current = client;
-    loopRef.current = loop;
-    client.onState = setState;
-    client.onError = setError;
-    client.onStream = (stream) => {
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        void videoRef.current.play().catch(() => undefined);
-      }
-      const settings = stream.getVideoTracks()[0]?.getSettings();
-      setVideoMode(settings?.width && settings.height
-        ? `${settings.width}×${settings.height}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} FPS` : ""}`
-        : "LIVE VIDEO");
+    setConnection(initialConnectionSnapshot());
+    setState("CONNECTING");
+    setError(null);
+    setReadyLoop(null);
+    loopRef.current = null;
+    videoAttemptRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    armedRef.current = false;
+    setArmed(false);
+
+    const dependencies = createRideConnectionAttemptDependencies((sessionId) => (
+      new BrowserControlLoop(sessionId, (isArmed) => {
+        armedRef.current = isArmed;
+        setArmed(isArmed);
+      })
+    ));
+    const attempt = new RideConnectionAttempt(carId, {
+      onSnapshot: (snapshot) => {
+        setConnection(snapshot);
+        if (snapshot.status === "failed") {
+          setState("DISCONNECTED");
+          setError(snapshot.errorMessage);
+        }
+      },
+      onStream: (stream) => {
+        const video = videoRef.current;
+        if (video) {
+          videoAttemptRef.current = attempt;
+          video.srcObject = stream;
+          void video.play().catch(() => {
+            attempt.fail("Browser could not start the camera video");
+          });
+        }
+        const settings = stream.getVideoTracks()[0]?.getSettings();
+        setVideoMode(settings?.width && settings.height
+          ? `${settings.width}×${settings.height}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} FPS` : ""}`
+          : "LIVE VIDEO");
+      },
+      onReady: (loop) => {
+        const browserLoop = loop as BrowserControlLoop;
+        loopRef.current = browserLoop;
+        setReadyLoop(browserLoop);
+        setState("DIRECT");
+        setError(null);
+      },
+    }, dependencies);
+    attemptRef.current = attempt;
+    void attempt.start();
+
+    return () => {
+      attempt.close("ride connection replaced");
+      if (videoAttemptRef.current === attempt) videoAttemptRef.current = null;
+      if (attemptRef.current === attempt) attemptRef.current = null;
     };
-    client.connect();
-    const channels = client.channels;
-    if (channels) loop.bindChannels(channels.fast, channels.reliable);
-    loop.start();
-    loop.arm();
+  }, [attemptKey, carId]);
+
+  useEffect(() => {
+    if (!readyLoop) return;
+    const loop = readyLoop;
 
     const applyPressedKeys = (nextPressed: ReadonlySet<string>) => {
       pressedRef.current = nextPressed;
@@ -108,20 +159,37 @@ export function RealRideScreen() {
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       document.removeEventListener("visibilitychange", onVisibility);
-      loop.stop();
-      client.close("ride screen closed");
+      applyPressedKeys(new Set());
     };
-  }, []);
+  }, [readyLoop]);
 
   function end(): void {
     loopRef.current?.disarm("operator ended ride");
-    clientRef.current?.close("operator ended ride");
+    attemptRef.current?.close("operator ended ride");
+    router.push("/queue");
+  }
+
+  function retryConnection(): void {
+    attemptRef.current?.close("retrying connection");
+    setAttemptKey((current) => current + 1);
+  }
+
+  function returnToQueue(): void {
+    attemptRef.current?.close("returning to queue");
     router.push("/queue");
   }
 
   return (
     <div className="ride-page real-ride-page">
-      <video aria-label="Live onboard camera from RC Mania One" autoPlay className="drive-poster" muted playsInline ref={videoRef} />
+      <video
+        aria-label="Live onboard camera from RC Mania One"
+        autoPlay
+        className="drive-poster"
+        muted
+        onLoadedData={() => videoAttemptRef.current?.markVideoLoadedData()}
+        playsInline
+        ref={videoRef}
+      />
       <div className="ride-shade" />
       <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · NO AUDIO</b></div>
       <section className="real-ride-status data-panel" aria-live="polite">
@@ -149,6 +217,18 @@ export function RealRideScreen() {
       <div className="real-ride-actions">
         <button className="end-ride" onClick={end} type="button"><Flag size={28} /> END SESSION</button>
       </div>
+      {connection.status !== "connected" ? (
+        <div className="connection-loading-overlay">
+          <ConnectionLoadingOverlay
+            activeStep={connection.activeStep}
+            entries={connection.entries}
+            errorMessage={connection.errorMessage}
+            onRetry={retryConnection}
+            onReturn={returnToQueue}
+            status={connection.status}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

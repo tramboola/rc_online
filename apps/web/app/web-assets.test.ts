@@ -48,4 +48,15 @@ describe("web raster assets", () => {
     expect(width).toBeGreaterThan(0);
     expect(height).toBeGreaterThan(0);
   });
+
+  test("ships the loading screen artwork as WebP", async () => {
+    for (const fileName of [
+      "loading-background.webp",
+      "loading-logo.webp",
+    ]) {
+      const contents = await readFile(path.join(publicDir, "assets", fileName));
+      expect(contents.subarray(0, 4).toString("ascii")).toBe("RIFF");
+      expect(contents.subarray(8, 12).toString("ascii")).toBe("WEBP");
+    }
+  });
 });

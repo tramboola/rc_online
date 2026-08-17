@@ -187,3 +187,71 @@ No actionable P0, P1, or P2 differences remain.
 No blocking follow-up. The glow intensity of the raster track can be tuned later without changing its geometry or payload class.
 
 final result: passed
+
+---
+
+# Car connection loading screen design QA — 2026-08-16
+
+## Comparison target
+
+- Source visual truth: `C:\Users\user\Documents\github\RC\loading_page_imgs\ref.PNG`.
+- Browser-rendered implementation: `C:\Users\user\AppData\Local\Temp\rc-loading-desktop.jpg`.
+- Local implementation URL: `http://localhost:3000/loading?demo=1`.
+- Source pixels: 1672 × 941.
+- Implementation pixels: 1672 × 941 at device scale factor 1.
+- Normalization: the in-app Browser viewport was 1672 × 958 CSS px and the implementation was clipped to the top 1672 × 941 CSS px so both comparison inputs have identical pixel dimensions and no browser chrome.
+- State: demo mode, `CONNECTING`, all 19 mock log entries visible, active loading segments 4 and 5.
+
+## Full-view comparison evidence
+
+- Combined source/implementation view: `C:\Users\user\AppData\Local\Temp\rc-loading-comparison-full.png` (reference left, implementation right).
+- The supplied background and transparent logo retain the same subject, crop, proportions, color balance, and focal points as the reference.
+- Logo, connection label, loading rail, and log panel follow the same centered vertical hierarchy. The final panel top aligns at approximately 407 px in both images; panel width is approximately 1030 px in both images.
+- The requested product copy intentionally changes `LOADING SESSION DATA` to `CONNECTING TO CAR`; the connection status and system-log content otherwise preserve the reference structure.
+
+## Focused region comparison evidence
+
+- Header and loading rail: `C:\Users\user\AppData\Local\Temp\rc-loading-comparison-top.png`.
+  - Logo scale, title tracking, red accents, eight-segment rail, and the two adjacent green segments were compared at equal size.
+- System log: `C:\Users\user\AppData\Local\Temp\rc-loading-comparison-panel.png`.
+  - Header height, timestamp/code/message columns, 19-line density, status color, panel width, and bottom alignment were compared at equal size.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the supplied raster logo is unchanged; existing Oswald handles display/status labels, while Consolas provides the narrow monospace system log. Hierarchy, wrapping, alignment, and line density remain readable and close to the source. The implementation log is marginally heavier than the raster reference, classified as P3 readability polish.
+- Spacing and layout rhythm: desktop composition, rail width, log-panel geometry, section gaps, and vertical rhythm are aligned within roughly 10 px of the source. The final 390 × 844 mobile capture keeps all 19 log lines in the viewport with `bodyWidth=390`, `bodyHeight=844`, and no overflow.
+- Colors and visual tokens: the exact supplied background preserves the black, amber, red, cyan, and blue palette. Status red and active-segment lime match the reference intent with sufficient contrast.
+- Image quality and asset fidelity: `loading-background.webp` is 1672 × 941 and 215,800 bytes; `loading-logo.webp` is 1347 × 193 and 28,780 bytes with transparency preserved. Both render sharply without visible stretching, halos, or missing assets.
+- Copy and content: all 19 timestamps, subsystem codes, and reference log messages are present. `CONNECTING TO CAR` is the only intentional headline deviation and directly implements the user's requested state.
+- Icons: visible utility icons come from the existing Phosphor family. The terminal icon differs slightly from the reference arrow mark and is classified as P3.
+- Accessibility: the screen uses semantic progress/log regions, an announced status, descriptive logo alt text, no decorative background announcement, and a reduced-motion branch that stops the moving pair and reveals the complete log.
+
+## Interaction and responsive checks
+
+- Animated pair changed from segments 1–2 to 4–5 while always containing exactly two adjacent active segments.
+- Demo URL remained `/loading?demo=1` and made no automatic ride transition.
+- Production-style browser flow passed: `/queue` → press `ACCEPT & CONNECT` → `/loading?car=40000000-0000-4000-8000-000000000001` → `/ride`.
+- Ride screen rendered after the connection delay with `END RIDE` visible.
+- Desktop and 390 × 844 mobile states rendered without horizontal overflow, clipping, overlap, or unreadable controls.
+- In-app Browser console warning/error check: no relevant entries.
+
+## Comparison history
+
+1. P2 — the first browser capture placed the whole foreground composition about 35 px above the source.
+   - Fix: increased the desktop shell top offset while retaining compact-height overrides.
+   - Post-fix evidence: `rc-loading-comparison-full.png`; logo and panel anchors align with the source.
+2. P2 — the first pass had only 18 log rows, wider loading geometry, and full-height red panel side rails.
+   - Fix: restored the reference `FINAL` row and exact log wording, reduced the rail width, changed the panel rails to neutral steel, and tuned the monospace font.
+   - Post-fix evidence: `rc-loading-comparison-top.png` and `rc-loading-comparison-panel.png`.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain.
+
+## Follow-up polish
+
+- P3: the source has fine decorative linework around the logo and more intricate clipped panel corners. The supplied logo/background assets do not contain those isolated ornaments, so the implementation keeps them simplified instead of substituting handcrafted CSS or SVG artwork.
+- P3: the Phosphor terminal icon and browser-rendered monospace glyphs are slightly heavier than their raster counterparts.
+- Reduced-motion behavior is implemented but the final in-app Browser session did not emulate the operating-system reduced-motion setting.
+
+final result: passed

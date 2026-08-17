@@ -4,6 +4,7 @@ import type { ScreenName } from "./simulation-screen";
 const restrictedMockScreens = new Set<ScreenName>([
   "preflight",
   "queue",
+  "loading",
   "ride",
   "results",
   "operator",

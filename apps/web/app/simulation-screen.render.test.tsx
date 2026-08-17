@@ -1,11 +1,15 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { SimulationScreen } from "./simulation-screen";
 
+const source = readFileSync(new URL("./simulation-screen.tsx", import.meta.url), "utf8");
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams("demo=1"),
 }));
 
 vi.mock("next-auth/react", () => ({
@@ -53,5 +57,17 @@ describe("driving setup screens", () => {
     expect(markup).not.toContain("Accept within");
     expect(markup).not.toContain("countdown");
     expect(markup).toContain("LEAVE QUEUE");
+    expect(source).toContain("router.push(getRideUrl(selectedCar))");
+    expect(source).not.toContain("router.push(getConnectionUrl(selectedCar))");
+  });
+
+  it("renders the car connection loading screen", () => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen adminAccess mockMode screen="loading" />,
+    );
+
+    expect(markup).toContain("CONNECTING TO CAR");
+    expect(markup).toContain("SYSTEM LOG");
+    expect(markup.match(/data-loading-segment=/g)).toHaveLength(8);
   });
 });
