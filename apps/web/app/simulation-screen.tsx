@@ -31,6 +31,7 @@ import {
   WifiHigh,
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
   type ComponentType,
@@ -234,14 +235,16 @@ function MobileGate() {
 
 function HomeScreen({
   adminAccess,
+  authenticated,
   mockMode,
   operationalStatus,
 }: {
   adminAccess: boolean;
+  authenticated: boolean;
   mockMode: boolean;
   operationalStatus?: OperationalStatus | undefined;
 }) {
-  const presentation = getHomePresentation(mockMode, adminAccess);
+  const presentation = getHomePresentation(mockMode, adminAccess, authenticated);
   const viewerCount = useViewerCount();
   const useOperationalMetrics = mockMode && adminAccess;
   const operationalReady = operationalStatus?.state === "ready";
@@ -296,10 +299,18 @@ function HomeScreen({
             <p className="eyebrow">{presentation.eyebrow}</p>
             <h1>DRIVE IT FOR REAL</h1>
             <p>Control a real RC car from your browser.</p>
-            {presentation.ctaHref ? (
+            {presentation.ctaAction === "navigate" && presentation.ctaHref ? (
               <Link className="hero-link" href={presentation.ctaHref}>
                 {presentation.ctaLabel} <ArrowRight size={28} weight="bold" />
               </Link>
+            ) : presentation.ctaAction === "sign-in" ? (
+              <button
+                className="hero-link"
+                onClick={() => void signIn("google", { redirectTo: "/" })}
+                type="button"
+              >
+                {presentation.ctaLabel} <ArrowRight size={28} weight="bold" />
+              </button>
             ) : (
               <span aria-disabled="true" className="hero-link hero-link-disabled">
                 {presentation.ctaLabel} <Clock size={28} weight="bold" />
@@ -1112,11 +1123,13 @@ function OperatorScreen() {
 
 export function SimulationScreen({
   adminAccess = false,
+  authenticated = false,
   mockMode = false,
   operationalStatus,
   screen,
 }: {
   adminAccess?: boolean;
+  authenticated?: boolean;
   mockMode?: boolean;
   operationalStatus?: OperationalStatus | undefined;
   screen: ScreenName;
@@ -1141,6 +1154,7 @@ export function SimulationScreen({
   return (
     <HomeScreen
       adminAccess={adminAccess}
+      authenticated={authenticated || adminAccess}
       mockMode={mockMode}
       operationalStatus={operationalStatus}
     />

@@ -1,6 +1,7 @@
 export type HomePresentation = {
+  ctaAction: "disabled" | "navigate" | "sign-in";
   ctaHref: string | null;
-  ctaLabel: "COMING SOON" | "START DRIVING";
+  ctaLabel: "COMING SOON" | "SIGN IN TO DRIVE" | "START DRIVING";
   eyebrow: "PREVIEW / COMING SOON" | "LIVE / DIRECT";
   showLiveBadge: boolean;
 };
@@ -8,9 +9,21 @@ export type HomePresentation = {
 export function getHomePresentation(
   mockMode: boolean,
   adminAccess = false,
+  signedIn = false,
 ): HomePresentation {
+  if (!signedIn && !adminAccess) {
+    return {
+      ctaAction: "sign-in",
+      ctaHref: null,
+      ctaLabel: "SIGN IN TO DRIVE",
+      eyebrow: mockMode ? "PREVIEW / COMING SOON" : "LIVE / DIRECT",
+      showLiveBadge: !mockMode,
+    };
+  }
+
   if (mockMode && !adminAccess) {
     return {
+      ctaAction: "disabled",
       ctaHref: null,
       ctaLabel: "COMING SOON",
       eyebrow: "PREVIEW / COMING SOON",
@@ -20,6 +33,7 @@ export function getHomePresentation(
 
   if (mockMode) {
     return {
+      ctaAction: "navigate",
       ctaHref: "/preflight",
       ctaLabel: "START DRIVING",
       eyebrow: "PREVIEW / COMING SOON",
@@ -28,6 +42,7 @@ export function getHomePresentation(
   }
 
   return {
+    ctaAction: "navigate",
     ctaHref: "/preflight",
     ctaLabel: "START DRIVING",
     eyebrow: "LIVE / DIRECT",

@@ -7,8 +7,19 @@ import {
 } from "./home-presentation";
 
 describe("getHomePresentation", () => {
-  test("presents mock mode as a coming-soon preview", () => {
-    expect(getHomePresentation(true)).toEqual({
+  test("invites a signed-out visitor to authenticate before driving", () => {
+    expect(getHomePresentation(true, false, false)).toEqual({
+      ctaAction: "sign-in",
+      ctaHref: null,
+      ctaLabel: "SIGN IN TO DRIVE",
+      eyebrow: "PREVIEW / COMING SOON",
+      showLiveBadge: false,
+    });
+  });
+
+  test("keeps coming soon for a signed-in non-admin during preview", () => {
+    expect(getHomePresentation(true, false, true)).toEqual({
+      ctaAction: "disabled",
       ctaHref: null,
       ctaLabel: "COMING SOON",
       eyebrow: "PREVIEW / COMING SOON",
@@ -16,8 +27,9 @@ describe("getHomePresentation", () => {
     });
   });
 
-  test("keeps the live start-driving presentation outside mock mode", () => {
-    expect(getHomePresentation(false)).toEqual({
+  test("keeps the live start-driving presentation for a signed-in user outside mock mode", () => {
+    expect(getHomePresentation(false, false, true)).toEqual({
+      ctaAction: "navigate",
       ctaHref: "/preflight",
       ctaLabel: "START DRIVING",
       eyebrow: "LIVE / DIRECT",
@@ -27,6 +39,7 @@ describe("getHomePresentation", () => {
 
   test("opens preflight for an administrator without relabeling preview video as live", () => {
     expect(getHomePresentation(true, true)).toEqual({
+      ctaAction: "navigate",
       ctaHref: "/preflight",
       ctaLabel: "START DRIVING",
       eyebrow: "PREVIEW / COMING SOON",

@@ -21,6 +21,7 @@ export default async function HomePage() {
   return (
     <SimulationScreen
       adminAccess={adminAccess}
+      authenticated={Boolean(session?.user.email)}
       mockMode={mockMode}
       operationalStatus={operationalStatus}
       screen="home"

@@ -52,6 +52,7 @@ export default async function ScreenPage({
   return (
     <SimulationScreen
       adminAccess={adminAccess}
+      authenticated={Boolean(session?.user.email)}
       mockMode={mockMode}
       operationalStatus={operationalStatus}
       screen={resolvedScreen}

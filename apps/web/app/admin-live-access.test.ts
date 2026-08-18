@@ -29,6 +29,33 @@ function renderAdministratorScreen(screen: "home" | "queue"): string {
   }));
 }
 
+function renderVisitorHome(authenticated: boolean): string {
+  return renderToStaticMarkup(createElement(SimulationScreen, {
+    authenticated,
+    mockMode: true,
+    screen: "home",
+  }));
+}
+
+describe("home driving access", () => {
+  test("renders an active sign-in CTA for a signed-out visitor", () => {
+    const html = renderVisitorHome(false);
+
+    expect(html).toMatch(
+      /<button[^>]*class="hero-link"[^>]*type="button"[^>]*>.*SIGN IN TO DRIVE.*<\/button>/su,
+    );
+    expect(html).not.toContain("hero-link-disabled");
+  });
+
+  test("keeps the preview CTA disabled for a signed-in non-admin", () => {
+    const html = renderVisitorHome(true);
+
+    expect(html).toContain("COMING SOON");
+    expect(html).toContain("hero-link-disabled");
+    expect(html).not.toContain("SIGN IN TO DRIVE");
+  });
+});
+
 describe("administrator live access", () => {
   test("links the preview home CTA to the standard preflight flow", () => {
     const html = renderAdministratorScreen("home");
