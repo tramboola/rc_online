@@ -769,6 +769,7 @@ function QueueScreen({
 }) {
   const router = useRouter();
   const queueCars = getQueueCars(operationalStatus);
+  const hasAvailableCars = queueCars.length > 0;
   const [selectedCar, setSelectedCar] = useState(queueCars[0]?.id ?? "");
   const fleetUnavailable = operationalStatus?.state === "unavailable";
   const [status, setStatus] = useState("Joining live queue…");
@@ -839,7 +840,11 @@ function QueueScreen({
         </section>
         <section className="offer-panel">
           <div className="offer-heading">
-            <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car when you&apos;re ready.</span></div>
+            {hasAvailableCars ? (
+              <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car when you&apos;re ready.</span></div>
+            ) : (
+              <div><p className="eyebrow">WAITING FOR AVAILABILITY</p><h2>NO CAR IS READY YET</h2><span>Stay in the queue. You can connect as soon as a car comes online.</span></div>
+            )}
           </div>
           <h3>SELECT YOUR CAR</h3>
           <div className="car-choice-grid">

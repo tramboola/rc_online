@@ -697,7 +697,17 @@ p { color: #a9afb3; }
 .keyboard-asset kbd.pressed { color: #021015; background: var(--cyan); box-shadow: 0 0 20px rgba(53, 214, 244, .5); transform: translateY(3px) scale(.97); }
 .controller-card ul { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 8px; }
 .controller-card li { display: flex; gap: 12px; }
-.controller-card .control-bindings kbd { border: 1px solid #68757b; min-width: 33px; height: 28px; display: grid; place-items: center; }
+.controller-card .control-bindings kbd {
+  box-sizing: border-box;
+  width: 64px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid #68757b;
+  display: grid;
+  place-items: center;
+  flex: 0 0 64px;
+  white-space: nowrap;
+}
 .controller-card li span { font-weight: 700; }
 .controller-card li small { display: block; color: var(--muted); font-weight: 500; }
 .success-line { clear: both; border-top: 1px solid #25353c; color: var(--lime); padding-top: 12px; display: flex; gap: 8px; align-items: center; }

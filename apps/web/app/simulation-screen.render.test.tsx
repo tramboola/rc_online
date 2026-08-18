@@ -76,6 +76,26 @@ describe("driving setup screens", () => {
     expect(source).not.toContain("router.push(getConnectionUrl(selectedCar))");
   });
 
+  it("renders a waiting message when no car is available", () => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen
+        adminAccess
+        mockMode
+        operationalStatus={{
+          state: "ready",
+          cars: [],
+          queueCount: 0,
+        }}
+        screen="queue"
+      />,
+    );
+
+    expect(markup).toContain("WAITING FOR AVAILABILITY");
+    expect(markup).toContain("NO CAR IS READY YET");
+    expect(markup).toContain("Stay in the queue. You can connect as soon as a car comes online.");
+    expect(markup).not.toContain("YOUR CAR IS READY");
+  });
+
   it("renders the car connection loading screen", () => {
     const markup = renderToStaticMarkup(
       <SimulationScreen adminAccess mockMode screen="loading" />,
