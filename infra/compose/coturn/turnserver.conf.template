@@ -2,6 +2,8 @@ realm=rcmania.live
 server-name=turn.rcmania.live
 fingerprint
 use-auth-secret
+proc-user=nobody
+proc-group=nogroup
 listening-ip={{TURN_EXTERNAL_IP}}
 relay-ip={{TURN_EXTERNAL_IP}}
 external-ip={{TURN_EXTERNAL_IP}}
@@ -14,13 +16,9 @@ pkey=/etc/letsencrypt/live/turn.rcmania.live/privkey.pem
 stale-nonce=600
 user-quota=12
 total-quota=80
-no-cli
 no-rfc5780
 no-tcp-relay
 no-multicast-peers
-no-loopback-peers
-no-tlsv1
-no-tlsv1_1
 no-dtls
 denied-peer-ip=0.0.0.0-0.255.255.255
 denied-peer-ip=10.0.0.0-10.255.255.255

@@ -24,15 +24,19 @@ certificate_subject=$(openssl s_client -connect "$turn_host:443" -servername "$t
 printf '%s\n' "$certificate_subject" | grep -Fq "DNS:$turn_host"
 
 expires=$(($(date +%s) + 600))
-username="$expires:deployment-smoke"
-credential=$(TURN_SMOKE_USERNAME="$username" TURN_SMOKE_SECRET_FILE="$secret_file" python3 -c 'import base64, hashlib, hmac, os, pathlib; secret = pathlib.Path(os.environ["TURN_SMOKE_SECRET_FILE"]).read_text().strip().encode(); username = os.environ["TURN_SMOKE_USERNAME"].encode(); print(base64.b64encode(hmac.new(secret, username, hashlib.sha1).digest()).decode())')
 
-docker compose --project-name rcmania-turn --env-file "$compose_env_file" --file "$compose_file" exec -T turn \
-  turnutils_uclient -u "$username" -w "$credential" -n 1 -p 3478 -y "$turn_host"
-docker compose --project-name rcmania-turn --env-file "$compose_env_file" --file "$compose_file" exec -T turn \
-  turnutils_uclient -u "$username" -w "$credential" -n 1 -t -p 3478 -y "$turn_host"
-docker compose --project-name rcmania-turn --env-file "$compose_env_file" --file "$compose_file" exec -T turn \
-  turnutils_uclient -u "$username" -w "$credential" -n 1 -S -p 443 -y "$turn_host"
+run_allocation_test() {
+  transport=$1
+  shift
+  username="$expires:deployment-smoke-$transport"
+  credential=$(TURN_SMOKE_USERNAME="$username" TURN_SMOKE_SECRET_FILE="$secret_file" python3 -c 'import base64, hashlib, hmac, os, pathlib; secret = pathlib.Path(os.environ["TURN_SMOKE_SECRET_FILE"]).read_text().strip().encode(); username = os.environ["TURN_SMOKE_USERNAME"].encode(); print(base64.b64encode(hmac.new(secret, username, hashlib.sha1).digest()).decode())')
+  docker compose --project-name rcmania-turn --env-file "$compose_env_file" --file "$compose_file" exec -T turn \
+    turnutils_uclient -u "$username" -w "$credential" -c -m 1 -n 1 "$@" -y "$turn_host"
+}
+
+run_allocation_test udp -p 3478
+run_allocation_test tcp -t -p 3478
+run_allocation_test tls -S -t -p 443
 
 docker compose --project-name rcmania-turn --env-file "$compose_env_file" --file "$compose_file" ps
 ufw status verbose

@@ -5,6 +5,9 @@ services:
     image: coturn/coturn:4.16.0-r0-alpine
     restart: unless-stopped
     network_mode: host
+    # The entrypoint must read root-only Docker secrets and Let's Encrypt keys.
+    # Coturn drops to nobody/nogroup immediately after privileged startup.
+    user: "0:0"
     entrypoint: ["/bin/sh", "/opt/rcmania/entrypoint.sh"]
     environment:
       TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:?Set TURN_EXTERNAL_IP to the reserved public IPv4 address}
@@ -33,7 +36,7 @@ services:
         soft: 65536
         hard: 65536
     cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
+    cap_add: [NET_BIND_SERVICE, SETGID, SETUID]
     security_opt:
       - no-new-privileges:true
     logging:

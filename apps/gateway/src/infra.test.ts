@@ -41,6 +41,8 @@ describe("production gateway infrastructure", () => {
 
     expect(compose).toContain("coturn/coturn:4.16.0-r0-alpine");
     expect(compose).toContain("network_mode: host");
+    expect(compose).toContain('user: "0:0"');
+    expect(compose).toContain("cap_add: [NET_BIND_SERVICE, SETGID, SETUID]");
     expect(compose).toContain("turn_shared_secret");
     expect(compose).toContain("/etc/letsencrypt:/etc/letsencrypt:ro");
     expect(compose).toContain('cpus: "0.80"');
@@ -51,6 +53,11 @@ describe("production gateway infrastructure", () => {
     expect(config).toContain("tls-listening-port=443");
     expect(config).toContain("cert=/etc/letsencrypt/live/turn.rcmania.live/fullchain.pem");
     expect(config).toContain("use-auth-secret");
+    expect(config).toContain("proc-user=nobody");
+    expect(config).toContain("proc-group=nogroup");
+    expect(config).not.toContain("no-loopback-peers");
+    expect(config).not.toContain("no-tlsv1");
+    expect(config).not.toContain("no-cli");
     expect(config).not.toContain("static-auth-secret=");
     expect(entrypoint).toContain("/run/secrets/turn_shared_secret");
     expect(entrypoint).toContain("static-auth-secret=");

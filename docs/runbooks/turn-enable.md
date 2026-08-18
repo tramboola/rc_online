@@ -117,6 +117,8 @@ ss -H -lun | grep ':1194 '
 
 The verification script checks DNS, the TLS certificate, authenticated UDP/TCP/TLS allocations, Compose health, UFW state, and OpenVPN presence.
 
+The container entrypoint starts as root only long enough to read the root-only secret and TLS private key. Coturn then drops to `nobody:nogroup`; the container receives only `NET_BIND_SERVICE`, `SETUID`, and `SETGID` for this startup sequence, uses a read-only filesystem, and cannot gain new privileges.
+
 ## 7. Enable temporary credentials on the Google VPS
 
 The private application environment must contain:
