@@ -2,6 +2,7 @@ import type { BrowserControlLoop } from "./control-loop";
 import {
   createAdminDriveSession,
   RideSessionClient,
+  type RideConnectionState,
   type RideConnectionProgress,
   type StoredDriveSession,
 } from "./ride-session-client";
@@ -30,7 +31,7 @@ export type RideConnectionSnapshot = {
 export type RideConnectionAttemptCallbacks = {
   onSnapshot: (snapshot: RideConnectionSnapshot) => void;
   onStream: (stream: MediaStream) => void;
-  onReady: (loop: RideControlLoop) => void;
+  onReady: (loop: RideControlLoop, route: Exclude<RideConnectionState, "CONNECTING" | "DISCONNECTED">) => void;
 };
 
 export type RideConnectionAttemptDependencies = {
@@ -52,6 +53,8 @@ const progressDetails: Record<
   "webrtc.offer-sent": { step: 4, code: "WEBRTC", message: "Camera connection requested" },
   "webrtc.answer-applied": { step: 5, code: "WEBRTC", message: "Camera response received" },
   "webrtc.direct": { step: 6, code: "WEBRTC", message: "Direct connection established" },
+  "webrtc.turn": { step: 6, code: "WEBRTC", message: "TURN fallback connection established" },
+  "webrtc.connected": { step: 6, code: "WEBRTC", message: "WebRTC connection established" },
   "video.track-received": { step: 7, code: "VIDEO", message: "Camera stream received" },
 };
 
@@ -72,7 +75,7 @@ export class RideConnectionAttempt {
   readonly #dependencies: RideConnectionAttemptDependencies;
   #active = false;
   #ready = false;
-  #direct = false;
+  #connectedRoute: Exclude<RideConnectionState, "CONNECTING" | "DISCONNECTED"> | null = null;
   #videoLoadedData = false;
   #activeStep = 0;
   #entries: ConnectionLogEntry[] = [];
@@ -110,8 +113,8 @@ export class RideConnectionAttempt {
       client.onProgress = (progress) => this.#handleProgress(progress);
       client.onState = (state) => {
         if (!this.#active) return;
-        if (state === "DIRECT") {
-          this.#direct = true;
+        if (state === "DIRECT" || state === "TURN" || state === "CONNECTED") {
+          this.#connectedRoute = state;
           this.#tryReady();
         } else if (state === "DISCONNECTED" && !this.#ready) {
           this.fail("Camera connection was interrupted");
@@ -162,14 +165,14 @@ export class RideConnectionAttempt {
   }
 
   #tryReady(): void {
-    if (!this.#active || this.#ready || !this.#direct || !this.#videoLoadedData || !this.#loop) return;
+    if (!this.#active || this.#ready || !this.#connectedRoute || !this.#videoLoadedData || !this.#loop) return;
     this.#ready = true;
     this.#cancelTimeout();
     this.#activeStep = 7;
     this.#append("READY", "Camera ready", "success", "connected");
     this.#loop.start();
     this.#loop.arm();
-    this.#callbacks.onReady(this.#loop);
+    this.#callbacks.onReady(this.#loop, this.#connectedRoute);
   }
 
   #append(

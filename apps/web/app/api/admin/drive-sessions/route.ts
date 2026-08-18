@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { IceServer } from "@rc/contracts";
 
 import { createPostgresDriveSessionStore } from "../../../drive-session-store";
-import { createDriveSessionTicket, readPublicIceServers } from "../../../drive-session-ticket";
+import { createDriveSessionTicket, createPublicIceServers, readIceTransportPolicy } from "../../../drive-session-ticket";
 
 const requestSchema = z.object({ carId: z.string().uuid() }).strict();
 
@@ -13,7 +13,8 @@ type DriveSessionPostDependencies = {
   now(): Date;
   ticketSecret: string;
   publicGatewayUrl: string;
-  iceServers: IceServer[];
+  createIceServers(subject: string, now: Date): IceServer[];
+  iceTransportPolicy: "all" | "relay";
 };
 
 function getPublicRequestOrigin(request: Request): string {
@@ -62,7 +63,8 @@ export function createDriveSessionPost(dependencies: DriveSessionPostDependencie
       expiresAt: session.expiresAt.toISOString(),
       ticket,
       gatewayUrl: dependencies.publicGatewayUrl,
-      iceServers: dependencies.iceServers
+      iceTransportPolicy: dependencies.iceTransportPolicy,
+      iceServers: dependencies.createIceServers(session.sessionId, now)
     }, { status: 201 });
   };
 }
@@ -86,6 +88,7 @@ export async function POST(request: Request): Promise<Response> {
     now: () => new Date(),
     ticketSecret,
     publicGatewayUrl,
-    iceServers: readPublicIceServers()
+    iceTransportPolicy: readIceTransportPolicy(),
+    createIceServers: (subject, now) => createPublicIceServers(subject, now)
   })(request);
 }

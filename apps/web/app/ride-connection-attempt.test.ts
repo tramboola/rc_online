@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { RideConnectionAttempt } from "./ride-connection-attempt";
-import type { RideConnectionProgress, StoredDriveSession } from "./ride-session-client";
+import type { RideConnectionProgress, RideConnectionState, StoredDriveSession } from "./ride-session-client";
 
 const session: StoredDriveSession = {
   sessionId: "bd450fe7-ec99-4983-a5fe-46ca30f260de",
@@ -9,6 +9,7 @@ const session: StoredDriveSession = {
   gatewayUrl: "wss://rcmania.live/gateway/v1/socket",
   expiresAt: "2026-08-17T10:05:00.000Z",
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceTransportPolicy: "all",
 };
 
 function harness() {
@@ -21,7 +22,7 @@ function harness() {
     close: vi.fn(),
     onError: (_message: string) => undefined,
     onProgress: (_progress: RideConnectionProgress) => undefined,
-    onState: (_state: "CONNECTING" | "DIRECT" | "DISCONNECTED") => undefined,
+    onState: (_state: RideConnectionState) => undefined,
     onStream: (_stream: MediaStream) => undefined,
   };
   const loop = {
@@ -82,6 +83,19 @@ describe("RideConnectionAttempt", () => {
     client.onState("DIRECT");
 
     expect(callbacks.onReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts TURN as a connected transport after a real frame is decoded", async () => {
+    const { attempt, callbacks, client, loop } = harness();
+    await attempt.start();
+
+    client.onState("TURN");
+    attempt.markVideoLoadedData();
+
+    expect(callbacks.onReady).toHaveBeenCalledTimes(1);
+    expect(callbacks.onReady).toHaveBeenCalledWith(loop, "TURN");
+    expect(loop.start).toHaveBeenCalledTimes(1);
+    expect(loop.arm).toHaveBeenCalledTimes(1);
   });
 
   it("times out after 15 seconds and tears down every transport", async () => {

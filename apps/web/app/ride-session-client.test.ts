@@ -7,10 +7,11 @@ const session: StoredDriveSession = {
   ticket: "signed-ticket",
   gatewayUrl: "wss://rcmania.live/gateway/v1/socket",
   expiresAt: "2026-08-13T10:05:00.000Z",
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceTransportPolicy: "all"
 };
 
-function harness() {
+function harness(candidateType: "host" | "relay" | null = "host") {
   const socket = {
     readyState: 0,
     send: vi.fn(),
@@ -35,13 +36,20 @@ function harness() {
     setLocalDescription: vi.fn(async () => undefined),
     setRemoteDescription: vi.fn(async () => undefined),
     addIceCandidate: vi.fn(async () => undefined),
+    getStats: vi.fn(async () => candidateType === null ? new Map() : new Map([
+      ["transport", { type: "transport", selectedCandidatePairId: "pair" }],
+      ["pair", { type: "candidate-pair", state: "succeeded", nominated: true, localCandidateId: "local", remoteCandidateId: "remote" }],
+      ["local", { type: "local-candidate", candidateType }],
+      ["remote", { type: "remote-candidate", candidateType: "srflx" }]
+    ])),
     close: vi.fn()
   };
+  const createPeer = vi.fn(() => peer as unknown as RTCPeerConnection);
   const client = new RideSessionClient(session, {
     createSocket: () => socket as unknown as WebSocket,
-    createPeer: () => peer as unknown as RTCPeerConnection
+    createPeer
   });
-  return { client, socket, peer, fast, reliable };
+  return { client, socket, peer, fast, reliable, createPeer };
 }
 
 describe("RideSessionClient", () => {
@@ -92,6 +100,7 @@ describe("RideSessionClient", () => {
     await vi.waitFor(() => expect(progress).toContain("webrtc.answer-applied"));
     peer.connectionState = "connected";
     peer.onconnectionstatechange?.();
+    await vi.waitFor(() => expect(progress).toContain("webrtc.direct"));
     peer.ontrack?.({ streams: [{} as MediaStream] });
 
     expect(progress).toEqual([
@@ -103,6 +112,35 @@ describe("RideSessionClient", () => {
       "webrtc.direct",
       "video.track-received",
     ]);
+  });
+
+  it("reports TURN when the selected candidate pair contains a relay", async () => {
+    const { client, peer } = harness("relay");
+    const states: string[] = [];
+    const progress: string[] = [];
+    client.onState = (state) => states.push(state);
+    client.onProgress = (event) => progress.push(event);
+    client.connect();
+
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+
+    await vi.waitFor(() => expect(states).toContain("TURN"));
+    expect(progress).toContain("webrtc.turn");
+    expect(progress).not.toContain("webrtc.direct");
+  });
+
+  it("reports CONNECTED instead of claiming direct when candidate stats are unavailable", async () => {
+    const { client, peer } = harness(null);
+    const states: string[] = [];
+    client.onState = (state) => states.push(state);
+    client.connect();
+
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+
+    await vi.waitFor(() => expect(states).toContain("CONNECTED"));
+    expect(states).not.toContain("DIRECT");
   });
 
   it("ends and closes every transport", () => {
@@ -117,5 +155,19 @@ describe("RideSessionClient", () => {
     expect(reliable.close).toHaveBeenCalled();
     expect(peer.close).toHaveBeenCalled();
     expect(socket.close).toHaveBeenCalled();
+  });
+
+  it("can force relay policy for a controlled TURN acceptance test", () => {
+    const relaySession = { ...session, iceTransportPolicy: "relay" as const };
+    const { socket, peer, createPeer } = harness();
+    const client = new RideSessionClient(relaySession, {
+      createSocket: () => socket as unknown as WebSocket,
+      createPeer
+    });
+
+    client.connect();
+
+    expect(createPeer).toHaveBeenCalledWith(expect.objectContaining({ iceTransportPolicy: "relay" }));
+    peer.close();
   });
 });

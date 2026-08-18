@@ -18,6 +18,7 @@ import {
   RideConnectionAttempt,
   type RideConnectionSnapshot,
 } from "./ride-connection-attempt";
+import type { RideConnectionState } from "./ride-session-client";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 
@@ -46,7 +47,7 @@ export function RealRideScreen() {
   const loopRef = useRef<BrowserControlLoop | null>(null);
   const armedRef = useRef(false);
   const pressedRef = useRef<ReadonlySet<string>>(new Set());
-  const [state, setState] = useState<"CONNECTING" | "DIRECT" | "DISCONNECTED">("CONNECTING");
+  const [state, setState] = useState<RideConnectionState>("CONNECTING");
   const [armed, setArmed] = useState(false);
   const [pressedKeys, setPressedKeys] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +96,11 @@ export function RealRideScreen() {
           ? `${settings.width}×${settings.height}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} FPS` : ""}`
           : "LIVE VIDEO");
       },
-      onReady: (loop) => {
+      onReady: (loop, route) => {
         const browserLoop = loop as BrowserControlLoop;
         loopRef.current = browserLoop;
         setReadyLoop(browserLoop);
-        setState("DIRECT");
+        setState(route);
         setError(null);
       },
     }, dependencies);
@@ -188,7 +189,7 @@ export function RealRideScreen() {
       <div className="ride-shade" />
       <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · NO AUDIO</b></div>
       <section className="real-ride-status data-panel" aria-live="polite">
-        <p><WifiHigh size={23} /> CONNECTION <strong className={state === "DIRECT" ? "ok" : ""}>{state}</strong></p>
+        <p><WifiHigh size={23} /> CONNECTION <strong className={["DIRECT", "TURN", "CONNECTED"].includes(state) ? "ok" : ""}>{state}</strong></p>
         <p><GameController size={23} /> CONTROLS <strong className={armed ? "ok" : ""}>{armed ? "KEYBOARD ACTIVE" : "SAFE / NEUTRAL"}</strong></p>
         <p><ShieldCheck size={23} /> VIDEO <strong>{videoMode}</strong></p>
         {error ? <p className="real-ride-error">{error}</p> : null}

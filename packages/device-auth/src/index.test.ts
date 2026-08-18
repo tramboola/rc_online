@@ -1,12 +1,62 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createSessionIceServers,
+  createTurnRestCredentials,
   generateOpaqueSecret,
   hashOpaqueSecret,
   signBrowserTicket,
   verifyBrowserTicket,
   verifyOpaqueSecret
 } from "./index.js";
+
+describe("TURN REST credentials", () => {
+  const now = new Date("2026-08-18T12:00:00.000Z");
+  const secret = "a-very-long-turn-shared-secret-value";
+
+  it("creates the Coturn timestamp username and HMAC-SHA1 password", () => {
+    expect(createTurnRestCredentials({
+      secret,
+      subject: "session-123",
+      now,
+      ttlSeconds: 600
+    })).toEqual({
+      username: "1787055000:session-123",
+      credential: "ssBXmcz/a5JLgi2edKfJFYJwRdU=",
+      expiresAt: new Date("2026-08-18T12:10:00.000Z")
+    });
+  });
+
+  it("adds one temporary credential to TURN entries and leaves STUN anonymous", () => {
+    expect(createSessionIceServers([
+      { urls: "stun:turn.rcmania.live:3478" },
+      { urls: "turn:turn.rcmania.live:3478?transport=udp" },
+      { urls: ["turn:turn.rcmania.live:3478?transport=tcp", "turns:turn.rcmania.live:443?transport=tcp"] }
+    ], { secret, subject: "session-123", now, ttlSeconds: 600 })).toEqual([
+      { urls: "stun:turn.rcmania.live:3478" },
+      {
+        urls: "turn:turn.rcmania.live:3478?transport=udp",
+        username: "1787055000:session-123",
+        credential: "ssBXmcz/a5JLgi2edKfJFYJwRdU="
+      },
+      {
+        urls: ["turn:turn.rcmania.live:3478?transport=tcp", "turns:turn.rcmania.live:443?transport=tcp"],
+        username: "1787055000:session-123",
+        credential: "ssBXmcz/a5JLgi2edKfJFYJwRdU="
+      }
+    ]);
+  });
+
+  it("fails closed for static TURN credentials, missing secrets, invalid subjects, and unsafe lifetimes", () => {
+    const turn = [{ urls: "turn:turn.rcmania.live:3478", username: "static", credential: "password" }];
+
+    expect(() => createSessionIceServers(turn, { secret, subject: "session-123", now })).toThrow(/static/i);
+    expect(() => createSessionIceServers([{ urls: "turn:turn.rcmania.live:3478" }], { subject: "session-123", now })).toThrow(/secret/i);
+    expect(() => createTurnRestCredentials({ secret, subject: "bad:subject", now })).toThrow(/subject/i);
+    expect(() => createTurnRestCredentials({ secret, subject: "session-123", now, ttlSeconds: 59 })).toThrow(/60/);
+    expect(() => createTurnRestCredentials({ secret, subject: "session-123", now, ttlSeconds: 3601 })).toThrow(/3600/);
+  });
+});
 
 describe("opaque device secrets", () => {
   it("creates independent URL-safe secrets and verifies only the matching value", () => {

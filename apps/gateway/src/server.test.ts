@@ -50,7 +50,9 @@ async function listen(store: GatewayStore) {
       browserTicketSecret: "test-browser-secret-with-enough-entropy",
       authTimeoutMs: 250,
       staleAfterMs: 15_000,
-      iceServers: []
+      iceServerTemplates: [],
+      turnSharedSecret: undefined,
+      turnCredentialTtlSeconds: 600
     },
     store
   );

@@ -14,6 +14,18 @@ export type BrowserTicketPayload = {
   exp: number;
 };
 
+export type SessionIceServer = {
+  urls: string | string[];
+  username?: string | undefined;
+  credential?: string | undefined;
+};
+
+export type TurnRestCredentials = {
+  username: string;
+  credential: string;
+  expiresAt: Date;
+};
+
 const ticketFields = ["aud", "sub", "role", "carId", "sessionId", "iat", "exp"] as const;
 
 export function generateOpaqueSecret(bytes = 32): string {
@@ -38,6 +50,61 @@ export function verifyOpaqueSecret(secret: string, digest: string, pepper: strin
   } catch {
     return false;
   }
+}
+
+export function createTurnRestCredentials(input: {
+  secret: string;
+  subject: string;
+  now: Date;
+  ttlSeconds?: number;
+}): TurnRestCredentials {
+  if (input.secret.length < 32) {
+    throw new Error("TURN shared secret must contain at least 32 characters");
+  }
+  if (!/^[A-Za-z0-9._-]{1,128}$/u.test(input.subject)) {
+    throw new Error("TURN credential subject must contain only safe identifier characters");
+  }
+  if (!Number.isFinite(input.now.getTime())) {
+    throw new Error("TURN credential time must be valid");
+  }
+  const ttlSeconds = input.ttlSeconds ?? 600;
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 3_600) {
+    throw new Error("TURN credential lifetime must be between 60 and 3600 seconds");
+  }
+
+  const expiresAt = new Date(input.now.getTime() + ttlSeconds * 1_000);
+  const username = `${Math.floor(expiresAt.getTime() / 1_000)}:${input.subject}`;
+  const credential = createHmac("sha1", input.secret)
+    .update(username, "utf8")
+    .digest("base64");
+  return { username, credential, expiresAt };
+}
+
+export function createSessionIceServers(
+  templates: readonly SessionIceServer[],
+  input: {
+    secret?: string;
+    subject: string;
+    now: Date;
+    ttlSeconds?: number;
+  }
+): SessionIceServer[] {
+  if (templates.some((template) => template.username !== undefined || template.credential !== undefined)) {
+    throw new Error("Static ICE credentials are not allowed");
+  }
+  const hasTurn = templates.some((template) => urlsOf(template).some(isTurnUrl));
+  if (!hasTurn) return templates.map((template) => ({ ...template }));
+  if (!input.secret) throw new Error("TURN shared secret is required when TURN URLs are configured");
+
+  const credentials = createTurnRestCredentials({
+    secret: input.secret,
+    subject: input.subject,
+    now: input.now,
+    ...(input.ttlSeconds === undefined ? {} : { ttlSeconds: input.ttlSeconds })
+  });
+  return templates.map((template) => urlsOf(template).some(isTurnUrl)
+    ? { ...template, username: credentials.username, credential: credentials.credential }
+    : { ...template });
 }
 
 export function signBrowserTicket(payload: BrowserTicketPayload, secret: string): string {
@@ -123,4 +190,12 @@ function assertNonEmpty(value: string, name: string): void {
   if (!value) {
     throw new Error(`${name} must not be empty`);
   }
+}
+
+function urlsOf(server: SessionIceServer): string[] {
+  return typeof server.urls === "string" ? [server.urls] : server.urls;
+}
+
+function isTurnUrl(url: string): boolean {
+  return url.startsWith("turn:") || url.startsWith("turns:");
 }

@@ -1,4 +1,9 @@
+import { readFileSync } from "node:fs";
+
 import { IceServerSchema, type IceServer } from "@rc/contracts";
+import { createSessionIceServers } from "@rc/device-auth";
+
+type GatewayEnvironment = Readonly<Record<string, string | undefined>>;
 
 export type GatewayConfig = {
   host: string;
@@ -8,10 +13,26 @@ export type GatewayConfig = {
   browserTicketSecret: string;
   authTimeoutMs: number;
   staleAfterMs: number;
-  iceServers: IceServer[];
+  iceServerTemplates: IceServer[];
+  turnSharedSecret: string | undefined;
+  turnCredentialTtlSeconds: number;
 };
 
-export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
+export function loadGatewayConfig(
+  env: GatewayEnvironment = process.env as GatewayEnvironment,
+  readFile: (path: string) => string = (path) => readFileSync(path, "utf8")
+): GatewayConfig {
+  const iceServerTemplates = parseIceServers(env.GATEWAY_ICE_SERVERS_JSON);
+  const secretPath = env.TURN_SHARED_SECRET_FILE?.trim();
+  const turnSharedSecret = secretPath ? readFile(secretPath).trim() : undefined;
+  const turnCredentialTtlSeconds = readInteger(env.TURN_CREDENTIAL_TTL_SECONDS, 600, 60, 3_600);
+  createSessionIceServers(iceServerTemplates, {
+    subject: "configuration-check",
+    now: new Date(0),
+    ttlSeconds: turnCredentialTtlSeconds,
+    ...(turnSharedSecret ? { secret: turnSharedSecret } : {})
+  });
+
   return {
     host: env.HOST ?? "0.0.0.0",
     port: readInteger(env.PORT, 3002, 0, 65_535),
@@ -20,8 +41,19 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     browserTicketSecret: requiredSecret(env.GATEWAY_SESSION_SECRET, "GATEWAY_SESSION_SECRET"),
     authTimeoutMs: readInteger(env.GATEWAY_AUTH_TIMEOUT_MS, 5_000, 100, 30_000),
     staleAfterMs: readInteger(env.GATEWAY_STALE_AFTER_MS, 15_000, 5_000, 120_000),
-    iceServers: parseIceServers(env.GATEWAY_ICE_SERVERS_JSON)
+    iceServerTemplates,
+    turnSharedSecret,
+    turnCredentialTtlSeconds
   };
+}
+
+export function createGatewayIceServers(config: GatewayConfig, subject: string, now: Date): IceServer[] {
+  return createSessionIceServers(config.iceServerTemplates, {
+    subject,
+    now,
+    ttlSeconds: config.turnCredentialTtlSeconds,
+    ...(config.turnSharedSecret ? { secret: config.turnSharedSecret } : {})
+  });
 }
 
 function parseIceServers(value: string | undefined): IceServer[] {

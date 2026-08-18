@@ -6,6 +6,7 @@ export type StoredDriveSession = {
   gatewayUrl: string;
   expiresAt: string;
   iceServers: IceServer[];
+  iceTransportPolicy: "all" | "relay";
 };
 
 export type RideConnectionProgress =
@@ -15,7 +16,11 @@ export type RideConnectionProgress =
   | "webrtc.offer-sent"
   | "webrtc.answer-applied"
   | "webrtc.direct"
+  | "webrtc.turn"
+  | "webrtc.connected"
   | "video.track-received";
+
+export type RideConnectionState = "CONNECTING" | "DIRECT" | "TURN" | "CONNECTED" | "DISCONNECTED";
 
 type RideSessionClientDependencies = {
   createSocket(url: string): WebSocket;
@@ -37,7 +42,7 @@ export class RideSessionClient {
   #closed = false;
 
   onStream: (stream: MediaStream) => void = () => undefined;
-  onState: (state: "CONNECTING" | "DIRECT" | "DISCONNECTED") => void = () => undefined;
+  onState: (state: RideConnectionState) => void = () => undefined;
   onError: (message: string) => void = () => undefined;
   onProgress: (event: RideConnectionProgress) => void = () => undefined;
 
@@ -59,7 +64,10 @@ export class RideSessionClient {
       ...(server.username === undefined ? {} : { username: server.username }),
       ...(server.credential === undefined ? {} : { credential: server.credential })
     }));
-    const peer = this.#dependencies.createPeer({ iceServers });
+    const peer = this.#dependencies.createPeer({
+      iceServers,
+      iceTransportPolicy: this.#session.iceTransportPolicy ?? "all"
+    });
     this.#peer = peer;
     peer.addTransceiver("video", { direction: "recvonly" });
     this.#fast = peer.createDataChannel("control-fast", { ordered: false, maxRetransmits: 0 });
@@ -84,8 +92,7 @@ export class RideSessionClient {
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === "connected") {
-        this.onProgress("webrtc.direct");
-        this.onState("DIRECT");
+        void this.#reportConnectedRoute(peer);
       }
       if (["failed", "closed", "disconnected"].includes(peer.connectionState)) this.onState("DISCONNECTED");
     };
@@ -99,6 +106,17 @@ export class RideSessionClient {
     socket.onmessage = (event) => void this.#handleMessage(String(event.data));
     socket.onerror = () => this.onError("Gateway connection failed");
     socket.onclose = () => this.onState("DISCONNECTED");
+  }
+
+  async #reportConnectedRoute(peer: RTCPeerConnection): Promise<void> {
+    const route = await detectConnectionRoute(peer);
+    if (this.#closed || peer.connectionState !== "connected") return;
+    this.onProgress(route === "DIRECT"
+      ? "webrtc.direct"
+      : route === "TURN"
+        ? "webrtc.turn"
+        : "webrtc.connected");
+    this.onState(route);
   }
 
   close(reason = "browser closed session"): void {
@@ -154,6 +172,40 @@ export class RideSessionClient {
 
   #send(message: object): void {
     if (this.#socket?.readyState === 1) this.#socket.send(JSON.stringify(message));
+  }
+}
+
+export async function detectConnectionRoute(
+  peer: Pick<RTCPeerConnection, "getStats">
+): Promise<"DIRECT" | "TURN" | "CONNECTED"> {
+  try {
+    const report = await peer.getStats();
+    const stats = new Map<string, Record<string, unknown>>();
+    for (const [key, entry] of report.entries()) {
+      const value = entry as unknown as Record<string, unknown>;
+      const id = typeof value.id === "string" ? value.id : key;
+      stats.set(id, value);
+    }
+    let selectedPairId: string | undefined;
+    for (const value of stats.values()) {
+      if (value.type === "transport" && typeof value.selectedCandidatePairId === "string") {
+        selectedPairId = value.selectedCandidatePairId;
+        break;
+      }
+    }
+    const pair = selectedPairId ? stats.get(selectedPairId) : [...stats.values()].find((value) => (
+      value.type === "candidate-pair" &&
+      value.state === "succeeded" &&
+      (value.selected === true || value.nominated === true)
+    ));
+    if (!pair) return "CONNECTED";
+    const local = typeof pair.localCandidateId === "string" ? stats.get(pair.localCandidateId) : undefined;
+    const remote = typeof pair.remoteCandidateId === "string" ? stats.get(pair.remoteCandidateId) : undefined;
+    const candidateTypes = [local?.candidateType, remote?.candidateType].filter((value): value is string => typeof value === "string");
+    if (candidateTypes.includes("relay")) return "TURN";
+    return candidateTypes.length > 0 ? "DIRECT" : "CONNECTED";
+  } catch {
+    return "CONNECTED";
   }
 }
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { GatewayClientMessageSchema, type GatewayClientMessage, type GatewayServerMessage } from "@rc/contracts";
 import { generateOpaqueSecret, hashOpaqueSecret, verifyBrowserTicket } from "@rc/device-auth";
 
-import type { GatewayConfig } from "./config.js";
+import { createGatewayIceServers, type GatewayConfig } from "./config.js";
 import { PresenceRegistry } from "./presence.js";
 import { SessionRegistry, type GatewayPeer } from "./sessions.js";
 import type { AuthenticatedDevice, GatewayStore } from "./store.js";
@@ -113,7 +113,7 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
               userId: ticket.sub,
               carId: ticket.carId,
               expiresAt: authorized.expiresAt,
-              iceServers: config.iceServers
+              iceServers: createGatewayIceServers(config, ticket.sessionId, new Date())
             }, peer)) {
               send(socket, { v: 1, type: "auth.rejected", reason: "drive session unavailable" });
               socket.close(4409, "drive session unavailable");
