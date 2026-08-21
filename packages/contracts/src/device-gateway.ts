@@ -2,6 +2,16 @@ import { z } from "zod";
 
 const uuid = z.string().uuid();
 const shortText = z.string().min(1).max(256);
+const semver = z.string().regex(/^\d+\.\d+\.\d+$/u);
+const digestSha256 = z.string().regex(/^[0-9a-f]{64}$/u);
+const ed25519Signature = z.string().regex(/^[A-Za-z0-9_-]{80,128}$/u);
+const httpsUrl = z.string().url().refine((value) => new URL(value).protocol === "https:");
+
+export const DeviceCapabilitiesSchema = z.object({
+  controlProtocolVersion: z.literal(4).optional(),
+  otaRuntimeGeneration: z.number().int().min(1).max(32767).optional(),
+}).strict();
+export type DeviceCapabilities = z.infer<typeof DeviceCapabilitiesSchema>;
 
 export const DeviceHealthSchema = z.object({
   cameraReady: z.boolean(),
@@ -59,6 +69,7 @@ export const GatewayClientMessageSchema = z.discriminatedUnion("type", [
     deviceId: uuid,
     secret: z.string().min(32).max(256),
     agentVersion: z.string().min(1).max(64),
+    capabilities: DeviceCapabilitiesSchema.optional(),
   }).strict(),
   z.object({
     v: z.literal(1),
@@ -74,6 +85,13 @@ export const GatewayClientMessageSchema = z.discriminatedUnion("type", [
   signalAnswerSchema,
   signalIceSchema,
   sessionEndSchema,
+  z.object({
+    v: z.literal(1),
+    type: z.literal("device.update.status"),
+    updateId: uuid,
+    status: z.enum(["downloading", "applying", "failed"]),
+    reason: z.string().min(1).max(256).optional(),
+  }).strict(),
 ]);
 export type GatewayClientMessage = z.infer<typeof GatewayClientMessageSchema>;
 
@@ -100,6 +118,17 @@ export const GatewayServerMessageSchema = z.discriminatedUnion("type", [
   signalAnswerSchema,
   signalIceSchema,
   sessionEndSchema,
+  z.object({
+    v: z.literal(1),
+    type: z.literal("device.update.available"),
+    updateId: uuid,
+    version: semver,
+    runtimeGeneration: z.number().int().min(1).max(32767),
+    artifactUrl: httpsUrl,
+    artifactSizeBytes: z.number().int().min(1).max(8 * 1024 * 1024),
+    digestSha256,
+    signature: ed25519Signature,
+  }).strict(),
   z.object({
     v: z.literal(1),
     type: z.literal("error"),
