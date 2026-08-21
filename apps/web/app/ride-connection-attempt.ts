@@ -13,7 +13,7 @@ import type {
 
 export type RideControlLoop = Pick<
   BrowserControlLoop,
-  "arm" | "bindChannels" | "disarm" | "setInput" | "start" | "stop"
+  "arm" | "bindChannels" | "disarm" | "setInput" | "setSteeringTrim" | "start" | "stop"
 >;
 
 type RideSessionClientLike = Pick<
@@ -30,6 +30,7 @@ export type RideConnectionSnapshot = {
 
 export type RideConnectionAttemptCallbacks = {
   onSnapshot: (snapshot: RideConnectionSnapshot) => void;
+  onSession: (session: StoredDriveSession) => void;
   onStream: (stream: MediaStream) => void;
   onReady: (loop: RideControlLoop, route: Exclude<RideConnectionState, "CONNECTING" | "DISCONNECTED">) => void;
 };
@@ -105,6 +106,7 @@ export class RideConnectionAttempt {
     try {
       const session = await this.#dependencies.createSession(this.#carId);
       if (!this.#active) return;
+      this.#callbacks.onSession(session);
 
       const client = this.#dependencies.createClient(session);
       const loop = this.#dependencies.createLoop(session.sessionId);

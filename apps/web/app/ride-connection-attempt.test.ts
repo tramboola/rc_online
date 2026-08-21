@@ -31,6 +31,7 @@ function harness() {
     bindChannels: vi.fn(),
     disarm: vi.fn(),
     setInput: vi.fn(),
+    setSteeringTrim: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
   };
@@ -41,6 +42,7 @@ function harness() {
   const snapshots: Array<{ status: string; errorMessage: string }> = [];
   const callbacks = {
     onReady: vi.fn(),
+    onSession: vi.fn(),
     onSnapshot: vi.fn((snapshot: { status: string; errorMessage: string }) => snapshots.push(snapshot)),
     onStream: vi.fn(),
   };
@@ -61,6 +63,16 @@ function harness() {
 }
 
 describe("RideConnectionAttempt", () => {
+  it("exposes the server-created session before opening WebRTC", async () => {
+    const { attempt, callbacks, client } = harness();
+
+    await attempt.start();
+
+    expect(callbacks.onSession).toHaveBeenCalledWith(session);
+    expect(callbacks.onSession.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER)
+      .toBeLessThan(client.connect.mock.invocationCallOrder[0] ?? 0);
+  });
+
   it("waits for the first decoded frame after WebRTC becomes direct", async () => {
     const { attempt, callbacks, client, loop } = harness();
     await attempt.start();

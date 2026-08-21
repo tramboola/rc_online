@@ -1,10 +1,13 @@
+import { normalizeSteeringTrim } from "./steering-trim";
+
 export interface DriveCommand {
-  readonly v: 3;
+  readonly v: 4;
   readonly type: "control.intent";
   readonly sessionId: string;
   readonly sequence: number;
   readonly steering: -1 | 0 | 1;
   readonly throttle: -1 | 0 | 1;
+  readonly steeringTrimPercent: number;
   readonly nitro: boolean;
   readonly armed: boolean;
 }
@@ -25,6 +28,7 @@ export class BrowserControlLoop {
   #steering: -1 | 0 | 1 = 0;
   #throttle: -1 | 0 | 1 = 0;
   #nitro = false;
+  #steeringTrimPercent = 0;
   #armRequested = false;
   #armed = false;
 
@@ -48,6 +52,10 @@ export class BrowserControlLoop {
     this.#steering = discreteAxis(input.steering ?? this.#steering);
     this.#throttle = discreteAxis(input.throttle ?? this.#throttle);
     this.#nitro = input.nitro ?? this.#nitro;
+  }
+
+  public setSteeringTrim(percent: number): void {
+    this.#steeringTrimPercent = normalizeSteeringTrim(percent);
   }
 
   public arm(): void {
@@ -102,12 +110,13 @@ export class BrowserControlLoop {
 
   private sendLatest(): void {
     const command: DriveCommand = {
-      v: 3,
+      v: 4,
       type: "control.intent",
       sessionId: this.#sessionId,
       sequence: ++this.#sequence,
       steering: this.#armed ? this.#steering : 0,
       throttle: this.#armed ? this.#throttle : 0,
+      steeringTrimPercent: this.#steeringTrimPercent,
       nitro: this.#armed && this.#nitro,
       armed: this.#armed,
     };

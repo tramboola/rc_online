@@ -42,17 +42,19 @@ describe("BrowserControlLoop", () => {
     const loop = new BrowserControlLoop(sessionId);
     loop.bindChannels(fast, reliable);
     loop.arm();
+    loop.setSteeringTrim(-14);
     loop.setInput({ steering: -1, throttle: 1, nitro: true });
     loop.start();
     vi.advanceTimersByTime(20);
 
     expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).toMatchObject({
-      v: 3,
+      v: 4,
       type: "control.intent",
       sessionId,
       sequence: 1,
       steering: -1,
       throttle: 1,
+      steeringTrimPercent: -14,
       nitro: true,
       armed: true
     });

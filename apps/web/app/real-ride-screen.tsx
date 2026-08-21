@@ -75,6 +75,7 @@ export function RealRideScreen() {
       })
     ));
     const attempt = new RideConnectionAttempt(carId, {
+      onSession: () => undefined,
       onSnapshot: (snapshot) => {
         setConnection(snapshot);
         if (snapshot.status === "failed") {
