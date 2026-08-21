@@ -34,6 +34,14 @@ describe("production gateway infrastructure", () => {
     expect(gateway).toContain("proxy_send_timeout 360s;");
   });
 
+  it("serves immutable signed agent releases without directory listing", async () => {
+    const nginx = await readFile(nginxUrl, "utf8");
+    expect(nginx).toContain("location /agent-releases/");
+    expect(nginx).toContain("alias /opt/rcmania/shared/agent-releases/");
+    expect(nginx).toContain('add_header Cache-Control "public, max-age=31536000, immutable"');
+    expect(nginx).toContain("autoindex off");
+  });
+
   it("runs isolated pinned Coturn with TLS, bounded resources, and file-mounted secrets", async () => {
     const compose = await readFile(turnComposeUrl, "utf8");
     const config = await readFile(turnConfigUrl, "utf8");

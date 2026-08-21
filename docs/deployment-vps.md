@@ -11,6 +11,17 @@ Compose-mounted secret without exposing it to other host users. Keep
 `GATEWAY_ICE_SERVERS_JSON` URL-only: the web and gateway services derive
 short-lived credentials per drive session.
 
+Create the immutable OTA release directory once and keep it outside release
+worktrees:
+
+```bash
+sudo install -d -o root -g www-data -m 0750 /opt/rcmania/shared/agent-releases
+```
+
+The deployment must also install `infra/nginx/rcmania.conf` before reloading
+Nginx so `https://rcmania.live/agent-releases/` serves these files directly.
+See `docs/runbooks/pi-agent-ota.md` for signing and rollout.
+
 ## Deploy
 
 ```bash
