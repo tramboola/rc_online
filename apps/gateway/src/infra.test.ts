@@ -18,6 +18,7 @@ describe("production gateway infrastructure", () => {
     expect(gateway).toContain("/health/ready");
     expect(gateway).toContain("DEVICE_AUTH_PEPPER:");
     expect(gateway).toContain("GATEWAY_SESSION_SECRET:");
+    expect(gateway).toMatch(/group_add:\s+- "33"/u);
     expect(gateway).toContain('cpus: "0.30"');
     expect(gateway).toContain("mem_limit: 256m");
     expect(gateway).toMatch(/- edge\s+- state/u);
