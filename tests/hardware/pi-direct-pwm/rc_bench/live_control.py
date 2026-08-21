@@ -14,6 +14,7 @@ class InputFrame:
     throttle: int
     received_at: float
     nitro: bool = False
+    steering_trim_percent: int = 0
 
     def __post_init__(self) -> None:
         if self.steering not in (-1, 0, 1):
@@ -24,6 +25,8 @@ class InputFrame:
             raise ValueError("received_at must be finite")
         if not isinstance(self.nitro, bool):
             raise ValueError("nitro must be boolean")
+        if type(self.steering_trim_percent) is not int or not -20 <= self.steering_trim_percent <= 20:
+            raise ValueError("steering_trim_percent must be an integer between -20 and 20")
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,11 +65,7 @@ class LiveControl:
             return self._neutral(stale=True)
         if not frame.armed:
             return self._neutral(stale=False)
-        steering_us = {
-            -1: self._config.steering_left_us,
-            0: self._config.steering_neutral_us,
-            1: self._config.steering_right_us,
-        }[frame.steering]
+        steering_us = self._map_steering(frame.steering, frame.steering_trim_percent)
         if frame.throttle > 0:
             throttle_us = self._config.throttle_forward_us if frame.nitro else self._scaled_forward_us()
         elif frame.throttle < 0:
@@ -74,6 +73,18 @@ class LiveControl:
         else:
             throttle_us = self._config.throttle_neutral_us
         return OutputState(steering_us, throttle_us, True, False)
+
+    def _map_steering(self, steering: int, trim_percent: int) -> int:
+        if steering < 0:
+            return self._config.steering_left_us
+        if steering > 0:
+            return self._config.steering_right_us
+        center_us = self._config.steering_neutral_us
+        if trim_percent < 0:
+            span_us = center_us - self._config.steering_left_us
+            return center_us - (span_us * -trim_percent + 50) // 100
+        span_us = self._config.steering_right_us - center_us
+        return center_us + (span_us * trim_percent + 50) // 100
 
     def _scaled_forward_us(self) -> int:
         delta = self._config.throttle_forward_us - self._config.throttle_neutral_us

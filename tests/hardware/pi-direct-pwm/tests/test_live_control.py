@@ -10,8 +10,15 @@ class LiveControlTests(unittest.TestCase):
         self.control = LiveControl()
 
     @staticmethod
-    def frame(now: float, *, armed: bool = True, steering: int = 0, throttle: int = 0, nitro: bool = False) -> InputFrame:
-        return InputFrame(armed, steering, throttle, now, nitro=nitro)
+    def frame(now: float, *, armed: bool = True, steering: int = 0, throttle: int = 0, nitro: bool = False, steering_trim_percent: int = 0) -> InputFrame:
+        return InputFrame(
+            armed,
+            steering,
+            throttle,
+            now,
+            nitro=nitro,
+            steering_trim_percent=steering_trim_percent,
+        )
 
     def test_forward_uses_normal_limit_and_nitro_uses_full_endpoint(self) -> None:
         normal = self.control.step(self.frame(1.0, throttle=1), now=1.0)
@@ -33,11 +40,37 @@ class LiveControlTests(unittest.TestCase):
             OutputState(1500, 1500, False, True),
         )
 
+    def test_trim_offsets_only_the_armed_center_position(self) -> None:
+        for trim, want_us in ((-20, 1400), (0, 1500), (20, 1600)):
+            centered = self.control.step(
+                self.frame(3.1, steering_trim_percent=trim),
+                now=3.1,
+            )
+            full_right = self.control.step(
+                self.frame(3.1, steering=1, steering_trim_percent=trim),
+                now=3.1,
+            )
+            self.assertEqual(centered.steering_us, want_us)
+            self.assertEqual(full_right.steering_us, 2000)
+
+    def test_trim_uses_each_calibrated_side_span(self) -> None:
+        control = LiveControl(LiveConfig(
+            steering_left_us=1100,
+            steering_neutral_us=1475,
+            steering_right_us=2050,
+        ))
+        left = control.step(self.frame(3.2, steering_trim_percent=-20), now=3.2)
+        right = control.step(self.frame(3.2, steering_trim_percent=20), now=3.2)
+        self.assertEqual(left.steering_us, 1400)
+        self.assertEqual(right.steering_us, 1590)
+
     def test_watchdog_and_disarm_fail_neutral(self) -> None:
         stale = self.control.step(self.frame(4.0, throttle=1), now=4.201)
         disarmed = self.control.step(self.frame(4.3, armed=False, throttle=1), now=4.3)
         self.assertEqual((stale.throttle_us, stale.armed, stale.stale), (1500, False, True))
         self.assertEqual((disarmed.throttle_us, disarmed.armed), (1500, False))
+        self.assertEqual(stale.steering_us, 1500)
+        self.assertEqual(disarmed.steering_us, 1500)
 
     def test_axes_and_nitro_types_are_validated(self) -> None:
         for steering, throttle in ((-2, 0), (2, 0), (0, -2), (0, 2)):

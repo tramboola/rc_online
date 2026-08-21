@@ -36,6 +36,8 @@ class LivePageTests(unittest.TestCase):
         self.assertNotIn('"Space"', self.page)
         self.assertNotIn("BRAKE", self.page)
         self.assertNotIn("reverse_phase", self.page)
+        self.assertIn("steering-trim", self.page)
+        self.assertIn("steering_trim_percent", self.page)
 
 
 class MailboxRuntimeTests(unittest.TestCase):
@@ -100,13 +102,42 @@ class LiveHttpTests(unittest.TestCase):
             return error.code, json.loads(error.read())
 
     def test_direct_control_frame_is_accepted(self) -> None:
-        status, response = self.post({"client_id": "browser-a", "sequence": 1, "armed": True, "steering": 0, "throttle": -1, "nitro": False})
+        status, response = self.post({"client_id": "browser-a", "sequence": 1, "armed": True, "steering": 0, "throttle": -1, "nitro": False, "steering_trim_percent": -12})
         self.assertEqual(status, 202)
         self.assertTrue(response["accepted"])
         self.assertEqual(self.mailbox.snapshot().throttle, -1)
+        self.assertEqual(self.mailbox.snapshot().steering_trim_percent, -12)
 
     def test_brake_field_is_rejected(self) -> None:
         status, response = self.post({"client_id": "browser-a", "sequence": 1, "armed": True, "steering": 0, "throttle": 0, "nitro": False, "brake": False})
+        self.assertEqual(status, 400)
+        self.assertEqual(response["error"], "invalid_request")
+
+    def test_invalid_or_unknown_trim_fields_are_rejected(self) -> None:
+        for trim in (-21, 21, 1.5, True, None):
+            with self.subTest(trim=trim):
+                status, response = self.post({
+                    "client_id": "browser-a",
+                    "sequence": 1,
+                    "armed": True,
+                    "steering": 0,
+                    "throttle": 0,
+                    "nitro": False,
+                    "steering_trim_percent": trim,
+                })
+                self.assertEqual(status, 400)
+                self.assertEqual(response["error"], "invalid_request")
+
+        status, response = self.post({
+            "client_id": "browser-a",
+            "sequence": 1,
+            "armed": True,
+            "steering": 0,
+            "throttle": 0,
+            "nitro": False,
+            "steering_trim_percent": 0,
+            "unknown": True,
+        })
         self.assertEqual(status, 400)
         self.assertEqual(response["error"], "invalid_request")
 

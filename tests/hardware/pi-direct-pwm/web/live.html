@@ -278,6 +278,11 @@
       color: var(--lime);
     }
 
+    .steering-trim { display: grid; gap: 10px; margin: 0 0 22px; padding: 14px; border: 1px solid var(--line); background: rgba(5, 9, 13, .5); }
+    .steering-trim > span { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .steering-trim output { color: var(--cyan); }
+    .steering-trim input { width: 100%; accent-color: var(--cyan); cursor: ew-resize; }
+
     .actions { display: grid; gap: 10px; }
 
     .button {
@@ -393,6 +398,10 @@
               <span>Hold N with forward for 100% · otherwise 63%</span>
             </div>
           </div>
+          <label class="steering-trim" for="steering-trim">
+            <span>Steering neutral <output id="steering-trim-value">0%</output></span>
+            <input id="steering-trim" type="range" min="-20" max="20" step="1" value="0">
+          </label>
           <div class="actions">
             <button class="button" id="arm-button" type="button">Arm keyboard</button>
             <button class="button stop" id="stop-button" type="button">Stop / disarm</button>
@@ -419,6 +428,7 @@
       ]);
       let armed = false;
       let sequence = 0;
+      let steeringTrimPercent = 0;
       let requestInFlight = false;
       let sendAgain = false;
 
@@ -432,6 +442,8 @@
       const armButton = document.querySelector("#arm-button");
       const stopButton = document.querySelector("#stop-button");
       const nitroIndicator = document.querySelector("#nitro-indicator");
+      const steeringTrim = document.querySelector("#steering-trim");
+      const steeringTrimValue = document.querySelector("#steering-trim-value");
 
       function axes() {
         const left = pressed.has("A");
@@ -503,6 +515,7 @@
               steering: armed ? current.steering : 0,
               throttle: armed ? current.throttle : 0,
               nitro: armed && current.nitro,
+              steering_trim_percent: steeringTrimPercent,
             }),
           });
           const state = await response.json();
@@ -584,6 +597,12 @@
 
       armButton.addEventListener("click", arm);
       stopButton.addEventListener("click", disarm);
+      steeringTrim.addEventListener("keydown", (event) => event.stopPropagation());
+      steeringTrim.addEventListener("input", () => {
+        steeringTrimPercent = Number(steeringTrim.value);
+        steeringTrimValue.textContent = `${steeringTrimPercent > 0 ? "+" : ""}${steeringTrimPercent}%`;
+        void sendControl();
+      });
       window.addEventListener("keydown", onKeyDown, { passive: false });
       window.addEventListener("keyup", onKeyUp, { passive: false });
       window.addEventListener("blur", disarm);
@@ -595,7 +614,7 @@
           method: "POST",
           keepalive: true,
           headers: { "Content-Type": "application/json", "X-Bench-Token": token },
-          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0, nitro: false }),
+          body: JSON.stringify({ client_id: clientId, sequence: ++sequence, armed: false, steering: 0, throttle: 0, nitro: false, steering_trim_percent: steeringTrimPercent }),
         });
       });
       setInterval(() => { if (armed) void sendControl(); }, 50);

@@ -55,6 +55,7 @@ class CommandMailbox:
         steering: int,
         throttle: int,
         nitro: bool = False,
+        steering_trim_percent: int = 0,
         *,
         now: float,
     ) -> InputFrame:
@@ -74,6 +75,7 @@ class CommandMailbox:
             throttle=throttle,
             received_at=now,
             nitro=nitro,
+            steering_trim_percent=steering_trim_percent,
         )
 
         with self._lock:
@@ -149,8 +151,12 @@ def create_http_server(
                 return
             try:
                 payload = self._read_json()
-                if "brake" in payload:
-                    raise ValueError("brake is not part of the direct control protocol")
+                allowed_fields = {
+                    "client_id", "sequence", "armed", "steering", "throttle",
+                    "nitro", "steering_trim_percent",
+                }
+                if not set(payload).issubset(allowed_fields):
+                    raise ValueError("request contains an unknown control property")
                 mailbox.publish(
                     payload["client_id"],
                     payload["sequence"],
@@ -158,6 +164,7 @@ def create_http_server(
                     payload["steering"],
                     payload["throttle"],
                     nitro=payload.get("nitro", False),
+                    steering_trim_percent=payload.get("steering_trim_percent", 0),
                     now=clock(),
                 )
             except ClientBusyError as error:
