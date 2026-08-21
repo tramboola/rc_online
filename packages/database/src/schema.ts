@@ -218,6 +218,68 @@ export const devices = pgTable("devices", {
   index("devices_car_presence_idx").on(table.carId, table.state, table.lastSeenAt),
 ]);
 
+export const firmwareVersions = pgTable("firmware_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  componentKind: text("component_kind").notNull(),
+  version: text("version").notNull(),
+  digestSha256: text("digest_sha256").notNull(),
+  signature: text("signature").notNull(),
+  channel: text("channel").notNull(),
+  artifactUrl: text("artifact_url"),
+  artifactSizeBytes: integer("artifact_size_bytes"),
+  runtimeGeneration: integer("runtime_generation"),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("firmware_versions_component_version_uidx").on(table.componentKind, table.version),
+  check(
+    "firmware_versions_pi_agent_artifact_check",
+    sql`${table.componentKind} <> 'pi-agent' or (
+      ${table.artifactUrl} is not null
+      and ${table.artifactSizeBytes} between 1 and 8388608
+      and ${table.runtimeGeneration} between 1 and 32767
+      and ${table.publishedAt} is not null
+      and ${table.digestSha256} ~ '^[0-9a-f]{64}$'
+      and length(${table.signature}) between 80 and 128
+    )`,
+  ),
+]);
+
+export type DeviceUpdateStatus =
+  | "pending"
+  | "downloading"
+  | "applying"
+  | "succeeded"
+  | "failed";
+
+export const deviceUpdateJobs = pgTable("device_update_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  deviceId: uuid("device_id").notNull().references(() => devices.id),
+  firmwareVersionId: uuid("firmware_version_id").notNull().references(() => firmwareVersions.id),
+  status: text("status").$type<DeviceUpdateStatus>().notNull().default("pending"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  failureReason: text("failure_reason"),
+  requestedBy: uuid("requested_by").notNull().references(() => users.id),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  ...auditColumns,
+}, (table) => [
+  check(
+    "device_update_jobs_status_check",
+    sql`${table.status} in ('pending', 'downloading', 'applying', 'succeeded', 'failed')`,
+  ),
+  check("device_update_jobs_attempt_count_check", sql`${table.attemptCount} between 0 and 1`),
+  check(
+    "device_update_jobs_failure_reason_check",
+    sql`${table.failureReason} is null or length(${table.failureReason}) <= 256`,
+  ),
+  uniqueIndex("device_update_jobs_one_active_device_uidx")
+    .on(table.deviceId)
+    .where(sql`${table.status} in ('pending', 'downloading', 'applying')`),
+  index("device_update_jobs_device_requested_idx").on(table.deviceId, table.requestedAt),
+]);
+
 export const deviceEnrollmentTokens = pgTable("device_enrollment_tokens", {
   id: uuid("id").primaryKey().defaultRandom(),
   carId: uuid("car_id").notNull().references(() => cars.id, { onDelete: "cascade" }),

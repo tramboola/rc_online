@@ -86,4 +86,16 @@ describe("versioned SQL migrations", () => {
       /check \(steering_trim_percent between -20 and 20\)/i,
     );
   });
+
+  it("adds immutable Pi agent releases and bounded update jobs", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0006_agent_ota.sql"),
+      "utf8",
+    );
+
+    expect(sql).toMatch(/alter table firmware_versions[\s\S]+artifact_url text/i);
+    expect(sql).toMatch(/create table device_update_jobs\b/i);
+    expect(sql).toMatch(/where status in \('pending', 'downloading', 'applying'\)/i);
+    expect(sql).toMatch(/attempt_count between 0 and 1/i);
+  });
 });
