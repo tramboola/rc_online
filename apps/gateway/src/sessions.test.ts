@@ -39,6 +39,16 @@ describe("SessionRegistry", () => {
     expect(browser.messages).toContainEqual(expect.objectContaining({ type: "session.start" }));
   });
 
+  it("reports whether a car has an active browser drive", () => {
+    const registry = new SessionRegistry();
+    const device = peer();
+    registry.attachDevice(session.carId, "device-1", device.value);
+
+    expect(registry.hasActiveCar(session.carId)).toBe(false);
+    expect(registry.attachBrowser(session, peer().value)).toBe(true);
+    expect(registry.hasActiveCar(session.carId)).toBe(true);
+  });
+
   it("rejects a second browser and a session whose car has no connected device", () => {
     const registry = new SessionRegistry();
     registry.attachDevice(session.carId, "device-1", peer().value);

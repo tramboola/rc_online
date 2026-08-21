@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { createDatabase, schema } from "@rc/database";
-import type { DeviceHealth } from "@rc/contracts";
+import { createDatabase, schema, type DeviceUpdateStatus } from "@rc/database";
+import type { DeviceCapabilities, DeviceHealth } from "@rc/contracts";
 import { and, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import type {
@@ -11,7 +11,8 @@ import type {
   EnrollmentResult,
   GatewayStore,
   PresenceState,
-  ProvisionCarInput
+  ProvisionCarInput,
+  UpdateProgressStatus
 } from "./store.js";
 
 export class PostgresGatewayStore implements GatewayStore {
@@ -84,13 +85,16 @@ export class PostgresGatewayStore implements GatewayStore {
   async authenticateDevice(
     deviceId: string,
     suppliedSecretHash: string,
+    agentVersion: string,
+    capabilities: DeviceCapabilities,
     now: Date
   ): Promise<AuthenticatedDevice | null> {
     const [credential] = await this.#database.db
       .select({
         credentialId: schema.deviceCredentials.id,
         secretHash: schema.deviceCredentials.secretHash,
-        carId: schema.devices.carId
+        carId: schema.devices.carId,
+        metadata: schema.devices.metadata
       })
       .from(schema.deviceCredentials)
       .innerJoin(schema.devices, eq(schema.devices.id, schema.deviceCredentials.deviceId))
@@ -110,15 +114,133 @@ export class PostgresGatewayStore implements GatewayStore {
       await tx.update(schema.deviceCredentials)
         .set({ lastAuthenticatedAt: now, updatedAt: now })
         .where(eq(schema.deviceCredentials.id, credential.credentialId));
+      const existingMetadata = isRecord(credential.metadata) ? credential.metadata : {};
       await tx.update(schema.devices)
-        .set({ state: "INITIALIZING", connectedAt: now, updatedAt: now })
+        .set({
+          state: "INITIALIZING",
+          connectedAt: now,
+          agentVersion,
+          metadata: { ...existingMetadata, capabilities: { ...capabilities } },
+          updatedAt: now
+        })
         .where(eq(schema.devices.id, deviceId));
       await tx.update(schema.cars)
         .set({ state: "INITIALIZING", updatedAt: now })
         .where(and(eq(schema.cars.id, carId), eq(schema.cars.adminBlocked, false)));
+
+      const applying = await tx
+        .select({
+          id: schema.deviceUpdateJobs.id,
+          targetVersion: schema.firmwareVersions.version
+        })
+        .from(schema.deviceUpdateJobs)
+        .innerJoin(
+          schema.firmwareVersions,
+          eq(schema.firmwareVersions.id, schema.deviceUpdateJobs.firmwareVersionId)
+        )
+        .where(and(
+          eq(schema.deviceUpdateJobs.deviceId, deviceId),
+          eq(schema.deviceUpdateJobs.status, "applying")
+        ));
+      for (const job of applying) {
+        const succeeded = job.targetVersion === agentVersion;
+        await tx.update(schema.deviceUpdateJobs)
+          .set({
+            status: succeeded ? "succeeded" : "failed",
+            failureReason: succeeded ? null : `device rolled back to ${agentVersion}`.slice(0, 256),
+            finishedAt: now,
+            updatedAt: now
+          })
+          .where(and(
+            eq(schema.deviceUpdateJobs.id, job.id),
+            eq(schema.deviceUpdateJobs.status, "applying")
+          ));
+      }
     });
 
-    return { deviceId, carId };
+    return { deviceId, carId, agentVersion, capabilities };
+  }
+
+  async claimPendingUpdate(
+    deviceId: string,
+    runtimeGeneration: number | null,
+    now: Date
+  ) {
+    if (runtimeGeneration === null) return null;
+    return this.#database.db.transaction(async (tx) => {
+      const [candidate] = await tx
+        .select({
+          updateId: schema.deviceUpdateJobs.id,
+          version: schema.firmwareVersions.version,
+          runtimeGeneration: schema.firmwareVersions.runtimeGeneration,
+          artifactUrl: schema.firmwareVersions.artifactUrl,
+          artifactSizeBytes: schema.firmwareVersions.artifactSizeBytes,
+          digestSha256: schema.firmwareVersions.digestSha256,
+          signature: schema.firmwareVersions.signature
+        })
+        .from(schema.deviceUpdateJobs)
+        .innerJoin(
+          schema.firmwareVersions,
+          eq(schema.firmwareVersions.id, schema.deviceUpdateJobs.firmwareVersionId)
+        )
+        .where(and(
+          eq(schema.deviceUpdateJobs.deviceId, deviceId),
+          eq(schema.deviceUpdateJobs.status, "pending"),
+          eq(schema.deviceUpdateJobs.attemptCount, 0),
+          eq(schema.firmwareVersions.componentKind, "pi-agent"),
+          eq(schema.firmwareVersions.runtimeGeneration, runtimeGeneration)
+        ))
+        .limit(1);
+      if (!candidate?.runtimeGeneration || !candidate.artifactUrl || !candidate.artifactSizeBytes) return null;
+
+      const [claimed] = await tx.update(schema.deviceUpdateJobs)
+        .set({ status: "downloading", attemptCount: 1, startedAt: now, updatedAt: now })
+        .where(and(
+          eq(schema.deviceUpdateJobs.id, candidate.updateId),
+          eq(schema.deviceUpdateJobs.status, "pending"),
+          eq(schema.deviceUpdateJobs.attemptCount, 0)
+        ))
+        .returning({ id: schema.deviceUpdateJobs.id });
+      if (!claimed) return null;
+      return candidate as {
+        updateId: string;
+        version: string;
+        runtimeGeneration: number;
+        artifactUrl: string;
+        artifactSizeBytes: number;
+        digestSha256: string;
+        signature: string;
+      };
+    });
+  }
+
+  async recordUpdateStatus(
+    deviceId: string,
+    updateId: string,
+    status: UpdateProgressStatus,
+    reason: string | null,
+    now: Date
+  ): Promise<boolean> {
+    const boundedReason = reason?.trim().slice(0, 256) || null;
+    const allowedCurrent: DeviceUpdateStatus[] = status === "downloading"
+      ? ["downloading"]
+      : status === "applying"
+        ? ["downloading"]
+        : ["downloading", "applying"];
+    const [updated] = await this.#database.db.update(schema.deviceUpdateJobs)
+      .set({
+        status,
+        failureReason: status === "failed" ? boundedReason ?? "device rejected update" : null,
+        finishedAt: status === "failed" ? now : null,
+        updatedAt: now
+      })
+      .where(and(
+        eq(schema.deviceUpdateJobs.id, updateId),
+        eq(schema.deviceUpdateJobs.deviceId, deviceId),
+        inArray(schema.deviceUpdateJobs.status, allowedCurrent)
+      ))
+      .returning({ id: schema.deviceUpdateJobs.id });
+    return Boolean(updated);
   }
 
   async recordHeartbeat(deviceId: string, health: DeviceHealth, now: Date) {
@@ -246,6 +368,10 @@ export class PostgresGatewayStore implements GatewayStore {
       return { siteId: site.id, carId: car.id };
     });
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function safeDigestEqual(left: string, right: string): boolean {

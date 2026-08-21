@@ -86,7 +86,13 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
         if (!authenticatedDevice && !authenticatedSessionId) {
           if (message.type === "device.authenticate") {
             const suppliedHash = hashOpaqueSecret(message.secret, config.deviceAuthPepper);
-            authenticatedDevice = await store.authenticateDevice(message.deviceId, suppliedHash, new Date());
+            authenticatedDevice = await store.authenticateDevice(
+              message.deviceId,
+              suppliedHash,
+              message.agentVersion,
+              message.capabilities ?? {},
+              new Date()
+            );
             if (!authenticatedDevice) {
               send(socket, { v: 1, type: "auth.rejected", reason: "invalid device credentials" });
               socket.close(4403, "invalid credentials");
@@ -98,6 +104,7 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
             devices.set(authenticatedDevice.deviceId, socket);
             sessions.attachDevice(authenticatedDevice.carId, authenticatedDevice.deviceId, peer);
             send(socket, { v: 1, type: "auth.accepted", peer: "device" });
+            await offerPendingUpdate(authenticatedDevice, socket);
             return;
           }
           if (message.type === "browser.authenticate") {
@@ -131,6 +138,18 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
 
         if (authenticatedDevice && message.type === "device.heartbeat") {
           await presence.heartbeat(authenticatedDevice.deviceId, message.health);
+          await offerPendingUpdate(authenticatedDevice, socket);
+          return;
+        }
+        if (authenticatedDevice && message.type === "device.update.status") {
+          const accepted = await store.recordUpdateStatus(
+            authenticatedDevice.deviceId,
+            message.updateId,
+            message.status,
+            message.reason ?? null,
+            new Date()
+          );
+          if (!accepted) throw new Error("Update status does not belong to this device or transition");
           return;
         }
         if (authenticatedDevice && isRelayMessage(message)) {
@@ -185,6 +204,13 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
   });
 
   return app;
+
+  async function offerPendingUpdate(device: AuthenticatedDevice, socket: WebSocket): Promise<void> {
+    const runtimeGeneration = device.capabilities.otaRuntimeGeneration ?? null;
+    if (runtimeGeneration === null || sessions.hasActiveCar(device.carId)) return;
+    const offer = await store.claimPendingUpdate(device.deviceId, runtimeGeneration, new Date());
+    if (offer) send(socket, { v: 1, type: "device.update.available", ...offer });
+  }
 }
 
 function send(socket: WebSocket, message: GatewayServerMessage): void {

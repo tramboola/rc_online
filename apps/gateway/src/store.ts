@@ -1,4 +1,4 @@
-import type { DeviceHealth } from "@rc/contracts";
+import type { DeviceCapabilities, DeviceHealth } from "@rc/contracts";
 
 export type PresenceState =
   | "INITIALIZING"
@@ -24,7 +24,21 @@ export type EnrollmentResult = {
 export type AuthenticatedDevice = {
   deviceId: string;
   carId: string;
+  agentVersion: string;
+  capabilities: DeviceCapabilities;
 };
+
+export type DeviceUpdateOffer = {
+  updateId: string;
+  version: string;
+  runtimeGeneration: number;
+  artifactUrl: string;
+  artifactSizeBytes: number;
+  digestSha256: string;
+  signature: string;
+};
+
+export type UpdateProgressStatus = "downloading" | "applying" | "failed";
 
 export type ProvisionCarInput = {
   siteSlug: string;
@@ -50,8 +64,22 @@ export interface GatewayStore {
   authenticateDevice(
     deviceId: string,
     suppliedSecretHash: string,
+    agentVersion: string,
+    capabilities: DeviceCapabilities,
     now: Date
   ): Promise<AuthenticatedDevice | null>;
+  claimPendingUpdate(
+    deviceId: string,
+    runtimeGeneration: number | null,
+    now: Date
+  ): Promise<DeviceUpdateOffer | null>;
+  recordUpdateStatus(
+    deviceId: string,
+    updateId: string,
+    status: UpdateProgressStatus,
+    reason: string | null,
+    now: Date
+  ): Promise<boolean>;
   recordHeartbeat(
     deviceId: string,
     health: DeviceHealth,

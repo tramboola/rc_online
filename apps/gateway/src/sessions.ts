@@ -87,6 +87,10 @@ export class SessionRegistry {
     return this.#sessions.has(sessionId);
   }
 
+  hasActiveCar(carId: string): boolean {
+    return this.#sessionsByCar.has(carId);
+  }
+
   sweep(now = new Date()): string[] {
     const expired: string[] = [];
     for (const [sessionId, session] of this.#sessions) {
