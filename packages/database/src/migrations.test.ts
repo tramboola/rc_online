@@ -72,4 +72,18 @@ describe("versioned SQL migrations", () => {
     expect(sql).toMatch(/health jsonb not null default '\{\}'::jsonb/i);
     expect(sql).toMatch(/drive_sessions_one_active_car_uidx/i);
   });
+
+  it("adds bounded per-car steering trim", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0005_car_steering_trim.sql"),
+      "utf8",
+    );
+
+    expect(sql).toMatch(
+      /alter table cars\s+add column steering_trim_percent integer not null default 0/i,
+    );
+    expect(sql).toMatch(
+      /check \(steering_trim_percent between -20 and 20\)/i,
+    );
+  });
 });

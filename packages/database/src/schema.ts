@@ -187,11 +187,16 @@ export const cars = pgTable("cars", {
   stateVersion: integer("state_version").notNull().default(1),
   batteryPercent: integer("battery_percent"),
   adminBlocked: boolean("admin_blocked").notNull().default(false),
+  steeringTrimPercent: integer("steering_trim_percent").notNull().default(0),
   ...auditColumns,
 }, (table) => [
   check(
     "cars_battery_range",
     sql`${table.batteryPercent} is null or (${table.batteryPercent} >= 0 and ${table.batteryPercent} <= 100)`,
+  ),
+  check(
+    "cars_steering_trim_range",
+    sql`${table.steeringTrimPercent} between -20 and 20`,
   ),
   index("cars_site_state_idx").on(table.siteId, table.state),
 ]);
