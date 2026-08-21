@@ -86,7 +86,7 @@ export function RealRideScreen() {
       const loop = new BrowserControlLoop(sessionId, (isArmed) => {
         armedRef.current = isArmed;
         setArmed(isArmed);
-      });
+      }, sessionRef.current?.controlProtocolVersion ?? 3);
       loop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);
       return loop;
     });

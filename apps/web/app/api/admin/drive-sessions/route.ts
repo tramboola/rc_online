@@ -13,6 +13,7 @@ type DriveSessionPostDependencies = {
     sessionId: string;
     expiresAt: Date;
     steeringTrimPercent: number;
+    controlProtocolVersion: 3 | 4;
   } | null>;
   now(): Date;
   ticketSecret: string;
@@ -66,6 +67,7 @@ export function createDriveSessionPost(dependencies: DriveSessionPostDependencie
       sessionId: session.sessionId,
       expiresAt: session.expiresAt.toISOString(),
       steeringTrimPercent: session.steeringTrimPercent,
+      controlProtocolVersion: session.controlProtocolVersion,
       ticket,
       gatewayUrl: dependencies.publicGatewayUrl,
       iceTransportPolicy: dependencies.iceTransportPolicy,

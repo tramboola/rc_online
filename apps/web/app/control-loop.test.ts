@@ -39,7 +39,7 @@ describe("BrowserControlLoop", () => {
     const fast = channel();
     const reliable = channel();
     const sessionId = "7f2fb843-b03b-442b-848b-b2a249b8702a";
-    const loop = new BrowserControlLoop(sessionId);
+    const loop = new BrowserControlLoop(sessionId, undefined, 4);
     loop.bindChannels(fast, reliable);
     loop.arm();
     loop.setSteeringTrim(-14);
@@ -62,6 +62,31 @@ describe("BrowserControlLoop", () => {
     expect(JSON.parse(String(vi.mocked(reliable.send).mock.calls[0]?.[0]))).toMatchObject({ v: 3, type: "arm", sessionId });
     loop.stop();
     expect(JSON.parse(String(vi.mocked(reliable.send).mock.calls.at(-1)?.[0]))).toMatchObject({ type: "neutral", sessionId });
+  });
+
+  it("sends the exact legacy v3 frame without steering trim", () => {
+    vi.useFakeTimers();
+    const fast = channel();
+    const reliable = channel();
+    const sessionId = "7f2fb843-b03b-442b-848b-b2a249b8702a";
+    const loop = new BrowserControlLoop(sessionId, undefined, 3);
+    loop.bindChannels(fast, reliable);
+    loop.arm();
+    loop.setSteeringTrim(12);
+    loop.setInput({ steering: 1, throttle: -1, nitro: false });
+    loop.start();
+    vi.advanceTimersByTime(20);
+
+    expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).toEqual({
+      v: 3,
+      type: "control.intent",
+      sessionId,
+      sequence: 1,
+      steering: 1,
+      throttle: -1,
+      nitro: false,
+      armed: true,
+    });
   });
 
   it("queues automatic arming until a connecting reliable channel opens", () => {

@@ -9,6 +9,7 @@ const session: StoredDriveSession = {
   gatewayUrl: "wss://rcmania.live/gateway/v1/socket",
   expiresAt: "2026-08-17T10:05:00.000Z",
   steeringTrimPercent: 0,
+  controlProtocolVersion: 4,
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   iceTransportPolicy: "all",
 };

@@ -24,7 +24,7 @@ function request(
 
 describe("administrator drive session endpoint", () => {
   it("rejects signed-out, regular-user, and cross-origin requests", async () => {
-    const createSession = async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: 0 });
+    const createSession = async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: 0, controlProtocolVersion: 3 as const });
     const base = { createSession, now: () => new Date("2026-08-13T10:00:00Z"), ticketSecret: secret, publicGatewayUrl: "wss://rcmania.live/gateway/v1/socket", createIceServers: () => [], iceTransportPolicy: "all" as const };
 
     expect((await createDriveSessionPost({ ...base, getUser: async () => null })(request())).status).toBe(401);
@@ -41,7 +41,7 @@ describe("administrator drive session endpoint", () => {
       getUser: async () => ({ id: userId, role: "admin" }),
       createSession: async (requestedUser, requestedCar, now) => {
         expect({ requestedUser, requestedCar, now }).toEqual({ requestedUser: userId, requestedCar: carId, now: new Date("2026-08-13T10:00:00Z") });
-        return { sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: -7 };
+        return { sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: -7, controlProtocolVersion: 4 };
       },
       now: () => new Date("2026-08-13T10:00:00Z"),
       ticketSecret: secret,
@@ -65,6 +65,7 @@ describe("administrator drive session endpoint", () => {
       sessionId,
       expiresAt: "2026-08-13T10:05:00.000Z",
       steeringTrimPercent: -7,
+      controlProtocolVersion: 4,
       gatewayUrl: "wss://rcmania.live/gateway/v1/socket",
       iceTransportPolicy: "relay",
     });
@@ -80,7 +81,7 @@ describe("administrator drive session endpoint", () => {
   it("accepts the public HTTPS origin behind the trusted reverse proxy", async () => {
     const post = createDriveSessionPost({
       getUser: async () => ({ id: userId, role: "admin" }),
-      createSession: async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: 0 }),
+      createSession: async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: 0, controlProtocolVersion: 3 }),
       now: () => new Date("2026-08-13T10:00:00Z"),
       ticketSecret: secret,
       publicGatewayUrl: "wss://rcmania.live/gateway/v1/socket",

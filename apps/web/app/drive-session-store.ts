@@ -5,6 +5,7 @@ export type CreatedDriveSession = {
   sessionId: string;
   expiresAt: Date;
   steeringTrimPercent: number;
+  controlProtocolVersion: 3 | 4;
 };
 
 export const DRIVE_SESSION_DURATION_MS = 5 * 60_000;
@@ -17,6 +18,13 @@ export interface DriveSessionStore {
   create(userId: string, carId: string, now: Date): Promise<CreatedDriveSession | null>;
 }
 
+export function controlProtocolVersionFromMetadata(metadata: unknown): 3 | 4 {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return 3;
+  const capabilities = (metadata as Record<string, unknown>).capabilities;
+  if (typeof capabilities !== "object" || capabilities === null || Array.isArray(capabilities)) return 3;
+  return (capabilities as Record<string, unknown>).controlProtocolVersion === 4 ? 4 : 3;
+}
+
 export function createPostgresDriveSessionStore(databaseUrl: string): DriveSessionStore {
   const { db } = createDatabase(databaseUrl);
   return {
@@ -27,6 +35,7 @@ export function createPostgresDriveSessionStore(databaseUrl: string): DriveSessi
           .select({
             carId: cars.id,
             steeringTrimPercent: cars.steeringTrimPercent,
+            deviceMetadata: devices.metadata,
           })
           .from(cars)
           .innerJoin(devices, eq(devices.carId, cars.id))
@@ -65,6 +74,7 @@ export function createPostgresDriveSessionStore(databaseUrl: string): DriveSessi
           sessionId: session.id,
           expiresAt,
           steeringTrimPercent: available.steeringTrimPercent,
+          controlProtocolVersion: controlProtocolVersionFromMetadata(available.deviceMetadata),
         } : null;
       });
     }

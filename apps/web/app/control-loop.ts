@@ -1,16 +1,18 @@
 import { normalizeSteeringTrim } from "./steering-trim";
 
-export interface DriveCommand {
-  readonly v: 4;
+interface DriveCommandBase {
   readonly type: "control.intent";
   readonly sessionId: string;
   readonly sequence: number;
   readonly steering: -1 | 0 | 1;
   readonly throttle: -1 | 0 | 1;
-  readonly steeringTrimPercent: number;
   readonly nitro: boolean;
   readonly armed: boolean;
 }
+
+export type DriveCommand =
+  | (DriveCommandBase & { readonly v: 3 })
+  | (DriveCommandBase & { readonly v: 4; readonly steeringTrimPercent: number });
 
 interface ControlInput {
   readonly steering?: number;
@@ -21,6 +23,7 @@ interface ControlInput {
 export class BrowserControlLoop {
   readonly #sessionId: string;
   readonly #onArmedChange: ((armed: boolean) => void) | undefined;
+  readonly #protocolVersion: 3 | 4;
   #fastChannel: RTCDataChannel | null = null;
   #reliableChannel: RTCDataChannel | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -32,9 +35,14 @@ export class BrowserControlLoop {
   #armRequested = false;
   #armed = false;
 
-  public constructor(sessionId: string, onArmedChange?: (armed: boolean) => void) {
+  public constructor(
+    sessionId: string,
+    onArmedChange?: (armed: boolean) => void,
+    protocolVersion: 3 | 4 = 3,
+  ) {
     this.#sessionId = sessionId;
     this.#onArmedChange = onArmedChange;
+    this.#protocolVersion = protocolVersion;
   }
 
   public bindChannels(
@@ -109,17 +117,18 @@ export class BrowserControlLoop {
   }
 
   private sendLatest(): void {
-    const command: DriveCommand = {
-      v: 4,
+    const base: DriveCommandBase = {
       type: "control.intent",
       sessionId: this.#sessionId,
       sequence: ++this.#sequence,
       steering: this.#armed ? this.#steering : 0,
       throttle: this.#armed ? this.#throttle : 0,
-      steeringTrimPercent: this.#steeringTrimPercent,
       nitro: this.#armed && this.#nitro,
       armed: this.#armed,
     };
+    const command: DriveCommand = this.#protocolVersion === 4
+      ? { v: 4, ...base, steeringTrimPercent: this.#steeringTrimPercent }
+      : { v: 3, ...base };
     if (this.#fastChannel?.readyState === "open") {
       this.#fastChannel.send(JSON.stringify(command));
       return;
