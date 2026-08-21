@@ -11,7 +11,8 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run src",
-    "provision-car": "tsx src/provision-car.ts"
+    "provision-car": "tsx src/provision-car.ts",
+    "register-agent-release": "tsx src/register-agent-release.ts"
   },
   "dependencies": {
     "@rc/contracts": "workspace:*",
