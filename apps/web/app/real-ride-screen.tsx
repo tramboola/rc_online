@@ -18,9 +18,14 @@ import {
   RideConnectionAttempt,
   type RideConnectionSnapshot,
 } from "./ride-connection-attempt";
-import type { RideConnectionState } from "./ride-session-client";
+import type { RideConnectionState, StoredDriveSession } from "./ride-session-client";
+import { formatSessionTime, SessionCountdown } from "./session-countdown";
+import { normalizeSteeringTrim, saveSteeringTrim } from "./steering-trim";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
+const TRIM_SAVE_DELAY_MS = 300;
+
+type TrimSaveStatus = "saved" | "saving" | "not-saved";
 
 const NEUTRAL_CONTROL: KeyboardControlIntent = {
   steering: 0,
@@ -45,6 +50,9 @@ export function RealRideScreen() {
   const videoAttemptRef = useRef<RideConnectionAttempt | null>(null);
   const attemptRef = useRef<RideConnectionAttempt | null>(null);
   const loopRef = useRef<BrowserControlLoop | null>(null);
+  const sessionRef = useRef<StoredDriveSession | null>(null);
+  const trimSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trimSaveRevisionRef = useRef(0);
   const armedRef = useRef(false);
   const pressedRef = useRef<ReadonlySet<string>>(new Set());
   const [state, setState] = useState<RideConnectionState>("CONNECTING");
@@ -56,26 +64,39 @@ export function RealRideScreen() {
   const [connection, setConnection] = useState<RideConnectionSnapshot>(initialConnectionSnapshot);
   const [attemptKey, setAttemptKey] = useState(0);
   const [readyLoop, setReadyLoop] = useState<BrowserControlLoop | null>(null);
+  const [rideSession, setRideSession] = useState<StoredDriveSession | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [steeringTrimPercent, setSteeringTrimPercent] = useState(0);
+  const [trimSaveStatus, setTrimSaveStatus] = useState<TrimSaveStatus>("saved");
 
   useEffect(() => {
     setConnection(initialConnectionSnapshot());
     setState("CONNECTING");
     setError(null);
     setReadyLoop(null);
+    setRideSession(null);
+    sessionRef.current = null;
     loopRef.current = null;
     videoAttemptRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     armedRef.current = false;
     setArmed(false);
 
-    const dependencies = createRideConnectionAttemptDependencies((sessionId) => (
-      new BrowserControlLoop(sessionId, (isArmed) => {
+    const dependencies = createRideConnectionAttemptDependencies((sessionId) => {
+      const loop = new BrowserControlLoop(sessionId, (isArmed) => {
         armedRef.current = isArmed;
         setArmed(isArmed);
-      })
-    ));
+      });
+      loop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);
+      return loop;
+    });
     const attempt = new RideConnectionAttempt(carId, {
-      onSession: () => undefined,
+      onSession: (session) => {
+        sessionRef.current = session;
+        setRideSession(session);
+        setSteeringTrimPercent(session.steeringTrimPercent);
+        setTrimSaveStatus("saved");
+      },
       onSnapshot: (snapshot) => {
         setConnection(snapshot);
         if (snapshot.status === "failed") {
@@ -99,6 +120,7 @@ export function RealRideScreen() {
       },
       onReady: (loop, route) => {
         const browserLoop = loop as BrowserControlLoop;
+        browserLoop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);
         loopRef.current = browserLoop;
         setReadyLoop(browserLoop);
         setState(route);
@@ -114,6 +136,33 @@ export function RealRideScreen() {
       if (attemptRef.current === attempt) attemptRef.current = null;
     };
   }, [attemptKey, carId]);
+
+  useEffect(() => {
+    if (!rideSession) {
+      setRemainingSeconds(0);
+      return;
+    }
+    const countdown = new SessionCountdown({
+      onTick: setRemainingSeconds,
+      onExpire: () => {
+        const neutral = new Set<string>();
+        pressedRef.current = neutral;
+        setPressedKeys(neutral);
+        setControl(NEUTRAL_CONTROL);
+        loopRef.current?.setInput(NEUTRAL_CONTROL);
+        loopRef.current?.disarm("session expired");
+        attemptRef.current?.close("session expired");
+        router.replace("/pricing");
+      },
+    });
+    countdown.start(rideSession.expiresAt);
+    return () => countdown.stop();
+  }, [rideSession, router]);
+
+  useEffect(() => () => {
+    if (trimSaveTimerRef.current) clearTimeout(trimSaveTimerRef.current);
+    trimSaveRevisionRef.current += 1;
+  }, []);
 
   useEffect(() => {
     if (!readyLoop) return;
@@ -176,6 +225,30 @@ export function RealRideScreen() {
     router.push("/queue");
   }
 
+  function updateSteeringTrim(value: number): void {
+    const next = normalizeSteeringTrim(value);
+    setSteeringTrimPercent(next);
+    loopRef.current?.setSteeringTrim(next);
+
+    const session = sessionRef.current;
+    if (!session) return;
+    if (trimSaveTimerRef.current) clearTimeout(trimSaveTimerRef.current);
+    const revision = ++trimSaveRevisionRef.current;
+    setTrimSaveStatus("saving");
+    trimSaveTimerRef.current = setTimeout(() => {
+      trimSaveTimerRef.current = null;
+      void saveSteeringTrim(session.sessionId, next)
+        .then((saved) => {
+          if (trimSaveRevisionRef.current !== revision) return;
+          setSteeringTrimPercent(saved);
+          setTrimSaveStatus("saved");
+        })
+        .catch(() => {
+          if (trimSaveRevisionRef.current === revision) setTrimSaveStatus("not-saved");
+        });
+    }, TRIM_SAVE_DELAY_MS);
+  }
+
   return (
     <div className="ride-page real-ride-page">
       <video
@@ -189,6 +262,7 @@ export function RealRideScreen() {
       />
       <div className="ride-shade" />
       <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · NO AUDIO</b></div>
+      <RideSessionClock remainingSeconds={remainingSeconds} />
       <section className="real-ride-status data-panel" aria-live="polite">
         <p><WifiHigh size={23} /> CONNECTION <strong className={["DIRECT", "TURN", "CONNECTED"].includes(state) ? "ok" : ""}>{state}</strong></p>
         <p><GameController size={23} /> CONTROLS <strong className={armed ? "ok" : ""}>{armed ? "KEYBOARD ACTIVE" : "SAFE / NEUTRAL"}</strong></p>
@@ -210,6 +284,13 @@ export function RealRideScreen() {
         </div>
         <p>WASD / ARROWS TO DRIVE · N NITRO</p>
       </section>
+      <SteeringTrimControl
+        disabled={!rideSession}
+        onChange={updateSteeringTrim}
+        onReset={() => updateSteeringTrim(0)}
+        saveStatus={trimSaveStatus}
+        value={steeringTrimPercent}
+      />
       <div className="real-ride-actions">
         <button className="end-ride" onClick={end} type="button"><Flag size={28} /> END SESSION</button>
       </div>
@@ -226,6 +307,57 @@ export function RealRideScreen() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export function RideSessionClock({ remainingSeconds }: { readonly remainingSeconds: number }) {
+  return (
+    <section className="real-session-clock" aria-label="Drive session time remaining">
+      <span>SESSION</span>
+      <strong>{formatSessionTime(remainingSeconds)}</strong>
+    </section>
+  );
+}
+
+export function SteeringTrimControl({
+  disabled,
+  onChange,
+  onReset,
+  saveStatus,
+  value,
+}: {
+  readonly disabled: boolean;
+  readonly onChange: (value: number) => void;
+  readonly onReset: () => void;
+  readonly saveStatus: TrimSaveStatus;
+  readonly value: number;
+}) {
+  const formattedValue = `${value > 0 ? "+" : ""}${value}%`;
+  const statusLabel = saveStatus === "not-saved" ? "NOT SAVED" : saveStatus.toUpperCase();
+  return (
+    <section className="real-steering-trim" aria-label="Steering neutral adjustment">
+      <header>
+        <span>STEERING NEUTRAL</span>
+        <strong>{formattedValue}</strong>
+        <em data-status={saveStatus}>{statusLabel}</em>
+      </header>
+      <div>
+        <small>-20%</small>
+        <input
+          aria-label="Steering neutral trim"
+          disabled={disabled}
+          max={20}
+          min={-20}
+          onChange={(event) => onChange(Number(event.currentTarget.value))}
+          onKeyDown={(event) => event.stopPropagation()}
+          step={1}
+          type="range"
+          value={value}
+        />
+        <small>+20%</small>
+        <button disabled={disabled || value === 0} onClick={onReset} type="button">RESET</button>
+      </div>
+    </section>
   );
 }
 
