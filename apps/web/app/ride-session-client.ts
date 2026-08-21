@@ -5,6 +5,7 @@ export type StoredDriveSession = {
   ticket: string;
   gatewayUrl: string;
   expiresAt: string;
+  steeringTrimPercent: number;
   iceServers: IceServer[];
   iceTransportPolicy: "all" | "relay";
 };
@@ -231,7 +232,14 @@ export function loadDriveSession(): StoredDriveSession | null {
   sessionStorage.removeItem(storageKey);
   try {
     const parsed = JSON.parse(raw) as StoredDriveSession;
-    return parsed.sessionId && parsed.ticket && parsed.gatewayUrl ? parsed : null;
+    return (
+      parsed.sessionId &&
+      parsed.ticket &&
+      parsed.gatewayUrl &&
+      Number.isInteger(parsed.steeringTrimPercent) &&
+      parsed.steeringTrimPercent >= -20 &&
+      parsed.steeringTrimPercent <= 20
+    ) ? parsed : null;
   } catch {
     return null;
   }

@@ -7,6 +7,7 @@ const session: StoredDriveSession = {
   ticket: "signed-ticket",
   gatewayUrl: "wss://rcmania.live/gateway/v1/socket",
   expiresAt: "2026-08-13T10:05:00.000Z",
+  steeringTrimPercent: 0,
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   iceTransportPolicy: "all"
 };

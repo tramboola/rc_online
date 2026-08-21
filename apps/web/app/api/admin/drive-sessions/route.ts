@@ -9,7 +9,11 @@ const requestSchema = z.object({ carId: z.string().uuid() }).strict();
 
 type DriveSessionPostDependencies = {
   getUser(): Promise<{ id: string; role: "user" | "admin" } | null>;
-  createSession(userId: string, carId: string, now: Date): Promise<{ sessionId: string; expiresAt: Date } | null>;
+  createSession(userId: string, carId: string, now: Date): Promise<{
+    sessionId: string;
+    expiresAt: Date;
+    steeringTrimPercent: number;
+  } | null>;
   now(): Date;
   ticketSecret: string;
   publicGatewayUrl: string;
@@ -61,6 +65,7 @@ export function createDriveSessionPost(dependencies: DriveSessionPostDependencie
     return Response.json({
       sessionId: session.sessionId,
       expiresAt: session.expiresAt.toISOString(),
+      steeringTrimPercent: session.steeringTrimPercent,
       ticket,
       gatewayUrl: dependencies.publicGatewayUrl,
       iceTransportPolicy: dependencies.iceTransportPolicy,

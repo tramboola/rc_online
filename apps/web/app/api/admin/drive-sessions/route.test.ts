@@ -24,7 +24,7 @@ function request(
 
 describe("administrator drive session endpoint", () => {
   it("rejects signed-out, regular-user, and cross-origin requests", async () => {
-    const createSession = async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z") });
+    const createSession = async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: 0 });
     const base = { createSession, now: () => new Date("2026-08-13T10:00:00Z"), ticketSecret: secret, publicGatewayUrl: "wss://rcmania.live/gateway/v1/socket", createIceServers: () => [], iceTransportPolicy: "all" as const };
 
     expect((await createDriveSessionPost({ ...base, getUser: async () => null })(request())).status).toBe(401);
@@ -41,7 +41,7 @@ describe("administrator drive session endpoint", () => {
       getUser: async () => ({ id: userId, role: "admin" }),
       createSession: async (requestedUser, requestedCar, now) => {
         expect({ requestedUser, requestedCar, now }).toEqual({ requestedUser: userId, requestedCar: carId, now: new Date("2026-08-13T10:00:00Z") });
-        return { sessionId, expiresAt: new Date("2026-08-13T10:05:00Z") };
+        return { sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: -7 };
       },
       now: () => new Date("2026-08-13T10:00:00Z"),
       ticketSecret: secret,
@@ -61,7 +61,13 @@ describe("administrator drive session endpoint", () => {
     const body = await response.json();
 
     expect(response.status).toBe(201);
-    expect(body).toMatchObject({ sessionId, gatewayUrl: "wss://rcmania.live/gateway/v1/socket", iceTransportPolicy: "relay" });
+    expect(body).toMatchObject({
+      sessionId,
+      expiresAt: "2026-08-13T10:05:00.000Z",
+      steeringTrimPercent: -7,
+      gatewayUrl: "wss://rcmania.live/gateway/v1/socket",
+      iceTransportPolicy: "relay",
+    });
     expect(body.iceServers).toEqual([expect.objectContaining({ username: expect.stringContaining(sessionId) })]);
     expect(verifyBrowserTicket(body.ticket, secret, 1_786_615_230)).toMatchObject({
       sub: userId,
@@ -74,7 +80,7 @@ describe("administrator drive session endpoint", () => {
   it("accepts the public HTTPS origin behind the trusted reverse proxy", async () => {
     const post = createDriveSessionPost({
       getUser: async () => ({ id: userId, role: "admin" }),
-      createSession: async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z") }),
+      createSession: async () => ({ sessionId, expiresAt: new Date("2026-08-13T10:05:00Z"), steeringTrimPercent: 0 }),
       now: () => new Date("2026-08-13T10:00:00Z"),
       ticketSecret: secret,
       publicGatewayUrl: "wss://rcmania.live/gateway/v1/socket",
