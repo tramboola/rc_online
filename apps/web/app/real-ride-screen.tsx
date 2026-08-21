@@ -263,7 +263,7 @@ export function RealRideScreen() {
       <div className="ride-shade" />
       <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · NO AUDIO</b></div>
       <RideSessionClock remainingSeconds={remainingSeconds} />
-      <section className="real-ride-status data-panel" aria-live="polite">
+      <section className="real-ride-status" aria-live="polite">
         <p><WifiHigh size={23} /> CONNECTION <strong className={["DIRECT", "TURN", "CONNECTED"].includes(state) ? "ok" : ""}>{state}</strong></p>
         <p><GameController size={23} /> CONTROLS <strong className={armed ? "ok" : ""}>{armed ? "KEYBOARD ACTIVE" : "SAFE / NEUTRAL"}</strong></p>
         <p><ShieldCheck size={23} /> VIDEO <strong>{videoMode}</strong></p>

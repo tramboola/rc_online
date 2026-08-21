@@ -35,4 +35,11 @@ describe("real ride keyboard UI", () => {
   it("renders the keyboard overlay without a surrounding dark frame", () => {
     expect(styles).toMatch(/\.real-keyboard-panel \{[^}]*border: 0;[^}]*background: transparent;[^}]*box-shadow: none;/s);
   });
+
+  it("keeps connection and steering trim controls readable without opaque camera blockers", () => {
+    expect(source).toContain('className="real-ride-status"');
+    expect(source).not.toContain('className="real-ride-status data-panel"');
+    expect(styles).toMatch(/\.real-ride-status \{[^}]*background: transparent;[^}]*border: 0;[^}]*box-shadow: none;/s);
+    expect(styles).toMatch(/\.real-steering-trim \{[^}]*background: transparent;[^}]*border: 0;[^}]*filter: none;/s);
+  });
 });
