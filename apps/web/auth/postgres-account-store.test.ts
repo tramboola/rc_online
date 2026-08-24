@@ -53,8 +53,9 @@ type ScriptedExecutor = {
   transaction: <T>(run: (transaction: ScriptedExecutor) => Promise<T>) => Promise<T>;
 };
 
-function createScriptedDatabase(scripts: Script[]) {
+function createScriptedDatabase(scripts: Script[], transactionFailures: unknown[] = []) {
   const operations: Operation[] = [];
+  const transactionAttempts: number[] = [];
   let transactionDepth = 0;
 
   const complete = (operation: Operation) => {
@@ -152,6 +153,11 @@ function createScriptedDatabase(scripts: Script[]) {
       };
     },
     async transaction<T>(run: (transaction: typeof executor) => Promise<T>) {
+      transactionAttempts.push(transactionAttempts.length + 1);
+      const failure = transactionFailures.shift();
+      if (failure !== undefined) {
+        throw failure;
+      }
       transactionDepth += 1;
       try {
         return await run(executor);
@@ -161,7 +167,7 @@ function createScriptedDatabase(scripts: Script[]) {
     },
   };
 
-  return { db: executor, operations, scripts };
+  return { db: executor, operations, scripts, transactionAttempts };
 }
 
 function sqlText(condition: unknown): string {
@@ -177,8 +183,12 @@ const uuidSequence = [
   "12345678-90ab-4cde-8f01-234567890abc",
 ];
 
-function installDatabase(scripts: Script[], randomValues = uuidSequence) {
-  const scripted = createScriptedDatabase(scripts);
+function installDatabase(
+  scripts: Script[],
+  randomValues = uuidSequence,
+  transactionFailures: unknown[] = [],
+) {
+  const scripted = createScriptedDatabase(scripts, transactionFailures);
   createDatabaseMock.mockReturnValueOnce({ db: scripted.db });
   let index = 0;
   const store = createPostgresAccountStore("postgresql://unused-in-test", {
@@ -312,6 +322,51 @@ describe("createPostgresAccountStore", () => {
     const condition = sqlText(operations[0]!.condition);
     expect(condition).toContain("e".repeat(64));
     expect(condition).toContain("verify_email");
+  });
+
+  test("retries action-token transactions after PostgreSQL deadlock or serialization failure", async () => {
+    const wrappedSerializationFailure = Object.assign(new Error("query failed"), {
+      cause: Object.assign(new Error("serialization failure"), { code: "40001" }),
+    });
+    const { store, transactionAttempts } = installDatabase([
+      { kind: "update", table: accountActionTokens, rows: [{ userId }] },
+      { kind: "update", table: users, rows: [{ id: userId, email: "driver@example.com" }] },
+      { kind: "update", table: passwordCredentials, rows: [{ userId }] },
+    ], uuidSequence, [
+      Object.assign(new Error("deadlock"), { code: "40P01" }),
+      wrappedSerializationFailure,
+    ]);
+
+    await expect(store.consumeActionToken({
+      kind: "verify_email",
+      tokenHash: "4".repeat(64),
+      now,
+    })).resolves.toEqual({ userId, email: "driver@example.com" });
+    expect(transactionAttempts).toHaveLength(3);
+  });
+
+  test("rethrows a non-retryable transaction failure without swallowing or retrying it", async () => {
+    const failure = Object.assign(new Error("constraint failure"), { code: "23514" });
+    const { store, transactionAttempts } = installDatabase([], uuidSequence, [failure]);
+
+    await expect(store.consumeActionToken({
+      kind: "verify_email",
+      tokenHash: "3".repeat(64),
+      now,
+    })).rejects.toBe(failure);
+    expect(transactionAttempts).toHaveLength(1);
+  });
+
+  test("caps transaction retries at three attempts and rethrows the last retryable failure", async () => {
+    const failures = [1, 2, 3].map((attempt) => Object.assign(
+      new Error(`deadlock ${attempt}`),
+      { code: "40P01" },
+    ));
+    const { store, transactionAttempts } = installDatabase([], uuidSequence, [...failures]);
+
+    await expect(store.cleanupExpiredAccountData({ now, batchSize: 25 }))
+      .rejects.toBe(failures[2]);
+    expect(transactionAttempts).toHaveLength(3);
   });
 
   test("rotates verification tokens only for an active unverified password factor", async () => {

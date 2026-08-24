@@ -37,7 +37,9 @@ import type {
 const nicknameCreationAttempts = 10;
 const minimumCleanupBatchSize = 1;
 const maximumCleanupBatchSize = 250;
+const maximumTransactionAttempts = 3;
 const deletedEmailDomain = "invalid.rcmania";
+const retryableTransactionErrorCodes = new Set(["40P01", "40001"]);
 
 type PostgresAccountStoreDependencies = {
   now?: () => Date;
@@ -71,6 +73,38 @@ export function createPostgresAccountStore(
   const { db } = createDatabase(databaseUrl);
   const currentTime = dependencies.now ?? (() => new Date());
   const nextUuid = dependencies.randomUuid ?? randomUUID;
+
+  function isRetryableTransactionError(error: unknown): boolean {
+    const visited = new Set<unknown>();
+    let current = error;
+    while (typeof current === "object" && current !== null && !visited.has(current)) {
+      visited.add(current);
+      if (
+        "code" in current &&
+        typeof current.code === "string" &&
+        retryableTransactionErrorCodes.has(current.code)
+      ) {
+        return true;
+      }
+      current = "cause" in current ? current.cause : undefined;
+    }
+    return false;
+  }
+
+  async function runTransaction<T>(
+    operation: (transaction: AccountTransaction) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= maximumTransactionAttempts; attempt += 1) {
+      try {
+        return await db.transaction(operation);
+      } catch (error) {
+        if (!isRetryableTransactionError(error) || attempt === maximumTransactionAttempts) {
+          throw error;
+        }
+      }
+    }
+    throw new Error("Transaction retry loop exhausted unexpectedly");
+  }
 
   async function loadOwnProfile(
     executor: Pick<AccountTransaction, "select">,
@@ -142,7 +176,7 @@ export function createPostgresAccountStore(
       const occurredAt = currentTime();
 
       try {
-        return await db.transaction(async (transaction): Promise<AccountActionResult> => {
+        return await runTransaction(async (transaction): Promise<AccountActionResult> => {
           const [existingUser] = await transaction.select({
             id: users.id,
             email: users.email,
@@ -259,7 +293,7 @@ export function createPostgresAccountStore(
     },
 
     async consumeActionToken(input) {
-      return db.transaction(async (transaction): Promise<AccountActionResult | null> => {
+      return runTransaction(async (transaction): Promise<AccountActionResult | null> => {
         const [token] = await transaction.update(accountActionTokens).set({
           consumedAt: input.now,
         }).where(and(
@@ -308,7 +342,7 @@ export function createPostgresAccountStore(
 
     async createOrRotateActionToken(input) {
       const email = normalizeAccountEmail(input.email);
-      return db.transaction(async (transaction): Promise<AccountActionResult | null> => {
+      return runTransaction(async (transaction): Promise<AccountActionResult | null> => {
         const credentialEligibility = input.kind === "verify_email"
           ? isNull(passwordCredentials.verifiedAt)
           : and(
@@ -376,7 +410,7 @@ export function createPostgresAccountStore(
     },
 
     async replacePasswordAndRevokeSessions(input) {
-      return db.transaction(async (transaction): Promise<AccountActionResult | null> => {
+      return runTransaction(async (transaction): Promise<AccountActionResult | null> => {
         const [token] = await transaction.update(accountActionTokens).set({
           consumedAt: input.now,
         }).where(and(
@@ -432,7 +466,7 @@ export function createPostgresAccountStore(
     },
 
     async updateOwnProfile(authenticatedSubject, profile) {
-      return db.transaction(async (transaction) => {
+      return runTransaction(async (transaction) => {
         const [updated] = await transaction.update(nicknames).set({
           nickname: normalizeAccountNickname(profile.nickname),
           avatarKey: profile.avatarKey,
@@ -454,7 +488,7 @@ export function createPostgresAccountStore(
     },
 
     async deleteOwnAccount(authenticatedSubject) {
-      return db.transaction(async (transaction): Promise<boolean> => {
+      return runTransaction(async (transaction): Promise<boolean> => {
         for (const table of [
           authSessions,
           passwordCredentials,
@@ -538,7 +572,7 @@ export function createPostgresAccountStore(
       );
       const staleAccountCutoff = new Date(input.now.getTime() - 7 * 24 * 60 * 60 * 1_000);
 
-      return db.transaction(async (transaction): Promise<AccountCleanupResult> => {
+      return runTransaction(async (transaction): Promise<AccountCleanupResult> => {
         const expiredTokens = await transaction.select({ id: accountActionTokens.id })
           .from(accountActionTokens)
           .where(lt(accountActionTokens.expiresAt, input.now))
