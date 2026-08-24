@@ -2,9 +2,15 @@ import { describe, expect, test, vi } from "vitest";
 
 import type { AccountStore } from "./account-store";
 import type { AuthStore } from "./auth-store";
-import { createAccountService } from "./account-service";
+import {
+  createAccountService,
+  type AccountDeliverySignal,
+} from "./account-service";
 import { AccountRegistrationUnavailableError } from "./postgres-account-store";
-import type { TransactionalEmail } from "./transactional-email";
+import {
+  TransactionalEmailError,
+  type TransactionalEmail,
+} from "./transactional-email";
 
 const now = new Date("2026-08-24T12:00:00.000Z");
 const userId = "11111111-2222-4333-8444-555555555555";
@@ -28,7 +34,7 @@ function dependencies(overrides: Record<string, unknown> = {}) {
     createSession: vi.fn(async (session) => session),
   } as Pick<AuthStore, "createSession">;
   const email = {
-    sendVerification: vi.fn(async () => undefined),
+    sendVerification: vi.fn(async (): Promise<void> => undefined),
     sendPasswordReset: vi.fn(async () => undefined),
     sendPasswordChanged: vi.fn(async () => undefined),
     sendAccountDeleted: vi.fn(async () => undefined),
@@ -37,6 +43,7 @@ function dependencies(overrides: Record<string, unknown> = {}) {
     { raw: "raw-verification-token", hash: "a".repeat(64) },
     { raw: "raw-rotated-token", hash: "b".repeat(64) },
   ];
+  const scheduledTasks: Array<() => Promise<void>> = [];
   const base = {
     accountStore,
     authStore,
@@ -49,14 +56,25 @@ function dependencies(overrides: Record<string, unknown> = {}) {
     dummyPasswordHash: "dummy-argon-hash",
     createSessionToken: vi.fn(() => "raw-browser-session-token"),
     hashSessionToken: vi.fn(() => "d".repeat(64)),
+    scheduleAfterResponse: vi.fn((task: () => Promise<void>) => {
+      scheduledTasks.push(task);
+    }),
+    reportDelivery: vi.fn(async (_signal: AccountDeliverySignal): Promise<void> => undefined),
     ...overrides,
   };
-  return { service: createAccountService(base), accountStore, authStore, email, base };
+  return {
+    service: createAccountService(base),
+    accountStore,
+    authStore,
+    email,
+    base,
+    scheduledTasks,
+  };
 }
 
 describe("account service", () => {
   test("registers a normalized pending account with a hashed password and hashed 24-hour token", async () => {
-    const { service, accountStore, email, base } = dependencies();
+    const { service, accountStore, email, base, scheduledTasks } = dependencies();
 
     await expect(service.register({
       email: "  Driver@Example.COM ",
@@ -73,6 +91,9 @@ describe("account service", () => {
       verificationExpiresAt: new Date("2026-08-25T12:00:00.000Z"),
       legalRevision: "2026-08-24",
     });
+    expect(email.sendVerification).not.toHaveBeenCalled();
+    expect(scheduledTasks).toHaveLength(1);
+    await scheduledTasks[0]!();
     expect(email.sendVerification).toHaveBeenCalledWith({
       to: "driver@example.com",
       token: "raw-verification-token",
@@ -88,7 +109,9 @@ describe("account service", () => {
       new AccountRegistrationUnavailableError(),
     );
     const failedDelivery = dependencies();
-    failedDelivery.email.sendVerification.mockRejectedValueOnce(new Error("redacted delivery failure"));
+    failedDelivery.email.sendVerification.mockRejectedValueOnce(
+      new TransactionalEmailError("verification", 503),
+    );
 
     const input = {
       email: "driver@example.com",
@@ -99,7 +122,16 @@ describe("account service", () => {
     };
     await expect(unavailable.service.register(input)).resolves.toEqual({ kind: "accepted" });
     await expect(failedDelivery.service.register(input)).resolves.toEqual({ kind: "accepted" });
+    expect(unavailable.scheduledTasks).toHaveLength(1);
+    expect(failedDelivery.scheduledTasks).toHaveLength(1);
     expect(unavailable.email.sendVerification).not.toHaveBeenCalled();
+    await expect(unavailable.scheduledTasks[0]!()).resolves.toBeUndefined();
+    await expect(failedDelivery.scheduledTasks[0]!()).resolves.toBeUndefined();
+    expect(failedDelivery.base.reportDelivery).toHaveBeenCalledWith({
+      templateKind: "verification",
+      outcome: "failure",
+      statusClass: "5xx",
+    });
   });
 
   test("rotates and retries verification delivery without revealing account eligibility", async () => {
@@ -117,11 +149,73 @@ describe("account service", () => {
       expiresAt: new Date("2026-08-25T12:00:00.000Z"),
       now,
     });
+    expect(eligible.email.sendVerification).not.toHaveBeenCalled();
+    expect(eligible.scheduledTasks).toHaveLength(1);
+    expect(ineligible.scheduledTasks).toHaveLength(1);
+    await eligible.scheduledTasks[0]!();
+    await ineligible.scheduledTasks[0]!();
     expect(eligible.email.sendVerification).toHaveBeenCalledWith({
       to: "driver@example.com",
       token: "raw-verification-token",
     });
     expect(ineligible.email.sendVerification).not.toHaveBeenCalled();
+  });
+
+  test("returns before verification network delivery and retains it in the injected scheduler", async () => {
+    let resolveDelivery!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      resolveDelivery = resolve;
+    });
+    const setup = dependencies();
+    setup.email.sendVerification.mockImplementationOnce(() => delivery);
+
+    await expect(setup.service.register({
+      email: "driver@example.com",
+      password: "correct horse battery",
+      ipKeyHash,
+      accountKeyHash,
+      legalRevision: "2026-08-24",
+    })).resolves.toEqual({ kind: "accepted" });
+
+    expect(setup.email.sendVerification).not.toHaveBeenCalled();
+    expect(setup.base.scheduleAfterResponse).toHaveBeenCalledTimes(1);
+    const running = setup.scheduledTasks[0]!();
+    expect(setup.email.sendVerification).toHaveBeenCalledTimes(1);
+    resolveDelivery();
+    await expect(running).resolves.toBeUndefined();
+    expect(setup.base.reportDelivery).toHaveBeenCalledWith({
+      templateKind: "verification",
+      outcome: "success",
+      statusClass: "success",
+    });
+  });
+
+  test("contains reporter failures and passes only a redacted delivery signal", async () => {
+    const setup = dependencies();
+    setup.email.sendVerification.mockRejectedValueOnce(
+      new TransactionalEmailError("verification"),
+    );
+    setup.base.reportDelivery.mockRejectedValueOnce(new Error("reporter offline"));
+
+    await setup.service.resendVerification({
+      email: "secret-driver@example.com",
+      ipKeyHash,
+      accountKeyHash,
+    });
+    await expect(setup.scheduledTasks[0]!()).resolves.toBeUndefined();
+
+    const signal = setup.base.reportDelivery.mock.calls[0]![0];
+    expect(signal).toEqual({
+      templateKind: "verification",
+      outcome: "failure",
+      statusClass: "network",
+    });
+    expect(Object.keys(signal).sort()).toEqual([
+      "outcome",
+      "statusClass",
+      "templateKind",
+    ]);
+    expect(JSON.stringify(signal)).not.toMatch(/secret-driver|token|resend|api|body|url/iu);
   });
 
   test("consumes only a live verification-purpose token without returning private account fields", async () => {

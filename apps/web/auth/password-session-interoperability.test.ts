@@ -78,6 +78,8 @@ describe("password session interoperability", () => {
       dummyPasswordHash: "dummy-argon-hash",
       createSessionToken: () => rawToken,
       hashSessionToken,
+      scheduleAfterResponse: () => undefined,
+      reportDelivery: async () => undefined,
     });
 
     await expect(service.signInPassword({

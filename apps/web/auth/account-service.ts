@@ -1,7 +1,11 @@
 import type { AccountStore } from "./account-store";
 import type { AuthStore } from "./auth-store";
 import { AccountRegistrationUnavailableError } from "./postgres-account-store";
-import type { TransactionalEmail } from "./transactional-email";
+import {
+  TransactionalEmailError,
+  type TransactionalEmail,
+  type TransactionalEmailTemplateKind,
+} from "./transactional-email";
 
 export const accountPolicies = {
   verificationTtlMs: 24 * 60 * 60 * 1_000,
@@ -16,6 +20,19 @@ type AccountToken = { raw: string; hash: string };
 type RateLimitedInput = {
   ipKeyHash: string;
   accountKeyHash: string;
+};
+
+export type DeliveryStatusClass =
+  | "success"
+  | "network"
+  | "4xx"
+  | "5xx"
+  | "other";
+
+export type AccountDeliverySignal = {
+  templateKind: TransactionalEmailTemplateKind;
+  outcome: "success" | "failure";
+  statusClass: DeliveryStatusClass;
 };
 
 type AccountServiceDependencies = {
@@ -33,6 +50,8 @@ type AccountServiceDependencies = {
   dummyPasswordHash: string;
   createSessionToken(): string;
   hashSessionToken(raw: string): string;
+  scheduleAfterResponse(task: () => Promise<void>): void;
+  reportDelivery(signal: AccountDeliverySignal): void | Promise<void>;
 };
 
 export type GenericAccountResult =
@@ -53,6 +72,44 @@ function normalizeEmail(email: string): string {
 }
 
 export function createAccountService(dependencies: AccountServiceDependencies) {
+  async function safelyReportDelivery(signal: AccountDeliverySignal): Promise<void> {
+    try {
+      await dependencies.reportDelivery(signal);
+    } catch {
+      // Operational reporting must never reject a retained delivery task.
+    }
+  }
+
+  function deliveryFailureClass(error: unknown): DeliveryStatusClass {
+    if (!(error instanceof TransactionalEmailError)) return "other";
+    if (error.status === undefined) return "network";
+    if (error.status >= 400 && error.status < 500) return "4xx";
+    if (error.status >= 500 && error.status < 600) return "5xx";
+    return "other";
+  }
+
+  function scheduleVerificationDelivery(
+    input: { to: string; token: string } | null,
+  ): void {
+    dependencies.scheduleAfterResponse(async () => {
+      if (!input) return;
+      try {
+        await dependencies.email.sendVerification(input);
+        await safelyReportDelivery({
+          templateKind: "verification",
+          outcome: "success",
+          statusClass: "success",
+        });
+      } catch (error) {
+        await safelyReportDelivery({
+          templateKind: "verification",
+          outcome: "failure",
+          statusClass: deliveryFailureClass(error),
+        });
+      }
+    });
+  }
+
   async function passesRateLimit(
     kind: "registration" | "sign_in" | "resend",
     policy: { limit: number; windowMs: number },
@@ -100,16 +157,13 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
         });
       } catch (error) {
         if (error instanceof AccountRegistrationUnavailableError) {
+          scheduleVerificationDelivery(null);
           return { kind: "accepted" };
         }
         throw error;
       }
 
-      try {
-        await dependencies.email.sendVerification({ to: account.email, token: token.raw });
-      } catch {
-        // The committed pending account remains eligible for a generic resend.
-      }
+      scheduleVerificationDelivery({ to: account.email, token: token.raw });
       return { kind: "accepted" };
     },
 
@@ -129,13 +183,9 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
         expiresAt: new Date(now.getTime() + accountPolicies.verificationTtlMs),
         now,
       });
-      if (account) {
-        try {
-          await dependencies.email.sendVerification({ to: account.email, token: token.raw });
-        } catch {
-          // The replacement token remains valid so the same generic flow can retry.
-        }
-      }
+      scheduleVerificationDelivery(account
+        ? { to: account.email, token: token.raw }
+        : null);
       return { kind: "accepted" };
     },
 
