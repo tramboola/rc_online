@@ -7,7 +7,7 @@ import {
 } from "./transactional-email";
 
 const config = {
-  apiKey: "re_test_api_key_do_not_expose",
+  apiKey: "unit-test-api-key-not-secret",
   authUrl: "https://rcmania.live",
   from: "RC Mania <accounts@updates.rcmania.live>",
   supportEmail: "support@rcmania.live",
@@ -38,7 +38,7 @@ describe("Resend transactional email", () => {
     expect(init).toMatchObject({
       method: "POST",
       headers: {
-        authorization: "Bearer re_test_api_key_do_not_expose",
+        authorization: "Bearer unit-test-api-key-not-secret",
         "content-type": "application/json",
       },
     });
@@ -139,7 +139,7 @@ describe("Resend transactional email", () => {
   test("redacts every fetch rejection without retaining the original cause", async () => {
     const fetcher = vi.fn<TransactionalEmailFetcher>(async (_input, _init) => {
       throw new Error(
-        "leaked re_test_api_key_do_not_expose driver@example.com reset-token",
+        "leaked unit-test-api-key-not-secret driver@example.com reset-token",
       );
     });
     const email = createResendTransactionalEmail(config, fetcher);
