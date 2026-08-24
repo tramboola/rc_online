@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { type IncomingMessage } from "node:http";
+import { Socket } from "node:net";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { createGatewayServer } from "./server.js";
@@ -67,7 +70,7 @@ function createStore() {
   };
 }
 
-async function listen(store: GatewayStore) {
+async function listen(store: GatewayStore, viewerCapacity = 500) {
   const server = createGatewayServer(
     {
       host: "127.0.0.1",
@@ -77,6 +80,7 @@ async function listen(store: GatewayStore) {
       browserTicketSecret: "test-browser-secret-with-enough-entropy",
       authTimeoutMs: 250,
       staleAfterMs: 15_000,
+      viewerCapacity,
       iceServerTemplates: [],
       turnSharedSecret: undefined,
       turnCredentialTtlSeconds: 600
@@ -318,5 +322,69 @@ describe("anonymous viewer socket", () => {
     await server.close();
 
     expect(await closed).toBe(1001);
+  });
+
+  it("rejects viewers above the global cap while keeping the authenticated socket route reachable", async () => {
+    const { store } = createStore();
+    const { server, baseUrl } = await listen(store, 2);
+    const first = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const second = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    await Promise.all([openSocket(first), openSocket(second)]);
+
+    const excess = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const excessStatus = await new Promise<number>((resolve, reject) => {
+      excess.once("unexpected-response", (_request, response) => {
+        response.resume();
+        if (response.statusCode === undefined) {
+          reject(new Error("Excess viewer response omitted its status"));
+          return;
+        }
+        resolve(response.statusCode);
+      });
+      excess.once("open", () => reject(new Error("Excess viewer unexpectedly opened")));
+      excess.once("error", reject);
+    });
+
+    const enrollment = await server.inject({
+      method: "POST",
+      url: "/v1/enroll",
+      payload: {
+        enrollmentCode: "enr_this-code-is-long-enough-for-a-test",
+        serialNumber: "10000000abc12345",
+        agentVersion: "0.1.0",
+        capabilities: {}
+      }
+    });
+    const credentials = enrollment.json();
+    const drive = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket");
+    const accepted = nextMessage(drive);
+    await openSocket(drive);
+    drive.send(JSON.stringify({
+      v: 1,
+      type: "device.authenticate",
+      deviceId: credentials.deviceId,
+      secret: credentials.deviceSecret,
+      agentVersion: "0.1.0"
+    }));
+
+    expect(excessStatus).toBe(503);
+    expect(await accepted).toEqual({ v: 1, type: "auth.accepted", peer: "device" });
+    first.close();
+    second.close();
+    drive.close();
+  });
+
+  it("destroys malformed upgrade requests instead of throwing from URL parsing", async () => {
+    const { store } = createStore();
+    const { server } = await listen(store);
+    const socket = new Socket();
+    const destroy = vi.spyOn(socket, "destroy");
+    const request = {
+      url: "http://[",
+      headers: { host: "localhost" }
+    } as IncomingMessage;
+
+    expect(() => server.server.emit("upgrade", request, socket, Buffer.alloc(0))).not.toThrow();
+    expect(destroy).toHaveBeenCalledTimes(1);
   });
 });

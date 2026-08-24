@@ -60,7 +60,13 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
   });
 
   app.server.on("upgrade", (request, socket, head) => {
-    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+    let url: URL;
+    try {
+      url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+    } catch {
+      socket.destroy();
+      return;
+    }
     if (url.pathname === "/v1/socket") {
       sockets.handleUpgrade(request, socket, head, (webSocket) => {
         sockets.emit("connection", webSocket, request);
@@ -68,6 +74,16 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
       return;
     }
     if (url.pathname === "/v1/viewers") {
+      if (viewerSockets.size >= config.viewerCapacity) {
+        socket.end([
+          "HTTP/1.1 503 Service Unavailable",
+          "Connection: close",
+          "Content-Length: 0",
+          "",
+          ""
+        ].join("\r\n"));
+        return;
+      }
       viewers.handleUpgrade(request, socket, head, (webSocket) => {
         viewers.emit("connection", webSocket, request);
       });

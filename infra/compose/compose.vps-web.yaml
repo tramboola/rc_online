@@ -144,6 +144,7 @@ services:
       DEVICE_AUTH_PEPPER: ${DEVICE_AUTH_PEPPER:?Set DEVICE_AUTH_PEPPER in the private env file}
       GATEWAY_SESSION_SECRET: ${GATEWAY_SESSION_SECRET:?Set GATEWAY_SESSION_SECRET in the private env file}
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-wss://rcmania.live/gateway/v1/socket}
+      GATEWAY_VIEWER_CAPACITY: ${GATEWAY_VIEWER_CAPACITY:-500}
       GATEWAY_ICE_SERVERS_JSON: ${GATEWAY_ICE_SERVERS_JSON:-[{"urls":"stun:turn.rcmania.live:3478"},{"urls":"turn:turn.rcmania.live:3478?transport=udp"},{"urls":"turn:turn.rcmania.live:3478?transport=tcp"},{"urls":"turns:turn.rcmania.live:443?transport=tcp"}]}
       TURN_SHARED_SECRET_FILE: /run/secrets/turn_shared_secret
       TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-600}

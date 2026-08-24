@@ -65,6 +65,7 @@ describe("connectViewerSocket", () => {
     const socket = sockets[0]!;
     socket.onclose?.();
     cleanup();
+    expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(15_000);
 
     expect(urls).toEqual(["ws://localhost:3000/gateway/v1/viewers"]);
@@ -86,6 +87,7 @@ describe("connectViewerSocket", () => {
     });
     const socket = sockets[0]!;
     cleanup();
+    expect(vi.getTimerCount()).toBe(0);
 
     socket.onmessage?.({ data: JSON.stringify({ v: 1, type: "viewer.count", count: 8 }) });
     socket.onerror?.();
@@ -126,6 +128,59 @@ describe("connectViewerSocket", () => {
     expect(sockets).toHaveLength(7);
     vi.advanceTimersByTime(1);
     expect(sockets).toHaveLength(8);
+    cleanup();
+  });
+
+  it("marks an unanswered connection unavailable after 10 seconds and reconnects", () => {
+    vi.useFakeTimers();
+    const { createSocket, sockets } = socketHarness();
+    const statuses: string[] = [];
+
+    const cleanup = connectViewerSocket({
+      createSocket,
+      location: { host: "rcmania.live", protocol: "https:" },
+      onCount: () => undefined,
+      onStatus: (status) => statuses.push(status),
+    });
+
+    vi.advanceTimersByTime(9_999);
+    expect(statuses).toEqual(["connecting"]);
+    expect(sockets[0]!.close).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(statuses).toEqual(["connecting", "unavailable"]);
+    expect(sockets[0]!.close).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(999);
+    expect(sockets).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(sockets).toHaveLength(2);
+    expect(statuses).toEqual(["connecting", "unavailable", "connecting"]);
+    cleanup();
+  });
+
+  it("cancels the first-count watchdog after a valid count", () => {
+    vi.useFakeTimers();
+    const { createSocket, sockets } = socketHarness();
+    const statuses: string[] = [];
+
+    const cleanup = connectViewerSocket({
+      createSocket,
+      location: { host: "rcmania.live", protocol: "https:" },
+      onCount: () => undefined,
+      onStatus: (status) => statuses.push(status),
+    });
+    const socket = sockets[0]!;
+    vi.advanceTimersByTime(5_000);
+    socket.onmessage?.({
+      data: JSON.stringify({ v: 1, type: "viewer.count", count: 3 }),
+    });
+
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(10_000);
+    expect(statuses).toEqual(["connecting", "live"]);
+    expect(socket.close).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
     cleanup();
   });
 });

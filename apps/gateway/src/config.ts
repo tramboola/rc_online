@@ -13,6 +13,7 @@ export type GatewayConfig = {
   browserTicketSecret: string;
   authTimeoutMs: number;
   staleAfterMs: number;
+  viewerCapacity: number;
   iceServerTemplates: IceServer[];
   turnSharedSecret: string | undefined;
   turnCredentialTtlSeconds: number;
@@ -41,6 +42,7 @@ export function loadGatewayConfig(
     browserTicketSecret: requiredSecret(env.GATEWAY_SESSION_SECRET, "GATEWAY_SESSION_SECRET"),
     authTimeoutMs: readInteger(env.GATEWAY_AUTH_TIMEOUT_MS, 5_000, 100, 30_000),
     staleAfterMs: readInteger(env.GATEWAY_STALE_AFTER_MS, 15_000, 5_000, 120_000),
+    viewerCapacity: readInteger(env.GATEWAY_VIEWER_CAPACITY, 500, 1, 500),
     iceServerTemplates,
     turnSharedSecret,
     turnCredentialTtlSeconds

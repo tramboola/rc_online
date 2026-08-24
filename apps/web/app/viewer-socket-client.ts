@@ -14,6 +14,7 @@ export type ViewerSocketOptions = {
 };
 
 const reconnectDelaysMs = [1_000, 2_000, 4_000, 8_000, 15_000];
+const firstCountTimeoutMs = 10_000;
 
 function isViewerCountMessage(value: unknown): value is { v: 1; type: "viewer.count"; count: number } {
   if (typeof value !== "object" || value === null) return false;
@@ -40,8 +41,15 @@ export function connectViewerSocket(options: ViewerSocketOptions): () => void {
   let closed = false;
   let retryIndex = 0;
   let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+  let firstCountTimeout: ReturnType<typeof setTimeout> | null = null;
   let currentSocket: ViewerSocket | null = null;
   let socketToClose: ViewerSocket | null = null;
+
+  function clearFirstCountWatchdog() {
+    if (firstCountTimeout === null) return;
+    clearTimeout(firstCountTimeout);
+    firstCountTimeout = null;
+  }
 
   function scheduleReconnect() {
     if (closed || retryTimeout !== null) return;
@@ -60,11 +68,20 @@ export function connectViewerSocket(options: ViewerSocketOptions): () => void {
       const socket = createSocket(getViewerSocketUrl(location));
       currentSocket = socket;
       socketToClose = socket;
+      firstCountTimeout = setTimeout(() => {
+        firstCountTimeout = null;
+        if (closed || socket !== currentSocket) return;
+        currentSocket = null;
+        options.onStatus("unavailable");
+        socket.close();
+        scheduleReconnect();
+      }, firstCountTimeoutMs);
       socket.onmessage = (event) => {
         if (closed || socket !== currentSocket) return;
         try {
           const message: unknown = JSON.parse(String(event.data));
           if (!isViewerCountMessage(message)) return;
+          clearFirstCountWatchdog();
           retryIndex = 0;
           options.onCount(message.count);
           options.onStatus("live");
@@ -78,6 +95,7 @@ export function connectViewerSocket(options: ViewerSocketOptions): () => void {
       };
       socket.onclose = () => {
         if (closed || socket !== currentSocket) return;
+        clearFirstCountWatchdog();
         currentSocket = null;
         options.onStatus("unavailable");
         scheduleReconnect();
@@ -94,6 +112,7 @@ export function connectViewerSocket(options: ViewerSocketOptions): () => void {
     if (closed) return;
     closed = true;
     if (retryTimeout !== null) clearTimeout(retryTimeout);
+    clearFirstCountWatchdog();
     socketToClose?.close();
     currentSocket = null;
   };

@@ -63,3 +63,24 @@ describe("gateway TURN configuration", () => {
     }, () => "a-very-long-turn-shared-secret-value")).toThrow(/static/i);
   });
 });
+
+describe("gateway viewer capacity", () => {
+  it("defaults to 500 viewers and accepts a lower deployment cap", () => {
+    expect(loadGatewayConfig(baseEnv, () => "unused").viewerCapacity).toBe(500);
+    expect(loadGatewayConfig({
+      ...baseEnv,
+      GATEWAY_VIEWER_CAPACITY: "2"
+    }, () => "unused").viewerCapacity).toBe(2);
+  });
+
+  it("rejects viewer capacities outside the global production bound", () => {
+    expect(() => loadGatewayConfig({
+      ...baseEnv,
+      GATEWAY_VIEWER_CAPACITY: "0"
+    }, () => "unused")).toThrow(/between 1 and 500/u);
+    expect(() => loadGatewayConfig({
+      ...baseEnv,
+      GATEWAY_VIEWER_CAPACITY: "501"
+    }, () => "unused")).toThrow(/between 1 and 500/u);
+  });
+});

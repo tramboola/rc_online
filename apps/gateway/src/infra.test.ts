@@ -47,18 +47,18 @@ describe("production gateway infrastructure", () => {
     expect(gateway).toContain("/health/ready");
     expect(gateway).toContain("DEVICE_AUTH_PEPPER:");
     expect(gateway).toContain("GATEWAY_SESSION_SECRET:");
+    expect(gateway).toContain("GATEWAY_VIEWER_CAPACITY: ${GATEWAY_VIEWER_CAPACITY:-500}");
     expect(gateway).toMatch(/group_add:\s+- "33"/u);
     expect(gateway).toContain('cpus: "0.30"');
     expect(gateway).toContain("mem_limit: 256m");
     expect(gateway).toMatch(/- edge\s+- state/u);
   });
 
-  it("routes viewer counts through the gateway while preserving existing gateway paths", async () => {
+  it("routes authenticated sockets and health checks through the generic gateway proxy", async () => {
     const nginx = await readFile(nginxUrl, "utf8");
     const gateway = extractNginxBlock(nginx, "location /gateway/");
     const web = extractNginxBlock(nginx, "location /");
     const routes = [
-      ["/gateway/v1/viewers", "/v1/viewers"],
       ["/gateway/v1/socket", "/v1/socket"],
       ["/gateway/health/live", "/health/live"],
       ["/gateway/health/ready", "/health/ready"],
@@ -78,6 +78,48 @@ describe("production gateway infrastructure", () => {
     }
 
     expect(web).toContain("proxy_pass http://127.0.0.1:3000;");
+  });
+
+  it("isolates the exact viewer proxy from identifying headers and access logs", async () => {
+    const nginx = await readFile(nginxUrl, "utf8");
+    const viewerDeclaration = "location = /gateway/v1/viewers";
+    const viewer = extractNginxBlock(nginx, viewerDeclaration);
+    const genericGatewayIndex = nginx.indexOf("location /gateway/");
+    const viewerIndex = nginx.indexOf(`${viewerDeclaration} {`);
+    const proxyPassUri = viewer.match(/^\s*proxy_pass\s+(\S+);\s*$/mu)?.[1];
+
+    expect(viewerIndex).toBeGreaterThanOrEqual(0);
+    expect(viewerIndex).toBeLessThan(genericGatewayIndex);
+    expect(proxyPassUri).toBe("http://127.0.0.1:3002/v1/viewers");
+    expect(proxyRequestPath("/gateway/v1/viewers", proxyPassUri!, "/gateway/v1/viewers")).toBe("/v1/viewers");
+    expect(viewer).toContain("access_log off;");
+    expect(viewer).toContain('proxy_set_header Cookie "";');
+    expect(viewer).toContain('proxy_set_header Authorization "";');
+    expect(viewer).toContain('proxy_set_header X-Real-IP "";');
+    expect(viewer).toContain('proxy_set_header X-Forwarded-For "";');
+    expect(viewer).toContain('proxy_set_header User-Agent "";');
+    expect(viewer).toContain("proxy_http_version 1.1;");
+    expect(viewer).toContain("proxy_set_header Upgrade $http_upgrade;");
+    expect(viewer).toContain('proxy_set_header Connection "upgrade";');
+    expect(viewer).toContain("proxy_read_timeout 360s;");
+    expect(viewer).toContain("proxy_send_timeout 360s;");
+  });
+
+  it("bounds viewer connections and handshakes globally without an IP-derived key", async () => {
+    const nginx = await readFile(nginxUrl, "utf8");
+    const viewer = extractNginxBlock(nginx, "location = /gateway/v1/viewers");
+    const serverStart = nginx.indexOf("server {");
+    const httpContext = nginx.slice(0, serverStart);
+    const connectionZone = httpContext.match(/^\s*limit_conn_zone\s+(\S+)\s+zone=(\w+):(\S+);\s*$/mu);
+    const handshakeZone = httpContext.match(/^\s*limit_req_zone\s+(\S+)\s+zone=(\w+):(\S+)\s+rate=(\S+);\s*$/mu);
+
+    expect(connectionZone?.slice(1)).toEqual(["$server_name", "viewer_connections", "64k"]);
+    expect(handshakeZone?.slice(1)).toEqual(["$server_name", "viewer_handshakes", "64k", "20r/s"]);
+    expect(httpContext).not.toMatch(/\$(?:binary_)?remote_addr/u);
+    expect(viewer).toContain("limit_conn viewer_connections 500;");
+    expect(viewer).toContain("limit_conn_status 503;");
+    expect(viewer).toContain("limit_req zone=viewer_handshakes burst=100 nodelay;");
+    expect(viewer).toContain("limit_req_status 503;");
   });
 
   it("serves immutable signed agent releases without directory listing", async () => {
