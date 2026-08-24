@@ -50,15 +50,15 @@ describe("getHomePresentation", () => {
 
 describe("getViewerBadgeText", () => {
   test("formats a real active viewer count", () => {
-    expect(getViewerBadgeText(3, false)).toBe("3 WATCHING NOW");
+    expect(getViewerBadgeText(3, "live")).toBe("3 WATCHING NOW");
   });
 
-  test("shows a transient label before the first heartbeat completes", () => {
-    expect(getViewerBadgeText(null, false)).toBe("CHECKING AUDIENCE");
+  test("does not invent a count while the socket is connecting", () => {
+    expect(getViewerBadgeText(null, "connecting")).toBe("â€” VIEWING NOW");
   });
 
-  test("does not invent a number when the endpoint is unavailable", () => {
-    expect(getViewerBadgeText(null, true)).toBe("AUDIENCE UNAVAILABLE");
+  test("does not invent a count when the socket is unavailable", () => {
+    expect(getViewerBadgeText(null, "unavailable")).toBe("â€” VIEWING NOW");
   });
 });
 

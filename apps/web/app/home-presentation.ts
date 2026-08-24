@@ -1,3 +1,5 @@
+import type { ViewerSocketStatus } from "./viewer-socket-client";
+
 export type HomePresentation = {
   ctaAction: "disabled" | "navigate" | "sign-in";
   ctaHref: string | null;
@@ -52,13 +54,13 @@ export function getHomePresentation(
 
 export function getViewerBadgeText(
   count: number | null,
-  unavailable: boolean,
+  status: ViewerSocketStatus,
 ): string {
-  if (unavailable) {
-    return "AUDIENCE UNAVAILABLE";
+  if (status === "live" && count !== null && Number.isInteger(count) && count >= 0) {
+    return `${count} WATCHING NOW`;
   }
 
-  return count === null ? "CHECKING AUDIENCE" : `${count} WATCHING NOW`;
+  return "â€” VIEWING NOW";
 }
 
 export function getVideoStatusLabel(mockMode: boolean): "PREVIEW" | "● LIVE / DIRECT" {

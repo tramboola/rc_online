@@ -292,7 +292,7 @@ function HomeScreen({
             <span
               className={`viewer-badge${presentation.showLiveBadge ? "" : " viewer-badge-preview"}`}
             >
-              {getViewerBadgeText(viewerCount.count, viewerCount.unavailable)}
+              {getViewerBadgeText(viewerCount.count, viewerCount.status)}
             </span>
           </div>
           <div className="hero-copy">
