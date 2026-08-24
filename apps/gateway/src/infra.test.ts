@@ -93,6 +93,7 @@ describe("production gateway infrastructure", () => {
     expect(proxyPassUri).toBe("http://127.0.0.1:3002/v1/viewers");
     expect(proxyRequestPath("/gateway/v1/viewers", proxyPassUri!, "/gateway/v1/viewers")).toBe("/v1/viewers");
     expect(viewer).toContain("access_log off;");
+    expect(viewer).toContain("error_log /dev/null crit;");
     expect(viewer).toContain('proxy_set_header Cookie "";');
     expect(viewer).toContain('proxy_set_header Authorization "";');
     expect(viewer).toContain('proxy_set_header X-Real-IP "";');
