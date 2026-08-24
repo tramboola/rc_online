@@ -40,10 +40,13 @@ describe("legal footer", () => {
     },
   );
 
-  it("omits the footer only from the live ride path", () => {
-    navigationState.pathname = "/ride";
-    expect(renderToStaticMarkup(<LegalFooter />)).toBe("");
-  });
+  it.each(["/ride", "/ride/loading", "/ride/anything"])(
+    "omits the footer from every live ride route at %s",
+    (pathname) => {
+      navigationState.pathname = pathname;
+      expect(renderToStaticMarkup(<LegalFooter />)).toBe("");
+    },
+  );
 
   it("keeps accessible link names and a compact mobile layout contract", () => {
     navigationState.pathname = "/";

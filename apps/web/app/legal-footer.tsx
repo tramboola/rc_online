@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 export function LegalFooter() {
   const pathname = usePathname();
 
-  if (pathname === "/ride") return null;
+  if (pathname === "/ride" || pathname.startsWith("/ride/")) return null;
 
   return (
     <footer className="legal-footer">
