@@ -1,3 +1,5 @@
+import { requirePlainEmailAddress } from "./config";
+
 const RESEND_EMAIL_ENDPOINT = "https://api.resend.com/emails";
 
 export type TransactionalEmailTemplateKind =
@@ -54,11 +56,33 @@ export class TransactionalEmailError extends Error {
 }
 
 function readCanonicalHttpsOrigin(value: string): string {
-  const parsed = new URL(value);
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("authUrl must be a canonical HTTPS origin");
+  }
   if (parsed.protocol !== "https:" || parsed.origin !== value) {
     throw new Error("authUrl must be a canonical HTTPS origin");
   }
   return parsed.origin;
+}
+
+function requireConfiguredValue(value: string, key: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(`${key} must be configured`);
+  }
+  return normalized;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function actionLink(origin: string, path: string, token: string): string {
@@ -74,6 +98,7 @@ function linkedMessage(options: {
   linkLabel: string;
   lifetime: string;
 }): Pick<EmailMessage, "text" | "html"> {
+  const escapedLink = escapeHtml(options.link);
   return {
     text: [
       "RC Mania",
@@ -88,7 +113,7 @@ function linkedMessage(options: {
       '<div style="font-family:Arial,sans-serif;color:#101820">',
       `<h1 style="color:#ef2b2d">${options.heading}</h1>`,
       `<p>${options.intro}</p>`,
-      `<p><a href="${options.link}">${options.linkLabel}</a></p>`,
+      `<p><a href="${escapedLink}">${options.linkLabel}</a></p>`,
       `<p>${options.lifetime}</p>`,
       "<p>If you did not request this, you can ignore this email.</p>",
       "</div>",
@@ -125,6 +150,7 @@ function passwordResetMessage(origin: string, token: string): EmailMessage {
 }
 
 function passwordChangedMessage(supportEmail: string): EmailMessage {
+  const escapedSupportEmail = escapeHtml(supportEmail);
   return {
     subject: "RC Mania: password changed",
     text: [
@@ -137,13 +163,14 @@ function passwordChangedMessage(supportEmail: string): EmailMessage {
       '<div style="font-family:Arial,sans-serif;color:#101820">',
       '<h1 style="color:#ef2b2d">Password changed</h1>',
       "<p>Your RC Mania password was changed successfully.</p>",
-      `<p>If this was not you, contact ${supportEmail} immediately.</p>`,
+      `<p>If this was not you, contact ${escapedSupportEmail} immediately.</p>`,
       "</div>",
     ].join(""),
   };
 }
 
 function accountDeletedMessage(supportEmail: string): EmailMessage {
+  const escapedSupportEmail = escapeHtml(supportEmail);
   return {
     subject: "RC Mania: account deleted",
     text: [
@@ -156,7 +183,7 @@ function accountDeletedMessage(supportEmail: string): EmailMessage {
       '<div style="font-family:Arial,sans-serif;color:#101820">',
       '<h1 style="color:#ef2b2d">Account deleted</h1>',
       "<p>Your RC Mania account has been deleted.</p>",
-      `<p>If you did not request this, contact ${supportEmail}.</p>`,
+      `<p>If you did not request this, contact ${escapedSupportEmail}.</p>`,
       "</div>",
     ].join(""),
   };
@@ -167,27 +194,41 @@ export function createResendTransactionalEmail(
   fetcher: TransactionalEmailFetcher = fetch,
 ): TransactionalEmail {
   const canonicalOrigin = readCanonicalHttpsOrigin(config.authUrl);
+  const apiKey = requireConfiguredValue(config.apiKey, "apiKey");
+  const from = requireConfiguredValue(config.from, "from");
+  if (!config.supportEmail.trim()) {
+    throw new Error("supportEmail must be configured");
+  }
+  const supportEmail = requirePlainEmailAddress(
+    config.supportEmail,
+    "supportEmail",
+  );
 
   async function send(
     templateKind: TransactionalEmailTemplateKind,
     to: string,
     message: EmailMessage,
   ): Promise<void> {
-    const response = await fetcher(RESEND_EMAIL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${config.apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        from: config.from,
-        to: [to],
-        reply_to: config.supportEmail,
-        subject: message.subject,
-        text: message.text,
-        html: message.html,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetcher(RESEND_EMAIL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from,
+          to: [to],
+          reply_to: supportEmail,
+          subject: message.subject,
+          text: message.text,
+          html: message.html,
+        }),
+      });
+    } catch {
+      throw new TransactionalEmailError(templateKind);
+    }
 
     if (!response.ok) {
       throw new TransactionalEmailError(templateKind, response.status);
@@ -202,10 +243,10 @@ export function createResendTransactionalEmail(
       return send("password_reset", to, passwordResetMessage(canonicalOrigin, token));
     },
     sendPasswordChanged({ to }) {
-      return send("password_changed", to, passwordChangedMessage(config.supportEmail));
+      return send("password_changed", to, passwordChangedMessage(supportEmail));
     },
     sendAccountDeleted({ to }) {
-      return send("account_deleted", to, accountDeletedMessage(config.supportEmail));
+      return send("account_deleted", to, accountDeletedMessage(supportEmail));
     },
   };
 }

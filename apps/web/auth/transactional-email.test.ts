@@ -131,4 +131,67 @@ describe("Resend transactional email", () => {
       "Transactional email delivery failed (password_reset, HTTP 422)",
     );
   });
+
+  test("redacts every fetch rejection without retaining the original cause", async () => {
+    const fetcher = vi.fn<TransactionalEmailFetcher>(async (_input, _init) => {
+      throw new Error(
+        "leaked re_test_api_key_do_not_expose driver@example.com reset-token",
+      );
+    });
+    const email = createResendTransactionalEmail(config, fetcher);
+
+    const error = await email.sendPasswordReset({
+      to: "driver@example.com",
+      token: "reset-token",
+    }).catch((caught: unknown) => caught) as Error & { cause?: unknown };
+
+    expect(error).toMatchObject({
+      name: "TransactionalEmailError",
+      status: undefined,
+      templateKind: "password_reset",
+      message: "Transactional email delivery failed (password_reset, network error)",
+    });
+    expect(error.cause).toBeUndefined();
+    expect(`${error.message}${error.stack}${JSON.stringify(error)}`).not.toMatch(
+      /driver@example\.com|reset-token|re_test_api_key/i,
+    );
+  });
+
+  test("validates one plain support mailbox and escapes it in HTML", async () => {
+    const fetcher = successfulFetcher();
+    const email = createResendTransactionalEmail({
+      ...config,
+      supportEmail: "support&ops@rcmania.live",
+    }, fetcher);
+
+    await email.sendPasswordChanged({ to: "driver@example.com" });
+
+    const payload = JSON.parse(String(fetcher.mock.calls[0]![1]?.body)) as {
+      text: string;
+      html: string;
+    };
+    expect(payload.text).toContain("support&ops@rcmania.live");
+    expect(payload.html).toContain("support&amp;ops@rcmania.live");
+    expect(payload.html).not.toContain("support&ops@rcmania.live");
+
+    expect(() => createResendTransactionalEmail({
+      ...config,
+      supportEmail: "RC Mania <support@rcmania.live>",
+    }, fetcher)).toThrow("supportEmail must be one plain email address");
+    expect(() => createResendTransactionalEmail({
+      ...config,
+      supportEmail: "support@rcmania.live\n",
+    }, fetcher)).toThrow("supportEmail must be one plain email address");
+  });
+
+  test.each([
+    ["apiKey", "apiKey must be configured"],
+    ["from", "from must be configured"],
+    ["supportEmail", "supportEmail must be configured"],
+  ] as const)("requires %s when the email service is constructed", (key, message) => {
+    expect(() => createResendTransactionalEmail({
+      ...config,
+      [key]: "   ",
+    }, successfulFetcher())).toThrow(message);
+  });
 });

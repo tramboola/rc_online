@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  createSessionCookieDefinition,
   createSessionCookie,
   sessionCookieName,
   sessionCookieOptions,
@@ -8,11 +9,34 @@ import {
 } from "./session-cookie";
 
 describe("shared database-session cookie", () => {
-  test("uses the secure host-only Auth.js session contract", () => {
-    expect(sessionCookieName).toBe("__Secure-authjs.session-token");
+  test("uses the secure host-only Auth.js session contract in production", () => {
+    expect(createSessionCookieDefinition("production")).toEqual({
+      name: "__Secure-authjs.session-token",
+      options: {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 604_800,
+      },
+    });
+  });
+
+  test("uses an HTTP-compatible shared cookie during local development", () => {
+    expect(createSessionCookieDefinition("development")).toEqual({
+      name: "authjs.session-token",
+      options: {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 604_800,
+      },
+    });
+    expect(sessionCookieName).toBe("authjs.session-token");
     expect(sessionCookieOptions).toEqual({
       httpOnly: true,
-      secure: true,
+      secure: false,
       sameSite: "lax",
       path: "/",
       maxAge: 604_800,
@@ -23,11 +47,11 @@ describe("shared database-session cookie", () => {
     const expires = new Date("2026-08-31T12:00:00.000Z");
 
     expect(createSessionCookie("raw-session-token", expires)).toEqual({
-      name: "__Secure-authjs.session-token",
+      name: "authjs.session-token",
       value: "raw-session-token",
       options: {
         httpOnly: true,
-        secure: true,
+        secure: false,
         sameSite: "lax",
         path: "/",
         maxAge: sessionMaxAgeSeconds,
