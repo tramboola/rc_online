@@ -9,6 +9,35 @@ const turnConfigUrl = new URL("../../../infra/compose/coturn/turnserver.conf.tem
 const turnEntrypointUrl = new URL("../../../infra/compose/coturn/entrypoint.sh", import.meta.url);
 const turnFirewallUrl = new URL("../../../infra/turn/configure-firewall.sh", import.meta.url);
 
+function extractNginxBlock(config: string, declaration: string): string {
+  const marker = `${declaration} {`;
+  const declarationStart = config.indexOf(marker);
+  if (declarationStart < 0) throw new Error(`Missing Nginx block: ${declaration}`);
+
+  const bodyStart = declarationStart + marker.length;
+  let depth = 1;
+  for (let index = bodyStart; index < config.length; index += 1) {
+    if (config[index] === "{") depth += 1;
+    if (config[index] === "}") depth -= 1;
+    if (depth === 0) return config.slice(bodyStart, index);
+  }
+
+  throw new Error(`Unclosed Nginx block: ${declaration}`);
+}
+
+function proxyRequestPath(locationPrefix: string, proxyPassUri: string, requestPath: string): string {
+  if (!requestPath.startsWith(locationPrefix)) {
+    throw new Error(`${requestPath} is outside ${locationPrefix}`);
+  }
+
+  const schemeEnd = proxyPassUri.indexOf("://");
+  const upstreamUriStart = proxyPassUri.indexOf("/", schemeEnd + 3);
+  if (upstreamUriStart < 0) return requestPath;
+
+  const upstreamUri = new URL(proxyPassUri).pathname;
+  return `${upstreamUri}${requestPath.slice(locationPrefix.length)}`;
+}
+
 describe("production gateway infrastructure", () => {
   it("runs a bounded localhost-only gateway with private database access", async () => {
     const compose = await readFile(composeUrl, "utf8");
@@ -26,26 +55,29 @@ describe("production gateway infrastructure", () => {
 
   it("routes viewer counts through the gateway while preserving existing gateway paths", async () => {
     const nginx = await readFile(nginxUrl, "utf8");
-    const gateway = nginx.split("location /gateway/")[1] ?? "";
+    const gateway = extractNginxBlock(nginx, "location /gateway/");
+    const web = extractNginxBlock(nginx, "location /");
     const routes = [
       ["/gateway/v1/viewers", "/v1/viewers"],
       ["/gateway/v1/socket", "/v1/socket"],
       ["/gateway/health/live", "/health/live"],
       ["/gateway/health/ready", "/health/ready"],
     ] as const;
+    const proxyPassUri = gateway.match(/^\s*proxy_pass\s+(\S+);\s*$/mu)?.[1];
 
-    expect(gateway).toContain("proxy_pass http://127.0.0.1:3002/");
     expect(gateway).toContain("proxy_http_version 1.1;");
     expect(gateway).toContain("proxy_set_header Upgrade $http_upgrade;");
     expect(gateway).toContain('proxy_set_header Connection "upgrade";');
     expect(gateway).toContain("proxy_read_timeout 360s;");
     expect(gateway).toContain("proxy_send_timeout 360s;");
+    expect(proxyPassUri).toBeDefined();
+    expect(new URL(proxyPassUri!).origin).toBe("http://127.0.0.1:3002");
 
     for (const [requestPath, upstreamPath] of routes) {
-      expect(requestPath.replace("/gateway", "")).toBe(upstreamPath);
+      expect(proxyRequestPath("/gateway/", proxyPassUri!, requestPath)).toBe(upstreamPath);
     }
 
-    expect(nginx).toMatch(/location \/ \{\s+proxy_pass http:\/\/127\.0\.0\.1:3000;/u);
+    expect(web).toContain("proxy_pass http://127.0.0.1:3000;");
   });
 
   it("serves immutable signed agent releases without directory listing", async () => {
