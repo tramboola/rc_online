@@ -1,10 +1,13 @@
 import type { Session } from "next-auth";
 
+import { isAvatarKey, type AvatarKey } from "../auth/avatar";
+import type { UserRole } from "../auth/user-role";
+
 export type AccountPresentation =
   | {
       state: "signed-out";
       primary: "SIGN IN";
-      secondary: "WITH GOOGLE";
+      secondary: "ACCOUNT";
     }
   | {
       state: "signed-in";
@@ -12,27 +15,21 @@ export type AccountPresentation =
       secondary: "BALANCE";
       displayName: string;
       email: string;
-      initials: string;
+      avatarKey: AvatarKey;
+      avatarSrc: string;
+      role: UserRole;
     };
-
-function getInitials(displayName: string, email: string): string {
-  const words = displayName.trim().split(/\s+/u).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0]?.[0] ?? ""}${words.at(-1)?.[0] ?? ""}`.toUpperCase();
-  }
-  return (words[0]?.[0] ?? email[0] ?? "U").toUpperCase();
-}
 
 export function getAccountPresentation(session: Session | null): AccountPresentation {
   if (!session?.user?.email) {
     return {
       state: "signed-out",
       primary: "SIGN IN",
-      secondary: "WITH GOOGLE",
+      secondary: "ACCOUNT",
     };
   }
 
-  const displayName = session.user.name?.trim() || session.user.email;
+  const avatarKey = isAvatarKey(session.user.avatarKey) ? session.user.avatarKey : "racer-red";
   return {
     state: "signed-in",
     primary: new Intl.NumberFormat("en-US", {
@@ -42,8 +39,10 @@ export function getAccountPresentation(session: Session | null): AccountPresenta
       maximumFractionDigits: 2,
     }).format(session.user.balance.amountMinor / 100),
     secondary: "BALANCE",
-    displayName,
+    displayName: session.user.nickname.trim() || "RC DRIVER",
     email: session.user.email,
-    initials: getInitials(displayName, session.user.email),
+    avatarKey,
+    avatarSrc: `/assets/avatars/${avatarKey}.webp`,
+    role: session.user.role,
   };
 }
