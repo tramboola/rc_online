@@ -33,6 +33,9 @@ type Operation = {
   condition?: unknown;
   limit?: number;
   conflict?: "nothing" | "update";
+  conflictTarget?: unknown;
+  conflictSet?: Record<string, unknown>;
+  lock?: { mode: string; config: unknown };
   inTransaction: boolean;
 };
 
@@ -80,6 +83,10 @@ function createScriptedDatabase(scripts: Script[]) {
           operation.condition = condition;
           return builder;
         },
+        for(mode: string, config: unknown) {
+          operation.lock = { mode, config };
+          return builder;
+        },
         limit(limit: number) {
           operation.limit = limit;
           return complete(operation);
@@ -102,8 +109,10 @@ function createScriptedDatabase(scripts: Script[]) {
               operation.conflict = "nothing";
               return builder;
             },
-            onConflictDoUpdate() {
+            onConflictDoUpdate(config: { target: unknown; set: Record<string, unknown> }) {
               operation.conflict = "update";
+              operation.conflictTarget = config.target;
+              operation.conflictSet = config.set;
               return builder;
             },
           };
@@ -280,8 +289,11 @@ describe("createPostgresAccountStore", () => {
     })).resolves.toEqual({ userId, email: "driver@example.com" });
 
     const tokenUpdate = operations[0]!;
-    expect(sqlText(tokenUpdate.condition)).toMatch(/consumed_at.*is null/i);
-    expect(sqlText(tokenUpdate.condition)).toMatch(/expires_at.*>/i);
+    const tokenCondition = sqlText(tokenUpdate.condition);
+    expect(tokenCondition).toContain("d".repeat(64));
+    expect(tokenCondition).toContain("verify_email");
+    expect(tokenCondition).toMatch(/consumed_at.*is null/i);
+    expect(tokenCondition).toMatch(/expires_at.*>/i);
     expect(operations.filter((operation) => operation.kind === "update").map((operation) => operation.table))
       .toEqual([accountActionTokens, users, passwordCredentials]);
   });
@@ -294,6 +306,85 @@ describe("createPostgresAccountStore", () => {
     await expect(store.consumeActionToken({
       kind: "verify_email",
       tokenHash: "e".repeat(64),
+      now,
+    })).resolves.toBeNull();
+    expect(operations).toHaveLength(1);
+    const condition = sqlText(operations[0]!.condition);
+    expect(condition).toContain("e".repeat(64));
+    expect(condition).toContain("verify_email");
+  });
+
+  test("rotates verification tokens only for an active unverified password factor", async () => {
+    const { store, operations } = installDatabase([
+      { kind: "select", table: users, rows: [{ userId, email: "driver@example.com" }] },
+      { kind: "delete", table: accountActionTokens, rows: [{ id: "old-token" }] },
+      { kind: "insert", table: accountActionTokens, rows: [{ id: "new-token" }] },
+    ]);
+    const expiresAt = new Date("2026-08-25T12:00:00.000Z");
+
+    await expect(store.createOrRotateActionToken({
+      email: " DRIVER@Example.com ",
+      kind: "verify_email",
+      tokenHash: "9".repeat(64),
+      expiresAt,
+      now,
+    })).resolves.toEqual({ userId, email: "driver@example.com" });
+
+    const eligibility = sqlText(operations[0]!.condition);
+    expect(eligibility).toContain("driver@example.com");
+    expect(eligibility).toMatch(/disabled_at.*is null/i);
+    expect(eligibility).toMatch(/verified_at.*is null/i);
+    expect(operations[0]!.lock).toEqual({
+      mode: "update",
+      config: { of: [users, passwordCredentials] },
+    });
+    const invalidation = sqlText(operations[1]!.condition);
+    expect(invalidation).toContain("verify_email");
+    expect(invalidation).toMatch(/consumed_at.*is null/i);
+    expect(operations[2]!.values).toMatchObject({
+      userId,
+      kind: "verify_email",
+      tokenHash: "9".repeat(64),
+      expiresAt,
+      consumedAt: null,
+    });
+    expect(operations.every((operation) => operation.inTransaction)).toBe(true);
+  });
+
+  test("creates reset tokens only for an active verified password factor", async () => {
+    const { store, operations } = installDatabase([
+      { kind: "select", table: users, rows: [{ userId, email: "driver@example.com" }] },
+      { kind: "delete", table: accountActionTokens, rows: [] },
+      { kind: "insert", table: accountActionTokens, rows: [{ id: "new-token" }] },
+    ]);
+
+    await store.createOrRotateActionToken({
+      email: "driver@example.com",
+      kind: "reset_password",
+      tokenHash: "8".repeat(64),
+      expiresAt: new Date("2026-08-24T12:30:00.000Z"),
+      now,
+    });
+
+    const eligibility = sqlText(operations[0]!.condition);
+    expect(eligibility).toMatch(/users"\."email_verified_at" is not null/i);
+    expect(eligibility).toMatch(/password_credentials"\."verified_at" is not null/i);
+    expect(operations[2]!.values).toMatchObject({
+      kind: "reset_password",
+      tokenHash: "8".repeat(64),
+    });
+  });
+
+  test("does not rotate a token for an ineligible or unknown account", async () => {
+    const { store, operations } = installDatabase([
+      { kind: "select", table: users, rows: [] },
+    ]);
+
+    await expect(store.createOrRotateActionToken({
+      email: "unknown@example.com",
+      kind: "reset_password",
+      tokenHash: "7".repeat(64),
+      expiresAt: new Date("2026-08-24T12:30:00.000Z"),
       now,
     })).resolves.toBeNull();
     expect(operations).toHaveLength(1);
@@ -342,8 +433,23 @@ describe("createPostgresAccountStore", () => {
     expect(operations.find((operation) => operation.table === passwordCredentials)?.values)
       .toMatchObject({ passwordHash: "new-argon-hash", passwordChangedAt: now });
     expect(sqlText(operations[0]!.condition)).toMatch(/disabled_at.*is null/i);
+    expect(sqlText(operations[0]!.condition)).toMatch(/password_credentials.*verified_at.*is not null/i);
     expect(operations.filter((operation) => operation.kind === "delete").map((operation) => operation.table))
       .toEqual([authSessions, accountActionTokens]);
+  });
+
+  test("rolls back reset-token consumption when the verified credential invariant fails", async () => {
+    const { store, operations } = installDatabase([
+      { kind: "update", table: accountActionTokens, rows: [{ userId }] },
+      { kind: "update", table: passwordCredentials, rows: [] },
+    ]);
+
+    await expect(store.replacePasswordAndRevokeSessions({
+      resetTokenHash: "6".repeat(64),
+      newPasswordHash: "new-argon-hash",
+      now,
+    })).rejects.toThrow("Reset credential invariant failed");
+    expect(operations).toHaveLength(2);
   });
 
   test("returns an exact private own-profile DTO selected by the authenticated subject", async () => {
@@ -398,6 +504,8 @@ describe("createPostgresAccountStore", () => {
     expect(operations.every((operation) => operation.inTransaction)).toBe(true);
     expect(operations.filter((operation) => operation.kind === "delete").map((operation) => operation.table))
       .toEqual([authSessions, passwordCredentials, accountActionTokens, oauthIdentities, nicknames, consents]);
+    const consentDeletion = operations.find((operation) => operation.table === consents)!;
+    expect(sqlText(consentDeletion.condition)).toMatch(/kind.*<>.*terms_of_service/i);
     expect(operations.at(-1)?.values).toMatchObject({
       email: `deleted+${deletedUuid}@invalid.rcmania`,
       displayName: "Deleted driver",
@@ -420,6 +528,12 @@ describe("createPostgresAccountStore", () => {
       limit: 3,
     })).resolves.toEqual({ allowed: true, remaining: 0, retryAfterMs: 60_000 });
     expect(operations[0]!.conflict).toBe("update");
+    expect(operations[0]!.conflictTarget).toEqual([
+      authRateLimits.keyHash,
+      authRateLimits.kind,
+      authRateLimits.windowStartedAt,
+    ]);
+    expect(sqlText(operations[0]!.conflictSet?.attemptCount)).toMatch(/attempt_count.*\+.*1/i);
     expect(operations[0]!.values).toMatchObject({
       keyHash,
       kind: "sign_in",
@@ -436,6 +550,20 @@ describe("createPostgresAccountStore", () => {
     })).rejects.toThrow("Rate-limit key must be an HMAC digest");
   });
 
+  test("denies the first attempt beyond the atomic fixed-window limit", async () => {
+    const { store } = installDatabase([
+      { kind: "insert", table: authRateLimits, rows: [{ attemptCount: 4 }] },
+    ]);
+
+    await expect(store.takeRateLimitAttempt({
+      keyHash: "2".repeat(64),
+      kind: "sign_in",
+      now,
+      windowMs: 60_000,
+      limit: 3,
+    })).resolves.toEqual({ allowed: false, remaining: 0, retryAfterMs: 60_000 });
+  });
+
   test("bounds every cleanup scan and never selects Google-linked or verified accounts", async () => {
     const { store, operations } = installDatabase([
       { kind: "select", table: accountActionTokens, rows: [] },
@@ -450,9 +578,36 @@ describe("createPostgresAccountStore", () => {
     });
 
     expect(operations.map((operation) => operation.limit)).toEqual([25, 25, 25]);
+    expect(operations[2]!.lock).toEqual({
+      mode: "update",
+      config: { of: [users, passwordCredentials], skipLocked: true },
+    });
     const accountCondition = sqlText(operations[2]!.condition);
-    expect(accountCondition).toMatch(/verified_at.*is null/i);
+    expect(accountCondition).toMatch(/users"\."email_verified_at" is null/i);
+    expect(accountCondition).toMatch(/password_credentials"\."verified_at" is null/i);
     expect(accountCondition).toMatch(/oauth_identities/i);
+  });
+
+  test("reports only users actually deleted by bounded cleanup", async () => {
+    const staleUser = "aaaaaaaa-2222-4333-8444-555555555555";
+    const { store, operations } = installDatabase([
+      { kind: "select", table: accountActionTokens, rows: [] },
+      { kind: "select", table: authRateLimits, rows: [] },
+      { kind: "select", table: users, rows: [{ id: staleUser }] },
+      { kind: "delete", table: authSessions, rows: [] },
+      { kind: "delete", table: accountActionTokens, rows: [] },
+      { kind: "delete", table: passwordCredentials, rows: [] },
+      { kind: "delete", table: nicknames, rows: [] },
+      { kind: "delete", table: consents, rows: [] },
+      { kind: "delete", table: users, rows: [] },
+    ]);
+
+    await expect(store.cleanupExpiredAccountData({ now, batchSize: 10 })).resolves.toEqual({
+      tokensDeleted: 0,
+      rateLimitRowsDeleted: 0,
+      accountsDeleted: 0,
+    });
+    expect(operations[2]!.lock?.mode).toBe("update");
   });
 
   test("rejects a non-finite cleanup batch before issuing a database query", async () => {

@@ -20,6 +20,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  ne,
   sql,
 } from "drizzle-orm";
 
@@ -305,6 +306,54 @@ export function createPostgresAccountStore(
       });
     },
 
+    async createOrRotateActionToken(input) {
+      const email = normalizeAccountEmail(input.email);
+      return db.transaction(async (transaction): Promise<AccountActionResult | null> => {
+        const credentialEligibility = input.kind === "verify_email"
+          ? isNull(passwordCredentials.verifiedAt)
+          : and(
+              isNotNull(passwordCredentials.verifiedAt),
+              isNotNull(users.emailVerifiedAt),
+            );
+        const [eligible] = await transaction.select({
+          userId: users.id,
+          email: users.email,
+        }).from(users)
+          .innerJoin(passwordCredentials, eq(passwordCredentials.userId, users.id))
+          .where(and(
+            sql`lower(${users.email}) = ${email}`,
+            isNull(users.disabledAt),
+            credentialEligibility,
+          ))
+          .for("update", { of: [users, passwordCredentials] })
+          .limit(1);
+        if (!eligible) {
+          return null;
+        }
+
+        await transaction.delete(accountActionTokens).where(and(
+          eq(accountActionTokens.userId, eligible.userId),
+          eq(accountActionTokens.kind, input.kind),
+          isNull(accountActionTokens.consumedAt),
+        )).returning({ id: accountActionTokens.id });
+        const [created] = await transaction.insert(accountActionTokens).values({
+          userId: eligible.userId,
+          kind: input.kind,
+          tokenHash: input.tokenHash,
+          expiresAt: input.expiresAt,
+          consumedAt: null,
+          createdAt: input.now,
+        }).returning({ id: accountActionTokens.id });
+        if (!created) {
+          throw new Error("Action token creation returned no row");
+        }
+        return {
+          userId: eligible.userId,
+          email: normalizeAccountEmail(eligible.email),
+        };
+      });
+    },
+
     async findPasswordSignIn(rawEmail) {
       const email = normalizeAccountEmail(rawEmail);
       const [candidate] = await db.select({
@@ -337,8 +386,11 @@ export function createPostgresAccountStore(
           gt(accountActionTokens.expiresAt, input.now),
           sql`exists (
             select 1 from ${users}
+            inner join ${passwordCredentials}
+              on ${passwordCredentials.userId} = ${users.id}
             where ${users.id} = ${accountActionTokens.userId}
               and ${users.disabledAt} is null
+              and ${passwordCredentials.verifiedAt} is not null
           )`,
         )).returning({ userId: accountActionTokens.userId });
         if (!token) {
@@ -354,7 +406,7 @@ export function createPostgresAccountStore(
           isNotNull(passwordCredentials.verifiedAt),
         )).returning({ userId: passwordCredentials.userId });
         if (!credential) {
-          return null;
+          throw new Error("Reset credential invariant failed");
         }
 
         await transaction.delete(authSessions)
@@ -409,12 +461,15 @@ export function createPostgresAccountStore(
           accountActionTokens,
           oauthIdentities,
           nicknames,
-          consents,
         ]) {
           await transaction.delete(table)
             .where(eq(table.userId, authenticatedSubject))
             .returning();
         }
+        await transaction.delete(consents).where(and(
+          eq(consents.userId, authenticatedSubject),
+          ne(consents.kind, "terms_of_service"),
+        )).returning();
 
         const disabledAt = currentTime();
         const deletedUuid = nextUuid();
@@ -526,6 +581,7 @@ export function createPostgresAccountStore(
               where ${oauthIdentities.userId} = ${users.id}
             )`,
           ))
+          .for("update", { of: [users, passwordCredentials], skipLocked: true })
           .limit(batchSize);
         const staleIds = staleAccounts.map(({ id }) => id);
         if (staleIds.length > 0) {
@@ -534,13 +590,20 @@ export function createPostgresAccountStore(
           await transaction.delete(passwordCredentials).where(inArray(passwordCredentials.userId, staleIds)).returning();
           await transaction.delete(nicknames).where(inArray(nicknames.userId, staleIds)).returning();
           await transaction.delete(consents).where(inArray(consents.userId, staleIds)).returning();
-          await transaction.delete(users).where(inArray(users.id, staleIds)).returning({ id: users.id });
+          const deletedUsers = await transaction.delete(users)
+            .where(inArray(users.id, staleIds))
+            .returning({ id: users.id });
+          return {
+            tokensDeleted,
+            rateLimitRowsDeleted,
+            accountsDeleted: deletedUsers.length,
+          };
         }
 
         return {
           tokensDeleted,
           rateLimitRowsDeleted,
-          accountsDeleted: staleIds.length,
+          accountsDeleted: 0,
         };
       });
     },

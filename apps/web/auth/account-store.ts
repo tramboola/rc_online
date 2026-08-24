@@ -42,6 +42,13 @@ export type AccountCleanupResult = {
 
 export interface AccountStore {
   registerPendingAccount(input: PendingAccountRegistration): Promise<AccountActionResult>;
+  createOrRotateActionToken(input: {
+    email: string;
+    kind: AccountActionTokenKind;
+    tokenHash: string;
+    expiresAt: Date;
+    now: Date;
+  }): Promise<AccountActionResult | null>;
   consumeActionToken(input: {
     kind: AccountActionTokenKind;
     tokenHash: string;
