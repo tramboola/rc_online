@@ -100,24 +100,31 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
     templateKind: TransactionalEmailTemplateKind,
     work: () => Promise<boolean>,
   ): void {
+    dependencies.scheduleAfterResponse(async () => {
+      try {
+        const delivered = await work();
+        if (!delivered) return;
+        await safelyReportDelivery({
+          templateKind,
+          outcome: "success",
+          statusClass: "success",
+        });
+      } catch (error) {
+        await safelyReportDelivery({
+          templateKind,
+          outcome: "failure",
+          statusClass: deliveryFailureClass(error),
+        });
+      }
+    });
+  }
+
+  function scheduleBestEffortDeliveryWork(
+    templateKind: TransactionalEmailTemplateKind,
+    work: () => Promise<boolean>,
+  ): void {
     try {
-      dependencies.scheduleAfterResponse(async () => {
-        try {
-          const delivered = await work();
-          if (!delivered) return;
-          await safelyReportDelivery({
-            templateKind,
-            outcome: "success",
-            statusClass: "success",
-          });
-        } catch (error) {
-          await safelyReportDelivery({
-            templateKind,
-            outcome: "failure",
-            statusClass: deliveryFailureClass(error),
-          });
-        }
-      });
+      scheduleDeliveryWork(templateKind, work);
     } catch {
       void safelyReportDelivery({
         templateKind,
@@ -330,7 +337,7 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
       );
       if (!deleted) return { kind: "unavailable" };
 
-      scheduleDeliveryWork("account_deleted", async () => {
+      scheduleBestEffortDeliveryWork("account_deleted", async () => {
         await dependencies.email.sendAccountDeleted({ to: ownEmail });
         return true;
       });

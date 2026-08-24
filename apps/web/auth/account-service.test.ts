@@ -83,6 +83,44 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("account service", () => {
+  test("fails closed when required registration and recovery work cannot be retained", async () => {
+    const schedulerError = new Error("retained scheduler unavailable");
+    const registration = dependencies({
+      scheduleAfterResponse: vi.fn(() => { throw schedulerError; }),
+    });
+    const resend = dependencies({
+      scheduleAfterResponse: vi.fn(() => { throw schedulerError; }),
+    });
+    const recovery = dependencies({
+      scheduleAfterResponse: vi.fn(() => { throw schedulerError; }),
+    });
+
+    await expect(registration.service.register({
+      email: "driver@example.com",
+      password: "correct horse battery",
+      legalRevision: "2026-08-24",
+      ipKeyHash,
+      accountKeyHash,
+    })).rejects.toBe(schedulerError);
+    await expect(resend.service.resendVerification({
+      email: "driver@example.com",
+      ipKeyHash,
+      accountKeyHash,
+    })).rejects.toBe(schedulerError);
+    await expect(recovery.service.requestPasswordReset({
+      email: "driver@example.com",
+      ipKeyHash,
+      accountKeyHash,
+    })).rejects.toBe(schedulerError);
+
+    expect(registration.accountStore.registerPendingAccount).not.toHaveBeenCalled();
+    expect(resend.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+    expect(recovery.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+    expect(registration.base.reportDelivery).not.toHaveBeenCalled();
+    expect(resend.base.reportDelivery).not.toHaveBeenCalled();
+    expect(recovery.base.reportDelivery).not.toHaveBeenCalled();
+  });
+
   test("deletes only the authenticated account and retains only its email for the deletion notice", async () => {
     const { service, accountStore, email, scheduledTasks } = dependencies();
     accountStore.getOwnProfile.mockResolvedValueOnce({
