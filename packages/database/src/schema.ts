@@ -77,7 +77,8 @@ export type AuthRateLimitKind =
   | "registration"
   | "sign_in"
   | "resend"
-  | "password_reset"
+  | "password_reset_request"
+  | "password_reset_submit"
   | "nickname"
   | "deletion";
 

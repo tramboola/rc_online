@@ -35,7 +35,9 @@ function dependencies(overrides: Record<string, unknown> = {}) {
     getOwnProfile: vi.fn(),
     updateOwnProfile: vi.fn(),
     deleteOwnAccount: vi.fn(),
-    takeRateLimitAttempt: vi.fn(async () => ({ allowed: true, remaining: 1, retryAfterMs: 1_000 })),
+    takeRateLimitAttempt: vi.fn(async (
+      _input: Parameters<AccountStore["takeRateLimitAttempt"]>[0],
+    ) => ({ allowed: true, remaining: 1, retryAfterMs: 1_000 })),
     cleanupExpiredAccountData: vi.fn(),
   } satisfies AccountStore;
   const authStore = {
@@ -396,6 +398,42 @@ describe("account service", () => {
       token: "raw-verification-token",
     });
     expect(ineligible.email.sendPasswordReset).not.toHaveBeenCalled();
+  });
+
+  test("keeps reset-link requests separate from applying a valid reset token", async () => {
+    const setup = dependencies();
+    const attempts = new Map<string, number>();
+    setup.accountStore.takeRateLimitAttempt.mockImplementation(async (input) => {
+      const key = `${input.kind}:${input.keyHash}`;
+      const count = (attempts.get(key) ?? 0) + 1;
+      attempts.set(key, count);
+      return {
+        allowed: count <= input.limit,
+        remaining: Math.max(0, input.limit - count),
+        retryAfterMs: 60_000,
+      };
+    });
+    setup.accountStore.replacePasswordAndRevokeSessions.mockResolvedValue({
+      userId,
+      email: "driver@example.com",
+    });
+
+    for (let request = 0; request < 3; request += 1) {
+      await expect(setup.service.requestPasswordReset({
+        email: "driver@example.com",
+        ipKeyHash,
+        accountKeyHash,
+      })).resolves.toEqual({ kind: "accepted" });
+    }
+
+    await expect(setup.service.resetPassword({
+      token: "raw-reset-token",
+      password: "new correct horse battery",
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "reset" });
+    expect(attempts.get(`password_reset_request:${ipKeyHash}`)).toBe(3);
+    expect(attempts.get(`password_reset_submit:${ipKeyHash}`)).toBe(1);
   });
 
   test("redacts an unexpected reset lookup failure inside the retained task", async () => {

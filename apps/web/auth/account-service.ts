@@ -14,7 +14,8 @@ export const accountPolicies = {
   registration: { limit: 5, windowMs: 60 * 60 * 1_000 },
   signIn: { limit: 10, windowMs: 15 * 60 * 1_000 },
   resend: { limit: 3, windowMs: 60 * 60 * 1_000 },
-  passwordReset: { limit: 3, windowMs: 60 * 60 * 1_000 },
+  passwordResetRequest: { limit: 3, windowMs: 60 * 60 * 1_000 },
+  passwordResetSubmit: { limit: 5, windowMs: 15 * 60 * 1_000 },
 } as const;
 
 type AccountToken = { raw: string; hash: string };
@@ -118,7 +119,12 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
   }
 
   async function passesRateLimit(
-    kind: "registration" | "sign_in" | "resend" | "password_reset",
+    kind:
+      | "registration"
+      | "sign_in"
+      | "resend"
+      | "password_reset_request"
+      | "password_reset_submit",
     policy: { limit: number; windowMs: number },
     input: RateLimitedInput,
     now: Date,
@@ -201,7 +207,12 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
       email: string;
     } & RateLimitedInput): Promise<GenericAccountResult> {
       const now = dependencies.now();
-      if (!await passesRateLimit("password_reset", accountPolicies.passwordReset, input, now)) {
+      if (!await passesRateLimit(
+        "password_reset_request",
+        accountPolicies.passwordResetRequest,
+        input,
+        now,
+      )) {
         return { kind: "rate_limited" };
       }
       const email = normalizeEmail(input.email);
@@ -235,7 +246,12 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
       password: string;
     } & RateLimitedInput): Promise<ResetPasswordResult> {
       const now = dependencies.now();
-      if (!await passesRateLimit("password_reset", accountPolicies.passwordReset, input, now)) {
+      if (!await passesRateLimit(
+        "password_reset_submit",
+        accountPolicies.passwordResetSubmit,
+        input,
+        now,
+      )) {
         return { kind: "rate_limited" };
       }
       const newPasswordHash = await dependencies.hashPassword(input.password);
