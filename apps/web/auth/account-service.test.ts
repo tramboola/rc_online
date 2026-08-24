@@ -83,6 +83,131 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("account service", () => {
+  test("deletes only the authenticated account and retains only its email for the deletion notice", async () => {
+    const { service, accountStore, email, scheduledTasks } = dependencies();
+    accountStore.getOwnProfile.mockResolvedValueOnce({
+      email: "driver@example.com",
+      nickname: "Private Driver",
+      avatarKey: "racer-red",
+    });
+    accountStore.deleteOwnAccount.mockResolvedValueOnce(true);
+
+    await expect(service.deleteAccount({
+      authenticatedSubject: userId,
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "deleted" });
+
+    expect(accountStore.getOwnProfile).toHaveBeenCalledWith(userId);
+    expect(accountStore.deleteOwnAccount).toHaveBeenCalledWith(userId);
+    expect(accountStore.takeRateLimitAttempt).toHaveBeenCalledTimes(2);
+    expect(email.sendAccountDeleted).not.toHaveBeenCalled();
+    expect(scheduledTasks).toHaveLength(1);
+
+    await scheduledTasks[0]!();
+    expect(email.sendAccountDeleted).toHaveBeenCalledWith({ to: "driver@example.com" });
+  });
+
+  test("reports a redacted account-deleted delivery failure without undoing deletion", async () => {
+    const failed = dependencies();
+    failed.accountStore.getOwnProfile.mockResolvedValueOnce({
+      email: "secret-driver@example.com",
+      nickname: "Private Driver",
+      avatarKey: "racer-red",
+    });
+    failed.accountStore.deleteOwnAccount.mockResolvedValueOnce(true);
+    failed.email.sendAccountDeleted.mockRejectedValueOnce(
+      new TransactionalEmailError("account_deleted", 503),
+    );
+
+    await expect(failed.service.deleteAccount({
+      authenticatedSubject: userId,
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "deleted" });
+    await failed.scheduledTasks[0]!();
+
+    expect(failed.base.reportDelivery).toHaveBeenCalledWith({
+      templateKind: "account_deleted",
+      outcome: "failure",
+      statusClass: "5xx",
+    });
+    expect(JSON.stringify(failed.base.reportDelivery.mock.calls)).not.toMatch(
+      /secret-driver|example\.com|resend|token|body|url/iu,
+    );
+  });
+
+  test("never lets retained-task scheduling failure change a completed deletion", async () => {
+    const failed = dependencies({
+      scheduleAfterResponse: vi.fn(() => {
+        throw new Error("scheduler unavailable for secret-driver@example.com");
+      }),
+    });
+    failed.accountStore.getOwnProfile.mockResolvedValueOnce({
+      email: "secret-driver@example.com",
+      nickname: "Private Driver",
+      avatarKey: "racer-red",
+    });
+    failed.accountStore.deleteOwnAccount.mockResolvedValueOnce(true);
+
+    await expect(failed.service.deleteAccount({
+      authenticatedSubject: userId,
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "deleted" });
+    expect(failed.accountStore.deleteOwnAccount).toHaveBeenCalledWith(userId);
+    expect(failed.email.sendAccountDeleted).not.toHaveBeenCalled();
+    expect(failed.base.reportDelivery).toHaveBeenCalledWith({
+      templateKind: "account_deleted",
+      outcome: "failure",
+      statusClass: "other",
+    });
+    expect(JSON.stringify(failed.base.reportDelivery.mock.calls)).not.toMatch(
+      /secret-driver|example\.com|scheduler/iu,
+    );
+  });
+
+  test("does not delete when the HMAC deletion limit is exhausted or the own account is unavailable", async () => {
+    const limited = dependencies();
+    limited.accountStore.takeRateLimitAttempt.mockResolvedValueOnce({
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: 60_000,
+    });
+
+    await expect(limited.service.deleteAccount({
+      authenticatedSubject: userId,
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "rate_limited" });
+    expect(limited.accountStore.getOwnProfile).not.toHaveBeenCalled();
+    expect(limited.accountStore.deleteOwnAccount).not.toHaveBeenCalled();
+
+    const unavailable = dependencies();
+    unavailable.accountStore.getOwnProfile.mockResolvedValueOnce(null);
+    await expect(unavailable.service.deleteAccount({
+      authenticatedSubject: userId,
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "unavailable" });
+    expect(unavailable.accountStore.deleteOwnAccount).not.toHaveBeenCalled();
+
+    const raced = dependencies();
+    raced.accountStore.getOwnProfile.mockResolvedValueOnce({
+      email: "driver@example.com",
+      nickname: "Private Driver",
+      avatarKey: "racer-red",
+    });
+    raced.accountStore.deleteOwnAccount.mockResolvedValueOnce(false);
+    await expect(raced.service.deleteAccount({
+      authenticatedSubject: userId,
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "unavailable" });
+    expect(raced.email.sendAccountDeleted).not.toHaveBeenCalled();
+    expect(raced.scheduledTasks).toHaveLength(0);
+  });
+
   test("registers a normalized pending account with a hashed password and hashed 24-hour token", async () => {
     const { service, accountStore, email, base, scheduledTasks } = dependencies();
 

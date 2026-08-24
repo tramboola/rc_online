@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   createSessionCookieDefinition,
+  createClearedSessionCookie,
   createSessionCookie,
   sessionCookieName,
   sessionCookieOptions,
@@ -56,6 +57,21 @@ describe("shared database-session cookie", () => {
         path: "/",
         maxAge: sessionMaxAgeSeconds,
         expires,
+      },
+    });
+  });
+
+  test("clears the exact shared development cookie with the same security scope", () => {
+    expect(createClearedSessionCookie()).toEqual({
+      name: "authjs.session-token",
+      value: "",
+      options: {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+        expires: new Date(0),
       },
     });
   });

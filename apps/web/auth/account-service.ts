@@ -16,6 +16,7 @@ export const accountPolicies = {
   resend: { limit: 3, windowMs: 60 * 60 * 1_000 },
   passwordResetRequest: { limit: 3, windowMs: 60 * 60 * 1_000 },
   passwordResetSubmit: { limit: 5, windowMs: 15 * 60 * 1_000 },
+  deletion: { limit: 3, windowMs: 15 * 60 * 1_000 },
 } as const;
 
 type AccountToken = { raw: string; hash: string };
@@ -99,23 +100,31 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
     templateKind: TransactionalEmailTemplateKind,
     work: () => Promise<boolean>,
   ): void {
-    dependencies.scheduleAfterResponse(async () => {
-      try {
-        const delivered = await work();
-        if (!delivered) return;
-        await safelyReportDelivery({
-          templateKind,
-          outcome: "success",
-          statusClass: "success",
-        });
-      } catch (error) {
-        await safelyReportDelivery({
-          templateKind,
-          outcome: "failure",
-          statusClass: deliveryFailureClass(error),
-        });
-      }
-    });
+    try {
+      dependencies.scheduleAfterResponse(async () => {
+        try {
+          const delivered = await work();
+          if (!delivered) return;
+          await safelyReportDelivery({
+            templateKind,
+            outcome: "success",
+            statusClass: "success",
+          });
+        } catch (error) {
+          await safelyReportDelivery({
+            templateKind,
+            outcome: "failure",
+            statusClass: deliveryFailureClass(error),
+          });
+        }
+      });
+    } catch {
+      void safelyReportDelivery({
+        templateKind,
+        outcome: "failure",
+        statusClass: "other",
+      });
+    }
   }
 
   async function passesRateLimit(
@@ -124,7 +133,8 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
       | "sign_in"
       | "resend"
       | "password_reset_request"
-      | "password_reset_submit",
+      | "password_reset_submit"
+      | "deletion",
     policy: { limit: number; windowMs: number },
     input: RateLimitedInput,
     now: Date,
@@ -295,6 +305,36 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
         lastSeenAt: now,
       });
       return { kind: "authenticated", token: rawToken, expiresAt };
+    },
+
+    async deleteAccount(input: {
+      authenticatedSubject: string;
+    } & RateLimitedInput): Promise<
+      | { kind: "deleted" }
+      | { kind: "rate_limited" }
+      | { kind: "unavailable" }
+    > {
+      const now = dependencies.now();
+      if (!await passesRateLimit("deletion", accountPolicies.deletion, input, now)) {
+        return { kind: "rate_limited" };
+      }
+
+      const ownProfile = await dependencies.accountStore.getOwnProfile(
+        input.authenticatedSubject,
+      );
+      if (!ownProfile) return { kind: "unavailable" };
+      const ownEmail = ownProfile.email;
+
+      const deleted = await dependencies.accountStore.deleteOwnAccount(
+        input.authenticatedSubject,
+      );
+      if (!deleted) return { kind: "unavailable" };
+
+      scheduleDeliveryWork("account_deleted", async () => {
+        await dependencies.email.sendAccountDeleted({ to: ownEmail });
+        return true;
+      });
+      return { kind: "deleted" };
     },
   };
 }
