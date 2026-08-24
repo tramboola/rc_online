@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
@@ -16,6 +16,14 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
     status,
     json: async () => body,
   } as Response;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 beforeAll(() => {
@@ -49,6 +57,8 @@ describe("AccountDialog", () => {
     expect(screen.getByRole("button", { name: /sign in with google/iu })).toBeTruthy();
     expect(screen.getByRole("button", { name: /show create account form/iu })).toBeTruthy();
     expect(screen.getByRole("button", { name: /forgot password/iu })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /terms of service/iu }).getAttribute("href")).toBe("/terms");
+    expect(screen.getByRole("link", { name: /privacy policy/iu }).getAttribute("href")).toBe("/privacy");
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/email/iu)));
 
     fireEvent(dialog, new Event("cancel", { bubbles: true, cancelable: true }));
@@ -192,5 +202,56 @@ describe("AccountDialog", () => {
     await user.type(screen.getByLabelText(/^password$/iu), "correct horse 12");
     await user.click(screen.getByRole("button", { name: /sign in with email/iu }));
     await waitFor(() => expect(onSignedIn).toHaveBeenCalledOnce());
+  });
+
+  test("does not complete an email sign-in after the dialog closes and reopens", async () => {
+    const user = userEvent.setup();
+    const request = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValue(request.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const onSignedIn = vi.fn();
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <AccountDialog onClose={onClose} onSignedIn={onSignedIn} open returnTo="/" />,
+    );
+
+    await user.type(screen.getByLabelText(/email/iu), "driver@example.com");
+    await user.type(screen.getByLabelText(/^password$/iu), "correct horse 12");
+    await user.click(screen.getByRole("button", { name: /sign in with email/iu }));
+    await user.click(screen.getByRole("button", { name: /close account dialog/iu }));
+    rerender(<AccountDialog onClose={onClose} onSignedIn={onSignedIn} open={false} returnTo="/" />);
+    rerender(<AccountDialog onClose={onClose} onSignedIn={onSignedIn} open returnTo="/" />);
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(requestInit.signal?.aborted).toBe(true);
+    await act(async () => {
+      request.resolve(jsonResponse(200, { ok: true, message: "Signed in." }));
+      await request.promise;
+    });
+
+    expect(onSignedIn).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: /sign in to rc mania/iu })).toBeTruthy();
+  });
+
+  test("does not let a stale registration response replace a newly selected view", async () => {
+    const user = userEvent.setup();
+    const request = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(request.promise));
+    render(<AccountDialog onClose={vi.fn()} onSignedIn={vi.fn()} open returnTo="/" />);
+
+    await user.click(screen.getByRole("button", { name: /show create account form/iu }));
+    await user.type(screen.getByLabelText(/email/iu), "driver@example.com");
+    await user.type(screen.getByLabelText(/^password$/iu), "correct horse 12");
+    await user.type(screen.getByLabelText(/confirm password/iu), "correct horse 12");
+    await user.click(screen.getAllByRole("button", { name: /create account/iu }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: /show sign in form/iu }));
+
+    await act(async () => {
+      request.resolve(jsonResponse(202, { ok: true, message: "Check your inbox." }));
+      await request.promise;
+    });
+
+    expect(screen.getByRole("heading", { name: /sign in to rc mania/iu })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /check your inbox/iu })).toBeNull();
   });
 });

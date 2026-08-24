@@ -39,9 +39,15 @@ export type AccountRuntimeFactoryDependencies = {
   createEmail(config: ResendTransactionalEmailConfig): TransactionalEmail;
   hashDummyPassword(password: string): Promise<string>;
   scheduleAfterResponse(task: () => Promise<void>): void;
+  scheduleCleanup(task: () => Promise<void>, delayMs: number): void;
   reportDelivery(signal: AccountDeliverySignal): void | Promise<void>;
   reportCleanupFailure(): void;
 };
+
+const accountCleanupBatchSize = 100;
+const maxCleanupBatchesPerSweep = 10;
+const accountCleanupIntervalMs = 60 * 60 * 1_000;
+const accountCleanupRetryMs = 5 * 60 * 1_000;
 
 function runtimeIdentity(environment: AuthRuntimeEnvironment): string {
   const serialized = JSON.stringify([
@@ -88,14 +94,21 @@ export function createAccountRuntimeFactory(
         throw error;
       }
       const accountStore = dependencies.createAccountStore(environment.databaseUrl);
+      let nextCleanupDelayMs = accountCleanupIntervalMs;
       try {
-        await accountStore.cleanupExpiredAccountData({
-          now: new Date(),
-          batchSize: 100,
-        });
+        await cleanupExpiredAccountData(accountStore);
       } catch {
         dependencies.reportCleanupFailure();
+        nextCleanupDelayMs = accountCleanupRetryMs;
       }
+      scheduleAccountCleanup(
+        accountStore,
+        nextCleanupDelayMs,
+        dependencies,
+        nextCleanupDelayMs === accountCleanupRetryMs
+          ? accountCleanupRetryMs * 2
+          : accountCleanupRetryMs,
+      );
       return {
         accountStore,
         canonicalOrigin: environment.authUrl,
@@ -132,6 +145,42 @@ export function createAccountRuntimeFactory(
   };
 }
 
+async function cleanupExpiredAccountData(accountStore: AccountStore): Promise<void> {
+  for (let batch = 0; batch < maxCleanupBatchesPerSweep; batch += 1) {
+    const result = await accountStore.cleanupExpiredAccountData({
+      now: new Date(),
+      batchSize: accountCleanupBatchSize,
+    });
+    if (
+      result.tokensDeleted < accountCleanupBatchSize
+      && result.rateLimitRowsDeleted < accountCleanupBatchSize
+      && result.accountsDeleted < accountCleanupBatchSize
+    ) {
+      return;
+    }
+  }
+}
+
+function scheduleAccountCleanup(
+  accountStore: AccountStore,
+  delayMs: number,
+  dependencies: AccountRuntimeFactoryDependencies,
+  failureRetryMs: number,
+): void {
+  dependencies.scheduleCleanup(async () => {
+    let nextDelayMs = accountCleanupIntervalMs;
+    let nextFailureRetryMs = accountCleanupRetryMs;
+    try {
+      await cleanupExpiredAccountData(accountStore);
+    } catch {
+      dependencies.reportCleanupFailure();
+      nextDelayMs = failureRetryMs;
+      nextFailureRetryMs = Math.min(failureRetryMs * 2, accountCleanupIntervalMs);
+    }
+    scheduleAccountCleanup(accountStore, nextDelayMs, dependencies, nextFailureRetryMs);
+  }, delayMs);
+}
+
 function reportAccountDelivery(signal: AccountDeliverySignal): void {
   console.info("account_email_delivery", signal);
 }
@@ -146,6 +195,12 @@ export const createAccountRuntime = createAccountRuntimeFactory({
   createEmail: createResendTransactionalEmail,
   hashDummyPassword: hashPassword,
   scheduleAfterResponse: (task) => nextAfter(task),
+  scheduleCleanup: (task, delayMs) => {
+    const timeout = setTimeout(() => {
+      void task();
+    }, delayMs);
+    timeout.unref();
+  },
   reportDelivery: reportAccountDelivery,
   reportCleanupFailure: reportAccountCleanupFailure,
 });

@@ -29,6 +29,7 @@ function runtimeFactory() {
     createEmail: vi.fn(() => ({}) as never),
     hashDummyPassword: vi.fn(async () => "dummy-argon-hash"),
     scheduleAfterResponse: vi.fn(() => undefined),
+    scheduleCleanup: vi.fn((_task: () => Promise<void>, _delayMs: number) => undefined),
     reportDelivery: vi.fn(async () => undefined),
     reportCleanupFailure: vi.fn(),
   };
@@ -53,9 +54,10 @@ describe("account runtime cache", () => {
     expect(factories.hashDummyPassword).toHaveBeenCalledTimes(1);
     expect((accountStore as { cleanupExpiredAccountData: ReturnType<typeof vi.fn> }).cleanupExpiredAccountData)
       .toHaveBeenCalledTimes(1);
+    expect(factories.scheduleCleanup).toHaveBeenCalledWith(expect.any(Function), 60 * 60 * 1_000);
   });
 
-  test("keeps account runtime available when bounded startup cleanup fails", async () => {
+  test("keeps account runtime available and schedules a bounded retry when startup cleanup fails", async () => {
     const { createRuntime, factories, accountStore } = runtimeFactory();
     const cleanup = (accountStore as { cleanupExpiredAccountData: ReturnType<typeof vi.fn> })
       .cleanupExpiredAccountData;
@@ -64,6 +66,51 @@ describe("account runtime cache", () => {
     await expect(createRuntime(environment)).resolves.toBeDefined();
     expect(factories.reportCleanupFailure).toHaveBeenCalledOnce();
     expect(factories.reportCleanupFailure).toHaveBeenCalledWith();
+    expect(factories.scheduleCleanup).toHaveBeenCalledWith(expect.any(Function), 5 * 60 * 1_000);
+  });
+
+  test("drains a bounded cleanup backlog before scheduling the next sweep", async () => {
+    const { createRuntime, factories, accountStore } = runtimeFactory();
+    const cleanup = (accountStore as { cleanupExpiredAccountData: ReturnType<typeof vi.fn> })
+      .cleanupExpiredAccountData;
+    cleanup
+      .mockResolvedValueOnce({ tokensDeleted: 100, rateLimitRowsDeleted: 0, accountsDeleted: 0 })
+      .mockResolvedValueOnce({ tokensDeleted: 0, rateLimitRowsDeleted: 0, accountsDeleted: 0 });
+
+    await createRuntime(environment);
+
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(factories.scheduleCleanup).toHaveBeenCalledWith(expect.any(Function), 60 * 60 * 1_000);
+  });
+
+  test("runs cleanup again after the scheduled interval and schedules the following sweep", async () => {
+    const { createRuntime, factories, accountStore } = runtimeFactory();
+    const cleanup = (accountStore as { cleanupExpiredAccountData: ReturnType<typeof vi.fn> })
+      .cleanupExpiredAccountData;
+    await createRuntime(environment);
+    const scheduledSweep = factories.scheduleCleanup.mock.calls[0]?.[0];
+    expect(scheduledSweep).toEqual(expect.any(Function));
+
+    await scheduledSweep?.();
+
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(factories.scheduleCleanup).toHaveBeenCalledTimes(2);
+    expect(factories.scheduleCleanup).toHaveBeenLastCalledWith(expect.any(Function), 60 * 60 * 1_000);
+  });
+
+  test("backs off repeated cleanup failures without making the account runtime unavailable", async () => {
+    const { createRuntime, factories, accountStore } = runtimeFactory();
+    const cleanup = (accountStore as { cleanupExpiredAccountData: ReturnType<typeof vi.fn> })
+      .cleanupExpiredAccountData;
+    cleanup.mockRejectedValue(new Error("database cleanup unavailable"));
+
+    await expect(createRuntime(environment)).resolves.toBeDefined();
+    const firstRetry = factories.scheduleCleanup.mock.calls[0]?.[0];
+    await firstRetry?.();
+
+    expect(factories.reportCleanupFailure).toHaveBeenCalledTimes(2);
+    expect(factories.scheduleCleanup).toHaveBeenNthCalledWith(1, expect.any(Function), 5 * 60 * 1_000);
+    expect(factories.scheduleCleanup).toHaveBeenNthCalledWith(2, expect.any(Function), 10 * 60 * 1_000);
   });
 
   test("does not share pools or services across a different relevant runtime identity", async () => {

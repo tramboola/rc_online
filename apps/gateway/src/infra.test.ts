@@ -48,6 +48,7 @@ describe("production gateway infrastructure", () => {
     expect(gateway).toContain("DEVICE_AUTH_PEPPER:");
     expect(gateway).toContain("GATEWAY_SESSION_SECRET:");
     expect(gateway).toContain("GATEWAY_VIEWER_CAPACITY: ${GATEWAY_VIEWER_CAPACITY:-500}");
+    expect(gateway).toContain("GATEWAY_VIEWER_ORIGIN: ${AUTH_URL:?Set AUTH_URL in the private env file}");
     expect(gateway).toMatch(/group_add:\s+- "33"/u);
     expect(gateway).toContain('cpus: "0.30"');
     expect(gateway).toContain("mem_limit: 256m");

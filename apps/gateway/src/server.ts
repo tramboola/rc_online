@@ -74,14 +74,12 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
       return;
     }
     if (url.pathname === "/v1/viewers") {
+      if (request.headers.origin !== config.viewerOrigin) {
+        rejectUpgrade(socket, 403, "Forbidden");
+        return;
+      }
       if (viewerSockets.size >= config.viewerCapacity) {
-        socket.end([
-          "HTTP/1.1 503 Service Unavailable",
-          "Connection: close",
-          "Content-Length: 0",
-          "",
-          ""
-        ].join("\r\n"));
+        rejectUpgrade(socket, 503, "Service Unavailable");
         return;
       }
       viewers.handleUpgrade(request, socket, head, (webSocket) => {
@@ -275,6 +273,20 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
     const offer = await store.claimPendingUpdate(device.deviceId, runtimeGeneration, new Date());
     if (offer) send(socket, { v: 1, type: "device.update.available", ...offer });
   }
+}
+
+function rejectUpgrade(
+  socket: { end(data: string): unknown },
+  status: number,
+  reason: string
+): void {
+  socket.end([
+    `HTTP/1.1 ${status} ${reason}`,
+    "Connection: close",
+    "Content-Length: 0",
+    "",
+    ""
+  ].join("\r\n"));
 }
 
 function send(socket: WebSocket, message: GatewayServerMessage): void {

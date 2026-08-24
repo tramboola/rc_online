@@ -12,6 +12,7 @@ import type {
 } from "./store.js";
 
 const servers: Array<ReturnType<typeof createGatewayServer>> = [];
+const viewerOrigin = "https://rcmania.live";
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
@@ -81,6 +82,7 @@ async function listen(store: GatewayStore, viewerCapacity = 500) {
       authTimeoutMs: 250,
       staleAfterMs: 15_000,
       viewerCapacity,
+      viewerOrigin,
       iceServerTemplates: [],
       turnSharedSecret: undefined,
       turnCredentialTtlSeconds: 600
@@ -110,6 +112,27 @@ async function openSocket(socket: WebSocket): Promise<void> {
 function waitForClose(socket: WebSocket): Promise<number> {
   return new Promise((resolve, reject) => {
     socket.once("close", resolve);
+    socket.once("error", reject);
+  });
+}
+
+function viewerSocket(baseUrl: string): WebSocket {
+  return new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers", {
+    origin: viewerOrigin
+  });
+}
+
+function rejectedUpgradeStatus(socket: WebSocket): Promise<number> {
+  return new Promise((resolve, reject) => {
+    socket.once("unexpected-response", (_request, response) => {
+      response.resume();
+      if (response.statusCode === undefined) {
+        reject(new Error("Rejected viewer response omitted its status"));
+        return;
+      }
+      resolve(response.statusCode);
+    });
+    socket.once("open", () => reject(new Error("Rejected viewer unexpectedly opened")));
     socket.once("error", reject);
   });
 }
@@ -268,17 +291,17 @@ describe("gateway enrollment and device socket", () => {
 });
 
 describe("anonymous viewer socket", () => {
-  it("lets unauthenticated viewers receive the live count", async () => {
+  it("accepts the configured canonical origin and broadcasts the live count", async () => {
     const { store } = createStore();
     const { baseUrl } = await listen(store);
-    const first = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const first = viewerSocket(baseUrl);
     const firstInitial = nextMessage(first);
     await openSocket(first);
 
     expect(await firstInitial).toEqual({ v: 1, type: "viewer.count", count: 1 });
 
     const firstUpdate = nextMessage(first);
-    const second = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const second = viewerSocket(baseUrl);
     const secondInitial = nextMessage(second);
     await openSocket(second);
 
@@ -293,13 +316,31 @@ describe("anonymous viewer socket", () => {
     first.close();
   });
 
+  it("rejects foreign and missing origins before either can consume viewer capacity", async () => {
+    const { store } = createStore();
+    const { baseUrl } = await listen(store, 1);
+    const viewerUrl = baseUrl.replace("http", "ws") + "/v1/viewers";
+    const foreign = new WebSocket(viewerUrl, { origin: "https://evil.example" });
+    const foreignStatus = rejectedUpgradeStatus(foreign);
+    const missing = new WebSocket(viewerUrl);
+    const missingStatus = rejectedUpgradeStatus(missing);
+
+    expect(await Promise.all([foreignStatus, missingStatus])).toEqual([403, 403]);
+
+    const allowed = viewerSocket(baseUrl);
+    const initial = nextMessage(allowed);
+    await openSocket(allowed);
+    expect(await initial).toEqual({ v: 1, type: "viewer.count", count: 1 });
+    allowed.close();
+  });
+
   it.each([
     ["text", () => "not an application protocol"],
     ["binary", () => Buffer.from([1, 2, 3])]
   ])("closes a viewer that sends a %s application payload", async (_kind, payload) => {
     const { store } = createStore();
     const { baseUrl } = await listen(store);
-    const socket = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const socket = viewerSocket(baseUrl);
     const initial = nextMessage(socket);
     await openSocket(socket);
     await initial;
@@ -313,7 +354,7 @@ describe("anonymous viewer socket", () => {
   it("closes viewers during gateway shutdown", async () => {
     const { store } = createStore();
     const { server, baseUrl } = await listen(store);
-    const socket = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const socket = viewerSocket(baseUrl);
     const initial = nextMessage(socket);
     await openSocket(socket);
     await initial;
@@ -327,11 +368,11 @@ describe("anonymous viewer socket", () => {
   it("rejects viewers above the global cap while keeping the authenticated socket route reachable", async () => {
     const { store } = createStore();
     const { server, baseUrl } = await listen(store, 2);
-    const first = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
-    const second = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const first = viewerSocket(baseUrl);
+    const second = viewerSocket(baseUrl);
     await Promise.all([openSocket(first), openSocket(second)]);
 
-    const excess = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const excess = viewerSocket(baseUrl);
     const excessStatus = await new Promise<number>((resolve, reject) => {
       excess.once("unexpected-response", (_request, response) => {
         response.resume();

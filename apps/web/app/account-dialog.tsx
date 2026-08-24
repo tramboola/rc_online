@@ -42,11 +42,13 @@ function passwordLengthIsValid(password: string): boolean {
 async function postAccountRequest(
   path: string,
   body: Record<string, string>,
+  signal: AbortSignal,
 ): Promise<{ response: Response; body: AccountResponse }> {
   const response = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   let responseBody: AccountResponse = {};
   try {
@@ -60,6 +62,9 @@ async function postAccountRequest(
 export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
+  const openRef = useRef(open);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const requestGenerationRef = useRef(0);
   const [view, setView] = useState<AccountDialogView>("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,6 +73,28 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+
+  openRef.current = open;
+
+  function invalidateRequest() {
+    requestGenerationRef.current += 1;
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+  }
+
+  function beginRequest() {
+    invalidateRequest();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    return { controller, generation: requestGenerationRef.current };
+  }
+
+  function requestIsCurrent(controller: AbortController, generation: number): boolean {
+    return openRef.current
+      && !controller.signal.aborted
+      && requestControllerRef.current === controller
+      && requestGenerationRef.current === generation;
+  }
 
   function resetDialog() {
     setView("sign-in");
@@ -81,6 +108,7 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
   }
 
   function closeDialog() {
+    invalidateRequest();
     resetDialog();
     onClose();
   }
@@ -93,8 +121,17 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
     if (open) emailRef.current?.focus();
   }, [open, view]);
 
+  useEffect(() => {
+    if (!open) invalidateRequest();
+    return () => {
+      if (open) invalidateRequest();
+    };
+  }, [open]);
+
   function changeView(nextView: AccountDialogView) {
+    invalidateRequest();
     setView(nextView);
+    setBusy(false);
     setFieldErrors({});
     setErrorMessage("");
     setStatusMessage("");
@@ -126,12 +163,15 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
     setStatusMessage("");
     if (Object.keys(errors).length > 0) return;
 
+    const request = beginRequest();
     setBusy(true);
     try {
       const { response, body } = await postAccountRequest(
         registering ? "/api/account/register" : "/api/account/sign-in/password",
         { email: email.trim(), password },
+        request.controller.signal,
       );
+      if (!requestIsCurrent(request.controller, request.generation)) return;
       if (registering && response.ok) {
         setPassword("");
         setPasswordConfirmation("");
@@ -145,9 +185,14 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
       }
       setErrorMessage(body.message || "Unable to continue. Try again.");
     } catch {
-      setErrorMessage("Account service is unavailable. Try again.");
+      if (requestIsCurrent(request.controller, request.generation)) {
+        setErrorMessage("Account service is unavailable. Try again.");
+      }
     } finally {
-      setBusy(false);
+      if (requestIsCurrent(request.controller, request.generation)) {
+        requestControllerRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
@@ -158,40 +203,54 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
     setErrorMessage("");
     if (Object.keys(errors).length > 0) return;
 
+    const request = beginRequest();
     setBusy(true);
     try {
       const { response, body } = await postAccountRequest("/api/account/forgot-password", {
         email: email.trim(),
-      });
+      }, request.controller.signal);
+      if (!requestIsCurrent(request.controller, request.generation)) return;
       if (!response.ok) {
         setErrorMessage(body.message || "Unable to send a reset link. Try again later.");
         return;
       }
       setView("pending-reset");
     } catch {
-      setErrorMessage("Account service is unavailable. Try again.");
+      if (requestIsCurrent(request.controller, request.generation)) {
+        setErrorMessage("Account service is unavailable. Try again.");
+      }
     } finally {
-      setBusy(false);
+      if (requestIsCurrent(request.controller, request.generation)) {
+        requestControllerRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
   async function resendVerification() {
+    const request = beginRequest();
     setBusy(true);
     setErrorMessage("");
     setStatusMessage("");
     try {
       const { response } = await postAccountRequest("/api/account/resend-verification", {
         email: email.trim(),
-      });
+      }, request.controller.signal);
+      if (!requestIsCurrent(request.controller, request.generation)) return;
       if (!response.ok) {
         setErrorMessage("Unable to resend right now. Try again later.");
         return;
       }
       setStatusMessage("Verification email requested. Check your inbox.");
     } catch {
-      setErrorMessage("Unable to resend right now. Try again later.");
+      if (requestIsCurrent(request.controller, request.generation)) {
+        setErrorMessage("Unable to resend right now. Try again later.");
+      }
     } finally {
-      setBusy(false);
+      if (requestIsCurrent(request.controller, request.generation)) {
+        requestControllerRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
@@ -349,7 +408,7 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
                   {busy ? "PLEASE WAIT..." : view === "create-account" ? "CREATE ACCOUNT" : "SIGN IN WITH EMAIL"}
                   <ArrowRight aria-hidden="true" size={20} />
                 </button>
-                {view === "create-account" ? (
+                {view === "create-account" || view === "sign-in" ? (
                   <p className="account-legal-notice">
                     By continuing, you agree to the <Link href="/terms">Terms of Service</Link> and acknowledge the <Link href="/privacy">Privacy Policy</Link>.
                   </p>

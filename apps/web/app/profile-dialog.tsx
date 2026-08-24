@@ -39,6 +39,12 @@ function isPrivateProfile(value: unknown): value is PrivateProfile {
 export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const nicknameRef = useRef<HTMLInputElement>(null);
+  const openRef = useRef(open);
+  const requestGenerationRef = useRef(0);
+  const loadControllerRef = useRef<AbortController | null>(null);
+  const saveControllerRef = useRef<AbortController | null>(null);
+  const deleteControllerRef = useRef<AbortController | null>(null);
+  const deletingRef = useRef(false);
   const [profile, setProfile] = useState<PrivateProfile | null>(null);
   const [nickname, setNickname] = useState("");
   const [avatarKey, setAvatarKey] = useState<AvatarKey>("racer-red");
@@ -50,7 +56,33 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  openRef.current = open;
+
+  function invalidateRequests() {
+    requestGenerationRef.current += 1;
+    loadControllerRef.current?.abort();
+    saveControllerRef.current?.abort();
+    deleteControllerRef.current?.abort();
+    loadControllerRef.current = null;
+    saveControllerRef.current = null;
+    deleteControllerRef.current = null;
+    deletingRef.current = false;
+  }
+
+  function requestIsCurrent(
+    controller: AbortController,
+    generation: number,
+    controllerRef: React.RefObject<AbortController | null>,
+  ): boolean {
+    return openRef.current
+      && !controller.signal.aborted
+      && requestGenerationRef.current === generation
+      && controllerRef.current === controller;
+  }
+
   function closeProfileDialog() {
+    if (deletingRef.current) return;
+    invalidateRequests();
     setDeleteMode(false);
     setDeleteConfirmation("");
     setDeleting(false);
@@ -68,8 +100,12 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
 
   useEffect(() => {
     if (!open) return;
+    invalidateRequests();
+    const generation = requestGenerationRef.current;
     const controller = new AbortController();
+    loadControllerRef.current = controller;
     setLoading(true);
+    setSaving(false);
     setErrorMessage("");
     setStatusMessage("");
     setDeleteMode(false);
@@ -80,17 +116,24 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
       signal: controller.signal,
     }).then(async (response) => {
       const body = await response.json() as unknown;
+      if (!requestIsCurrent(controller, generation, loadControllerRef)) return;
       if (!response.ok || !isPrivateProfile(body)) throw new Error("profile unavailable");
       setProfile(body);
       setNickname(body.nickname);
       setAvatarKey(body.avatarKey);
       requestAnimationFrame(() => nicknameRef.current?.focus());
     }).catch((error: unknown) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
+      if (requestIsCurrent(controller, generation, loadControllerRef)
+        && !(error instanceof DOMException && error.name === "AbortError")) {
         setErrorMessage("Profile is unavailable. Try again.");
       }
-    }).finally(() => setLoading(false));
-    return () => controller.abort();
+    }).finally(() => {
+      if (requestIsCurrent(controller, generation, loadControllerRef)) {
+        loadControllerRef.current = null;
+        setLoading(false);
+      }
+    });
+    return () => invalidateRequests();
   }, [open]);
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -104,14 +147,20 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
       return;
     }
 
+    saveControllerRef.current?.abort();
+    const controller = new AbortController();
+    const generation = requestGenerationRef.current;
+    saveControllerRef.current = controller;
     setSaving(true);
     try {
       const response = await fetch("/api/account/profile", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ nickname: normalizedNickname, avatarKey }),
+        signal: controller.signal,
       });
       const body = await response.json() as unknown;
+      if (!requestIsCurrent(controller, generation, saveControllerRef)) return;
       if (!response.ok || !isPrivateProfile(body)) {
         setErrorMessage(response.status === 409
           ? "That nickname is unavailable."
@@ -124,15 +173,25 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
       setStatusMessage("Profile saved.");
       onSaved(body);
     } catch {
-      setErrorMessage("Profile could not be saved. Try again.");
+      if (requestIsCurrent(controller, generation, saveControllerRef)) {
+        setErrorMessage("Profile could not be saved. Try again.");
+      }
     } finally {
-      setSaving(false);
+      if (requestIsCurrent(controller, generation, saveControllerRef)) {
+        saveControllerRef.current = null;
+        setSaving(false);
+      }
     }
   }
 
   async function deleteAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (deleteConfirmation !== "DELETE") return;
+    deleteControllerRef.current?.abort();
+    const controller = new AbortController();
+    const generation = requestGenerationRef.current;
+    deleteControllerRef.current = controller;
+    deletingRef.current = true;
     setDeleting(true);
     setErrorMessage("");
     try {
@@ -140,16 +199,24 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ confirmation: "DELETE" }),
+        signal: controller.signal,
       });
+      if (!requestIsCurrent(controller, generation, deleteControllerRef)) return;
       if (!response.ok) {
         setErrorMessage("Account could not be deleted. Try again later.");
         return;
       }
       onDeleted();
     } catch {
-      setErrorMessage("Account could not be deleted. Try again later.");
+      if (requestIsCurrent(controller, generation, deleteControllerRef)) {
+        setErrorMessage("Account could not be deleted. Try again later.");
+      }
     } finally {
-      setDeleting(false);
+      if (requestIsCurrent(controller, generation, deleteControllerRef)) {
+        deleteControllerRef.current = null;
+        deletingRef.current = false;
+        setDeleting(false);
+      }
     }
   }
 
@@ -160,12 +227,12 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
       className="profile-dialog rc-dialog"
       onCancel={(event) => {
         event.preventDefault();
-        closeProfileDialog();
+        if (!deletingRef.current) closeProfileDialog();
       }}
       ref={dialogRef}
     >
       <div className="rc-dialog-frame profile-dialog-frame">
-        <button aria-label="Close profile dialog" className="rc-dialog-close" onClick={closeProfileDialog} type="button">
+        <button aria-label="Close profile dialog" className="rc-dialog-close" disabled={deleting} onClick={closeProfileDialog} type="button">
           <X aria-hidden="true" size={22} />
         </button>
         <p className="eyebrow">{deleteMode ? "ACCOUNT CONTROL" : "PRIVATE PROFILE"}</p>

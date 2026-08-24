@@ -14,6 +14,7 @@ export type GatewayConfig = {
   authTimeoutMs: number;
   staleAfterMs: number;
   viewerCapacity: number;
+  viewerOrigin: string;
   iceServerTemplates: IceServer[];
   turnSharedSecret: string | undefined;
   turnCredentialTtlSeconds: number;
@@ -43,6 +44,10 @@ export function loadGatewayConfig(
     authTimeoutMs: readInteger(env.GATEWAY_AUTH_TIMEOUT_MS, 5_000, 100, 30_000),
     staleAfterMs: readInteger(env.GATEWAY_STALE_AFTER_MS, 15_000, 5_000, 120_000),
     viewerCapacity: readInteger(env.GATEWAY_VIEWER_CAPACITY, 500, 1, 500),
+    viewerOrigin: requiredCanonicalHttpsOrigin(
+      env.GATEWAY_VIEWER_ORIGIN,
+      "GATEWAY_VIEWER_ORIGIN"
+    ),
     iceServerTemplates,
     turnSharedSecret,
     turnCredentialTtlSeconds
@@ -76,6 +81,20 @@ function requiredSecret(value: string | undefined, name: string): string {
   const result = required(value, name);
   if (result.length < 24) throw new Error(`${name} must contain at least 24 characters`);
   return result;
+}
+
+function requiredCanonicalHttpsOrigin(value: string | undefined, name: string): string {
+  const result = required(value, name);
+  let parsed: URL;
+  try {
+    parsed = new URL(result);
+  } catch {
+    throw new Error(`${name} must be a canonical HTTPS origin`);
+  }
+  if (parsed.protocol !== "https:" || parsed.origin !== result) {
+    throw new Error(`${name} must be a canonical HTTPS origin`);
+  }
+  return parsed.origin;
 }
 
 function readInteger(

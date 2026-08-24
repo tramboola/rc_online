@@ -4,6 +4,7 @@ import { createGatewayIceServers, loadGatewayConfig } from "./config.js";
 
 const baseEnv = {
   GATEWAY_PUBLIC_URL: "wss://rcmania.live/gateway/v1/socket",
+  GATEWAY_VIEWER_ORIGIN: "https://rcmania.live",
   DEVICE_AUTH_PEPPER: "device-auth-pepper-with-enough-entropy",
   GATEWAY_SESSION_SECRET: "gateway-session-secret-with-enough-entropy"
 };
@@ -65,6 +66,22 @@ describe("gateway TURN configuration", () => {
 });
 
 describe("gateway viewer capacity", () => {
+  it("requires one exact canonical HTTPS origin for viewer upgrades", () => {
+    expect(loadGatewayConfig(baseEnv, () => "unused").viewerOrigin).toBe("https://rcmania.live");
+    expect(() => loadGatewayConfig({
+      ...baseEnv,
+      GATEWAY_VIEWER_ORIGIN: "https://rcmania.live/path"
+    }, () => "unused")).toThrow(/GATEWAY_VIEWER_ORIGIN/u);
+    expect(() => loadGatewayConfig({
+      ...baseEnv,
+      GATEWAY_VIEWER_ORIGIN: "http://rcmania.live"
+    }, () => "unused")).toThrow(/GATEWAY_VIEWER_ORIGIN/u);
+    expect(() => loadGatewayConfig({
+      ...baseEnv,
+      GATEWAY_VIEWER_ORIGIN: undefined
+    }, () => "unused")).toThrow(/GATEWAY_VIEWER_ORIGIN/u);
+  });
+
   it("defaults to 500 viewers and accepts a lower deployment cap", () => {
     expect(loadGatewayConfig(baseEnv, () => "unused").viewerCapacity).toBe(500);
     expect(loadGatewayConfig({
