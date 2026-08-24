@@ -1,9 +1,13 @@
 export type AuthRuntimeEnvironment = {
+  authEmailFrom: string;
+  authRateLimitSecret: string;
   authSecret: string;
+  authSupportEmail: string;
   authUrl: string;
   databaseUrl: string;
   googleClientId: string;
   googleClientSecret: string;
+  resendApiKey: string;
 };
 
 function required(
@@ -27,19 +31,20 @@ export function readAuthRuntimeEnvironment(
 
   const authUrl = required(env, "AUTH_URL");
   const parsedAuthUrl = new URL(authUrl);
-  const isLocalDevelopment = parsedAuthUrl.hostname === "localhost";
-  if (parsedAuthUrl.origin !== authUrl || (
-    parsedAuthUrl.protocol !== "https:" && !isLocalDevelopment
-  )) {
-    throw new Error("AUTH_URL must be an HTTPS origin");
+  if (parsedAuthUrl.protocol !== "https:" || parsedAuthUrl.origin !== authUrl) {
+    throw new Error("AUTH_URL must be a canonical HTTPS origin");
   }
 
   return {
+    authEmailFrom: required(env, "AUTH_EMAIL_FROM"),
+    authRateLimitSecret: required(env, "AUTH_RATE_LIMIT_SECRET"),
     authSecret,
+    authSupportEmail: required(env, "AUTH_SUPPORT_EMAIL"),
     authUrl,
     databaseUrl: required(env, "DATABASE_URL"),
     googleClientId: required(env, "GOOGLE_OAUTH_CLIENT_ID"),
     googleClientSecret: required(env, "GOOGLE_OAUTH_CLIENT_SECRET"),
+    resendApiKey: required(env, "RESEND_API_KEY"),
   };
 }
 

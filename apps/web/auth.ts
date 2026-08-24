@@ -9,6 +9,11 @@ import {
 import type { AuthStore } from "./auth/auth-store";
 import { createPostgresAuthStore } from "./auth/postgres-auth-store";
 import { loadSessionUser } from "./auth/session-user";
+import {
+  sessionCookieName,
+  sessionCookieOptions,
+  sessionMaxAgeSeconds,
+} from "./auth/session-cookie";
 
 let authStore: AuthStore | undefined;
 let authStoreUrl: string | undefined;
@@ -31,8 +36,14 @@ const nextAuth: NextAuthResult = NextAuth(() => {
     trustHost: true,
     session: {
       strategy: "database",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: sessionMaxAgeSeconds,
       updateAge: 60 * 60 * 24,
+    },
+    cookies: {
+      sessionToken: {
+        name: sessionCookieName,
+        options: sessionCookieOptions,
+      },
     },
     pages: {
       error: "/auth/error",
