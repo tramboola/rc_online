@@ -43,6 +43,7 @@ type Script = {
   kind: Operation["kind"];
   table: unknown;
   rows: unknown[];
+  error?: unknown;
 };
 
 type ScriptedExecutor = {
@@ -63,6 +64,9 @@ function createScriptedDatabase(scripts: Script[], transactionFailures: unknown[
     const next = scripts.shift();
     expect(next?.kind).toBe(operation.kind);
     expect(next?.table).toBe(operation.table);
+    if (next?.error !== undefined) {
+      return Promise.reject(next.error);
+    }
     return Promise.resolve(next?.rows ?? []);
   };
 
@@ -343,6 +347,41 @@ describe("createPostgresAccountStore", () => {
       now,
     })).resolves.toEqual({ userId, email: "driver@example.com" });
     expect(transactionAttempts).toHaveLength(3);
+  });
+
+  test("restarts the full action-token SQL sequence after failures inside transaction callbacks", async () => {
+    const deadlock = Object.assign(new Error("deadlock after user update"), { code: "40P01" });
+    const serializationFailure = Object.assign(
+      new Error("serialization failure after user update"),
+      { code: "40001" },
+    );
+    const { store, operations, transactionAttempts, scripts } = installDatabase([
+      { kind: "update", table: accountActionTokens, rows: [{ userId }] },
+      { kind: "update", table: users, rows: [], error: deadlock },
+      { kind: "update", table: accountActionTokens, rows: [{ userId }] },
+      { kind: "update", table: users, rows: [], error: serializationFailure },
+      { kind: "update", table: accountActionTokens, rows: [{ userId }] },
+      { kind: "update", table: users, rows: [{ id: userId, email: "driver@example.com" }] },
+      { kind: "update", table: passwordCredentials, rows: [{ userId }] },
+    ]);
+
+    await expect(store.consumeActionToken({
+      kind: "verify_email",
+      tokenHash: "2".repeat(64),
+      now,
+    })).resolves.toEqual({ userId, email: "driver@example.com" });
+
+    expect(transactionAttempts).toHaveLength(3);
+    expect(operations.map(({ table }) => table)).toEqual([
+      accountActionTokens,
+      users,
+      accountActionTokens,
+      users,
+      accountActionTokens,
+      users,
+      passwordCredentials,
+    ]);
+    expect(scripts).toHaveLength(0);
   });
 
   test("rethrows a non-retryable transaction failure without swallowing or retrying it", async () => {
