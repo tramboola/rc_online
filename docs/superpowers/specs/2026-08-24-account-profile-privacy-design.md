@@ -14,15 +14,21 @@ work without migration by the user.
 
 ## Chosen approach
 
-Keep Auth.js as the session and OAuth boundary and add a credentials provider
-backed by the existing PostgreSQL user records. Focused application services
-will own registration, email verification, password reset, profile updates,
-account deletion, and transactional email delivery through Resend.
+Keep Auth.js as the Google OAuth and session-reading boundary. Auth.js's built-in
+Credentials provider requires JWT sessions and is therefore incompatible with
+RC Mania's existing database-session strategy. A focused password sign-in route
+will verify the PostgreSQL credential, create the same opaque database session,
+and set the same explicitly configured host-only session cookie that Auth.js
+reads. Focused application services will own registration, email verification,
+password reset, profile updates, account deletion, and transactional email
+delivery through Resend.
 
 This is preferred over moving authentication to Clerk or Supabase because it
 preserves existing users and sessions, avoids another identity processor, and
-keeps authorization decisions in the current application. A fully custom
-session system is rejected because it would duplicate the secure session and
+keeps authorization decisions in the current application. Switching Auth.js to
+JWT sessions merely to use its Credentials provider is rejected because it
+would replace the current revocable database sessions. A fully custom session
+system is also rejected because it would duplicate the session-reading and
 Google OAuth behavior Auth.js already provides.
 
 ## User experience
