@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 
 const composeUrl = new URL("../../../infra/compose/compose.vps-web.yaml", import.meta.url);
+const envExampleUrl = new URL("../../../.env.example", import.meta.url);
 
 describe("VPS authentication deployment", () => {
   test("keeps PostgreSQL private and waits for migrations before web starts", async () => {
@@ -19,5 +20,25 @@ describe("VPS authentication deployment", () => {
 
     const postgresService = compose.split(/^  migrate:\s*$/mu)[0] ?? "";
     expect(postgresService).not.toMatch(/^    ports:\s*$/mu);
+  });
+
+  test("keeps transactional email and abuse-prevention credentials server-only", async () => {
+    const [compose, envExample] = await Promise.all([
+      readFile(composeUrl, "utf8"),
+      readFile(envExampleUrl, "utf8"),
+    ]);
+
+    for (const key of [
+      "AUTH_RATE_LIMIT_SECRET",
+      "RESEND_API_KEY",
+      "AUTH_EMAIL_FROM",
+      "AUTH_SUPPORT_EMAIL",
+    ]) {
+      expect(compose).toContain(`${key}:`);
+      expect(envExample).toContain(`${key}=`);
+    }
+    expect(compose).not.toContain("NEXT_PUBLIC_RESEND");
+    expect(envExample).not.toContain("NEXT_PUBLIC_RESEND");
+    expect(envExample).toMatch(/^RESEND_API_KEY=\r?$/mu);
   });
 });

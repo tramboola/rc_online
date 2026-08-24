@@ -40,6 +40,7 @@ export type AccountRuntimeFactoryDependencies = {
   hashDummyPassword(password: string): Promise<string>;
   scheduleAfterResponse(task: () => Promise<void>): void;
   reportDelivery(signal: AccountDeliverySignal): void | Promise<void>;
+  reportCleanupFailure(): void;
 };
 
 function runtimeIdentity(environment: AuthRuntimeEnvironment): string {
@@ -87,6 +88,14 @@ export function createAccountRuntimeFactory(
         throw error;
       }
       const accountStore = dependencies.createAccountStore(environment.databaseUrl);
+      try {
+        await accountStore.cleanupExpiredAccountData({
+          now: new Date(),
+          batchSize: 100,
+        });
+      } catch {
+        dependencies.reportCleanupFailure();
+      }
       return {
         accountStore,
         canonicalOrigin: environment.authUrl,
@@ -127,6 +136,10 @@ function reportAccountDelivery(signal: AccountDeliverySignal): void {
   console.info("account_email_delivery", signal);
 }
 
+function reportAccountCleanupFailure(): void {
+  console.warn("account_data_cleanup_failed");
+}
+
 export const createAccountRuntime = createAccountRuntimeFactory({
   createAccountStore: createPostgresAccountStore,
   createAuthStore: createPostgresAuthStore,
@@ -134,4 +147,5 @@ export const createAccountRuntime = createAccountRuntimeFactory({
   hashDummyPassword: hashPassword,
   scheduleAfterResponse: (task) => nextAfter(task),
   reportDelivery: reportAccountDelivery,
+  reportCleanupFailure: reportAccountCleanupFailure,
 });

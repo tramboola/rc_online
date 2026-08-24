@@ -16,7 +16,13 @@ const environment = {
 } satisfies Record<string, string>;
 
 function runtimeFactory() {
-  const accountStore = {} as never;
+  const accountStore = {
+    cleanupExpiredAccountData: vi.fn(async () => ({
+      tokensDeleted: 0,
+      rateLimitRowsDeleted: 0,
+      accountsDeleted: 0,
+    })),
+  } as never;
   const factories = {
     createAccountStore: vi.fn(() => accountStore),
     createAuthStore: vi.fn(() => ({}) as never),
@@ -24,6 +30,7 @@ function runtimeFactory() {
     hashDummyPassword: vi.fn(async () => "dummy-argon-hash"),
     scheduleAfterResponse: vi.fn(() => undefined),
     reportDelivery: vi.fn(async () => undefined),
+    reportCleanupFailure: vi.fn(),
   };
   return { createRuntime: createAccountRuntimeFactory(factories), factories, accountStore };
 }
@@ -44,6 +51,19 @@ describe("account runtime cache", () => {
     expect(factories.createAuthStore).toHaveBeenCalledTimes(1);
     expect(factories.createEmail).toHaveBeenCalledTimes(1);
     expect(factories.hashDummyPassword).toHaveBeenCalledTimes(1);
+    expect((accountStore as { cleanupExpiredAccountData: ReturnType<typeof vi.fn> }).cleanupExpiredAccountData)
+      .toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps account runtime available when bounded startup cleanup fails", async () => {
+    const { createRuntime, factories, accountStore } = runtimeFactory();
+    const cleanup = (accountStore as { cleanupExpiredAccountData: ReturnType<typeof vi.fn> })
+      .cleanupExpiredAccountData;
+    cleanup.mockRejectedValueOnce(new Error("database cleanup unavailable"));
+
+    await expect(createRuntime(environment)).resolves.toBeDefined();
+    expect(factories.reportCleanupFailure).toHaveBeenCalledOnce();
+    expect(factories.reportCleanupFailure).toHaveBeenCalledWith();
   });
 
   test("does not share pools or services across a different relevant runtime identity", async () => {

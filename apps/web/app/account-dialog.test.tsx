@@ -25,6 +25,12 @@ beforeAll(() => {
       this.setAttribute("open", "");
     },
   });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement) {
+      this.removeAttribute("open");
+    },
+  });
 });
 
 afterEach(() => {
@@ -55,6 +61,29 @@ describe("AccountDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /sign in with google/iu }));
     expect(authMocks.signIn).toHaveBeenCalledWith("google", { redirectTo: "/pricing" });
+  });
+
+  test("clears credentials and restores sign-in after closing and reopening", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <AccountDialog onClose={onClose} onSignedIn={vi.fn()} open returnTo="/" />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /show create account form/iu }));
+    await user.type(screen.getByLabelText(/email/iu), "driver@example.com");
+    await user.type(screen.getByLabelText(/^password$/iu), "correct horse 12");
+    await user.type(screen.getByLabelText(/confirm password/iu), "correct horse 12");
+    await user.click(screen.getByRole("button", { name: /close account dialog/iu }));
+    expect(onClose).toHaveBeenCalledOnce();
+
+    rerender(<AccountDialog onClose={onClose} onSignedIn={vi.fn()} open={false} returnTo="/" />);
+    rerender(<AccountDialog onClose={onClose} onSignedIn={vi.fn()} open returnTo="/" />);
+
+    expect(screen.getByRole("heading", { name: /sign in to rc mania/iu })).toBeTruthy();
+    expect(screen.queryByLabelText(/confirm password/iu)).toBeNull();
+    expect((screen.getByLabelText(/email/iu) as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(/^password$/iu) as HTMLInputElement).value).toBe("");
   });
 
   test("registers without a mandatory checkbox and shows verification with resend", async () => {

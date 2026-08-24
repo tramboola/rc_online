@@ -69,6 +69,22 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  function resetDialog() {
+    setView("sign-in");
+    setEmail("");
+    setPassword("");
+    setPasswordConfirmation("");
+    setBusy(false);
+    setFieldErrors({});
+    setStatusMessage("");
+    setErrorMessage("");
+  }
+
+  function closeDialog() {
+    resetDialog();
+    onClose();
+  }
+
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -117,10 +133,13 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
         { email: email.trim(), password },
       );
       if (registering && response.ok) {
+        setPassword("");
+        setPasswordConfirmation("");
         setView("pending-verification");
         return;
       }
       if (!registering && response.ok) {
+        setPassword("");
         onSignedIn();
         return;
       }
@@ -191,12 +210,12 @@ export function AccountDialog({ open, returnTo, onClose, onSignedIn }: AccountDi
       className="account-dialog rc-dialog"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        closeDialog();
       }}
       ref={dialogRef}
     >
       <div className="rc-dialog-frame">
-        <button aria-label="Close account dialog" className="rc-dialog-close" onClick={onClose} type="button">
+        <button aria-label="Close account dialog" className="rc-dialog-close" onClick={closeDialog} type="button">
           <X aria-hidden="true" size={22} />
         </button>
 

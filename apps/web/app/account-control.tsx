@@ -129,7 +129,7 @@ export function AccountControl() {
       ) : null}
       <ProfileDialog
         onClose={() => setProfileDialogOpen(false)}
-        onDeleteAccount={() => setProfileDialogOpen(false)}
+        onDeleted={() => window.location.assign("/")}
         onSaved={() => void update()}
         open={profileDialogOpen}
       />

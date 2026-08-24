@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, FloppyDisk, Trash, X } from "@phosphor-icons/react";
+import { Check, FloppyDisk, Trash, WarningOctagon, X } from "@phosphor-icons/react";
+import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { avatarKeys, type AvatarKey } from "../auth/avatar";
@@ -14,7 +15,7 @@ export type PrivateProfile = {
 type ProfileDialogProps = {
   open: boolean;
   onClose(): void;
-  onDeleteAccount(): void;
+  onDeleted(): void;
   onSaved(profile: PrivateProfile): void;
 };
 
@@ -35,7 +36,7 @@ function isPrivateProfile(value: unknown): value is PrivateProfile {
     && avatarKeys.includes(profile.avatarKey as AvatarKey);
 }
 
-export function ProfileDialog({ open, onClose, onDeleteAccount, onSaved }: ProfileDialogProps) {
+export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const nicknameRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<PrivateProfile | null>(null);
@@ -45,6 +46,18 @@ export function ProfileDialog({ open, onClose, onDeleteAccount, onSaved }: Profi
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  function closeProfileDialog() {
+    setDeleteMode(false);
+    setDeleteConfirmation("");
+    setDeleting(false);
+    setErrorMessage("");
+    setStatusMessage("");
+    onClose();
+  }
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -59,6 +72,9 @@ export function ProfileDialog({ open, onClose, onDeleteAccount, onSaved }: Profi
     setLoading(true);
     setErrorMessage("");
     setStatusMessage("");
+    setDeleteMode(false);
+    setDeleteConfirmation("");
+    setDeleting(false);
     void fetch("/api/account/profile", {
       headers: { accept: "application/json" },
       signal: controller.signal,
@@ -114,6 +130,29 @@ export function ProfileDialog({ open, onClose, onDeleteAccount, onSaved }: Profi
     }
   }
 
+  async function deleteAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (deleteConfirmation !== "DELETE") return;
+    setDeleting(true);
+    setErrorMessage("");
+    try {
+      const response = await fetch("/api/account/delete", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE" }),
+      });
+      if (!response.ok) {
+        setErrorMessage("Account could not be deleted. Try again later.");
+        return;
+      }
+      onDeleted();
+    } catch {
+      setErrorMessage("Account could not be deleted. Try again later.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <dialog
       aria-labelledby="profile-dialog-title"
@@ -121,21 +160,66 @@ export function ProfileDialog({ open, onClose, onDeleteAccount, onSaved }: Profi
       className="profile-dialog rc-dialog"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        closeProfileDialog();
       }}
       ref={dialogRef}
     >
       <div className="rc-dialog-frame profile-dialog-frame">
-        <button aria-label="Close profile dialog" className="rc-dialog-close" onClick={onClose} type="button">
+        <button aria-label="Close profile dialog" className="rc-dialog-close" onClick={closeProfileDialog} type="button">
           <X aria-hidden="true" size={22} />
         </button>
-        <p className="eyebrow">PRIVATE PROFILE</p>
-        <h2 id="profile-dialog-title">EDIT PROFILE</h2>
-        <p className="rc-dialog-copy">Choose how other drivers see you. Your email stays private.</p>
+        <p className="eyebrow">{deleteMode ? "ACCOUNT CONTROL" : "PRIVATE PROFILE"}</p>
+        <h2 id="profile-dialog-title">{deleteMode ? "DELETE ACCOUNT PERMANENTLY" : "EDIT PROFILE"}</h2>
+        <p className="rc-dialog-copy">
+          {deleteMode
+            ? "This cannot be undone. Your sign-in methods, profile, and active sessions will be removed."
+            : "Choose how other drivers see you. Your email stays private."}
+        </p>
 
-        {loading ? <p className="profile-loading" role="status">LOADING PROFILE...</p> : null}
-        {!loading && errorMessage && !profile ? <p className="form-error" role="alert">{errorMessage}</p> : null}
-        {profile ? (
+        {!deleteMode && loading ? <p className="profile-loading" role="status">LOADING PROFILE...</p> : null}
+        {!deleteMode && !loading && errorMessage && !profile ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+        {deleteMode ? (
+          <form className="account-delete-confirmation" onSubmit={(event) => void deleteAccount(event)}>
+            <WarningOctagon aria-hidden="true" className="account-delete-warning-icon" size={48} weight="duotone" />
+            <p>
+              Type <strong>DELETE</strong> below to confirm. Some transaction and consent records may be retained where legally required, as described in our <Link href="/privacy">Privacy Policy</Link> and <Link href="/terms">Terms of Service</Link>.
+            </p>
+            <label className="dialog-field">
+              <span>TYPE DELETE TO CONFIRM</span>
+              <span className="dialog-input-wrap">
+                <input
+                  aria-label="Type DELETE to confirm"
+                  autoComplete="off"
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                  spellCheck={false}
+                  value={deleteConfirmation}
+                />
+              </span>
+            </label>
+            {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+            <div className="account-delete-actions">
+              <button
+                className="dialog-secondary-action"
+                disabled={deleting}
+                onClick={() => {
+                  setDeleteMode(false);
+                  setDeleteConfirmation("");
+                  setErrorMessage("");
+                }}
+                type="button"
+              >
+                KEEP MY ACCOUNT
+              </button>
+              <button
+                className="dialog-danger-action account-delete-confirm"
+                disabled={deleting || deleteConfirmation !== "DELETE"}
+                type="submit"
+              >
+                <Trash aria-hidden="true" size={19} /> {deleting ? "DELETING..." : "PERMANENTLY DELETE ACCOUNT"}
+              </button>
+            </div>
+          </form>
+        ) : profile ? (
           <form className="profile-form" noValidate onSubmit={(event) => void saveProfile(event)}>
             <label className="dialog-field">
               <span>EMAIL</span>
@@ -198,7 +282,16 @@ export function ProfileDialog({ open, onClose, onDeleteAccount, onSaved }: Profi
                 <strong>DELETE ACCOUNT</strong>
                 <small>Permanently remove your RC Mania account.</small>
               </span>
-              <button className="dialog-danger-action" onClick={onDeleteAccount} type="button">
+              <button
+                className="dialog-danger-action"
+                onClick={() => {
+                  setDeleteMode(true);
+                  setDeleteConfirmation("");
+                  setErrorMessage("");
+                  setStatusMessage("");
+                }}
+                type="button"
+              >
                 <Trash aria-hidden="true" size={19} /> DELETE ACCOUNT
               </button>
             </div>

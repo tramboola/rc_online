@@ -36,7 +36,7 @@ describe("ProfileDialog", () => {
       nickname: "Night Racer",
       avatarKey: "racer-red",
     })));
-    render(<ProfileDialog onClose={vi.fn()} onDeleteAccount={vi.fn()} onSaved={vi.fn()} open />);
+    render(<ProfileDialog onClose={vi.fn()} onDeleted={vi.fn()} onSaved={vi.fn()} open />);
 
     expect(screen.getByRole("status").textContent).toContain("LOADING PROFILE");
     expect((await screen.findByDisplayValue("driver@example.com")).hasAttribute("readonly")).toBe(true);
@@ -62,7 +62,7 @@ describe("ProfileDialog", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
     const onSaved = vi.fn();
-    render(<ProfileDialog onClose={vi.fn()} onDeleteAccount={vi.fn()} onSaved={onSaved} open />);
+    render(<ProfileDialog onClose={vi.fn()} onDeleted={vi.fn()} onSaved={onSaved} open />);
 
     const nickname = await screen.findByLabelText(/^nickname/iu);
     await user.clear(nickname);
@@ -92,7 +92,7 @@ describe("ProfileDialog", () => {
         avatarKey: "racer-red",
       }))
       .mockResolvedValueOnce(jsonResponse(409, { error: "Profile update unavailable" })));
-    render(<ProfileDialog onClose={vi.fn()} onDeleteAccount={vi.fn()} onSaved={vi.fn()} open />);
+    render(<ProfileDialog onClose={vi.fn()} onDeleted={vi.fn()} onSaved={vi.fn()} open />);
 
     await screen.findByLabelText(/^nickname/iu);
     await user.click(screen.getByRole("button", { name: /save profile/iu }));
@@ -100,18 +100,37 @@ describe("ProfileDialog", () => {
     expect(screen.getByRole("alert").textContent).not.toContain("owner");
   });
 
-  test("hands account deletion to the separate destructive flow", async () => {
+  test("requires exact confirmation before deleting the signed-in account", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {
-      email: "driver@example.com",
-      nickname: "Night Racer",
-      avatarKey: "racer-red",
-    })));
-    const onDeleteAccount = vi.fn();
-    render(<ProfileDialog onClose={vi.fn()} onDeleteAccount={onDeleteAccount} onSaved={vi.fn()} open />);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, {
+        email: "driver@example.com",
+        nickname: "Night Racer",
+        avatarKey: "racer-red",
+      }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, message: "Account deleted." }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onDeleted = vi.fn();
+    render(<ProfileDialog onClose={vi.fn()} onDeleted={onDeleted} onSaved={vi.fn()} open />);
 
     await screen.findByLabelText(/^nickname/iu);
     await user.click(screen.getByRole("button", { name: /delete account/iu }));
-    expect(onDeleteAccount).toHaveBeenCalledOnce();
+    expect(screen.getByRole("heading", { name: /delete account permanently/iu })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /terms of service/iu }).getAttribute("href")).toBe("/terms");
+    expect(screen.getByRole("link", { name: /privacy policy/iu }).getAttribute("href")).toBe("/privacy");
+
+    const confirmButton = screen.getByRole("button", { name: /permanently delete account/iu }) as HTMLButtonElement;
+    expect(confirmButton.disabled).toBe(true);
+    await user.type(screen.getByLabelText(/type delete/iu), "DELET");
+    expect(confirmButton.disabled).toBe(true);
+    await user.type(screen.getByLabelText(/type delete/iu), "E");
+    expect(confirmButton.disabled).toBe(false);
+    await user.click(confirmButton);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/account/delete", expect.objectContaining({
+      method: "DELETE",
+      body: JSON.stringify({ confirmation: "DELETE" }),
+    }));
+    expect(onDeleted).toHaveBeenCalledOnce();
   });
 });

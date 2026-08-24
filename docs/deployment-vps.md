@@ -11,6 +11,38 @@ Compose-mounted secret without exposing it to other host users. Keep
 `GATEWAY_ICE_SERVERS_JSON` URL-only: the web and gateway services derive
 short-lived credentials per drive session.
 
+Keep the deployment environment outside the repository with owner-only
+permissions (`0600`). In addition to the existing auth and Google OAuth
+variables, the account service requires:
+
+```dotenv
+AUTH_RATE_LIMIT_SECRET=<32 random bytes encoded as 64 lowercase hex characters>
+RESEND_API_KEY=<server-only Resend API key>
+AUTH_EMAIL_FROM=RC Mania <accounts@updates.rcmania.live>
+AUTH_SUPPORT_EMAIL=support@rcmania.live
+```
+
+Generate `AUTH_RATE_LIMIT_SECRET` independently from `AUTH_SECRET`. Never add
+either secret to Git, Docker image layers, browser variables, screenshots, or
+deployment logs. In particular, never create a `NEXT_PUBLIC_RESEND_API_KEY`.
+
+Before the first account migration and before every account-related release,
+take a PostgreSQL backup and verify that it is non-empty. Keep the backup
+outside the release directory:
+
+```bash
+install -d -m 0700 /opt/rcmania/backups
+docker compose -f infra/compose/compose.vps-web.yaml exec -T postgres \
+  pg_dump -U rcmania -d rcmania -Fc \
+  > "/opt/rcmania/backups/rcmania-before-${RC_IMAGE_TAG}.dump"
+test -s "/opt/rcmania/backups/rcmania-before-${RC_IMAGE_TAG}.dump"
+```
+
+The `migrate` service applies the account schema before the web container is
+recreated. If migration fails, do not start the new web image. Restore only
+after stopping RC Mania services and confirming the selected backup and target
+database.
+
 Create the immutable OTA release directory once and keep it outside release
 worktrees:
 
