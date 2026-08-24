@@ -54,6 +54,19 @@ The mock mode uses real PostgreSQL, Redis, BullMQ, ledger, migrations, state
 machines, REST, and edge outbox. Production startup rejects every mock or
 simulator provider flag; see `packages/config`.
 
+## Anonymous viewer count
+
+The public viewer count is an anonymous, process-local count of currently open
+viewer WebSocket connections. The browser connects only through the same-origin
+path `/gateway/v1/viewers`; Nginx forwards that path to the gateway as
+`/v1/viewers` and upgrades the connection as WebSocket.
+
+This design deliberately creates no viewer ID, browser cookie, or browser
+storage, and it sends no heartbeat. Viewer presence has no HTTP route and does
+not persist raw request metadata. The count is therefore valid only with a
+single gateway instance. Do not load-balance gateway replicas for this feature
+until a shared aggregation design is introduced.
+
 ## Scenario controller
 
 `POST /v1/simulation/scenarios/:scenario` accepts:

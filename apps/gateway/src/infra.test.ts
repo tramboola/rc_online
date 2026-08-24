@@ -24,15 +24,28 @@ describe("production gateway infrastructure", () => {
     expect(gateway).toMatch(/- edge\s+- state/u);
   });
 
-  it("proxies same-origin WebSockets with a bounded idle timeout", async () => {
+  it("routes viewer counts through the gateway while preserving existing gateway paths", async () => {
     const nginx = await readFile(nginxUrl, "utf8");
     const gateway = nginx.split("location /gateway/")[1] ?? "";
+    const routes = [
+      ["/gateway/v1/viewers", "/v1/viewers"],
+      ["/gateway/v1/socket", "/v1/socket"],
+      ["/gateway/health/live", "/health/live"],
+      ["/gateway/health/ready", "/health/ready"],
+    ] as const;
 
     expect(gateway).toContain("proxy_pass http://127.0.0.1:3002/");
+    expect(gateway).toContain("proxy_http_version 1.1;");
     expect(gateway).toContain("proxy_set_header Upgrade $http_upgrade;");
     expect(gateway).toContain('proxy_set_header Connection "upgrade";');
     expect(gateway).toContain("proxy_read_timeout 360s;");
     expect(gateway).toContain("proxy_send_timeout 360s;");
+
+    for (const [requestPath, upstreamPath] of routes) {
+      expect(requestPath.replace("/gateway", "")).toBe(upstreamPath);
+    }
+
+    expect(nginx).toMatch(/location \/ \{\s+proxy_pass http:\/\/127\.0\.0\.1:3000;/u);
   });
 
   it("serves immutable signed agent releases without directory listing", async () => {
