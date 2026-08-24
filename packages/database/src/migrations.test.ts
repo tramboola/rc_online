@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 
-import { accountActionTokens } from "./schema.js";
+import { accountActionTokens, passwordCredentials, users } from "./schema.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -120,6 +120,20 @@ describe("versioned SQL migrations", () => {
     expect(sql).toContain('CREATE INDEX "auth_rate_limits_expiry_idx"');
     expect(sql).toContain('INSERT INTO "nicknames" ("user_id", "nickname", "avatar_key")');
     expect(sql).toContain('INSERT INTO "account_balances" ("user_id", "currency", "amount_minor")');
+  });
+
+  it("keeps password credential verification separate from user email verification", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0007_account_profiles.sql"),
+      "utf8",
+    );
+
+    expect(sql).toMatch(
+      /create table "password_credentials" \([^;]*"verified_at" timestamptz[^;]*\);/i,
+    );
+    expect(passwordCredentials.verifiedAt.name).toBe("verified_at");
+    expect(passwordCredentials.verifiedAt.notNull).toBe(false);
+    expect(users.emailVerifiedAt.name).toBe("email_verified_at");
   });
 
   it("backfills a nickname for every active user without case-insensitive collisions", async () => {

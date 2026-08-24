@@ -87,6 +87,7 @@ export const passwordCredentials = pgTable("password_credentials", {
   passwordChangedAt: timestamp("password_changed_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   ...auditColumns,
 });
 
