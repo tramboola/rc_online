@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -70,10 +71,55 @@ export const accountBalances = pgTable("account_balances", {
   check("account_balances_amount_nonnegative", sql`${table.amountMinor} >= 0`),
 ]);
 
+export type AccountActionTokenKind = "verify_email" | "reset_password";
+
+export type AuthRateLimitKind =
+  | "registration"
+  | "sign_in"
+  | "resend"
+  | "password_reset"
+  | "nickname"
+  | "deletion";
+
+export const passwordCredentials = pgTable("password_credentials", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  passwordHash: text("password_hash").notNull(),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  ...auditColumns,
+});
+
+export const accountActionTokens = pgTable("account_action_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<AccountActionTokenKind>().notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("account_action_tokens_token_hash_unique").on(table.tokenHash),
+  index("account_action_tokens_user_kind_idx").on(table.userId, table.kind, table.expiresAt),
+]);
+
+export const authRateLimits = pgTable("auth_rate_limits", {
+  keyHash: text("key_hash").notNull(),
+  kind: text("kind").$type<AuthRateLimitKind>().notNull(),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+  attemptCount: integer("attempt_count").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.keyHash, table.kind, table.windowStartedAt] }),
+  check("auth_rate_limits_attempt_count_positive", sql`${table.attemptCount} > 0`),
+  index("auth_rate_limits_expiry_idx").on(table.expiresAt),
+]);
+
 export const nicknames = pgTable("nicknames", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().unique().references(() => users.id),
   nickname: text("nickname").notNull(),
+  avatarKey: text("avatar_key").notNull().default("racer-red"),
   moderatedAt: timestamp("moderated_at", { withTimezone: true }),
   ...auditColumns,
 }, (table) => [

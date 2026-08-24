@@ -98,4 +98,24 @@ describe("versioned SQL migrations", () => {
     expect(sql).toMatch(/where status in \('pending', 'downloading', 'applying'\)/i);
     expect(sql).toMatch(/attempt_count between 0 and 1/i);
   });
+
+  it("adds durable account profile, password, token, and rate-limit state", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0007_account_profiles.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain('ADD COLUMN "avatar_key" text');
+    expect(sql).toContain('CREATE TABLE "password_credentials"');
+    expect(sql).toContain('CREATE TABLE "account_action_tokens"');
+    expect(sql).toContain('CREATE TABLE "auth_rate_limits"');
+    expect(sql).toContain('ON DELETE CASCADE');
+    expect(sql).toContain('CREATE UNIQUE INDEX "account_action_tokens_token_hash_unique"');
+    expect(sql).toContain('CHECK ("kind" IN (\'verify_email\', \'reset_password\'))');
+    expect(sql).toContain('CHECK ("attempt_count" > 0)');
+    expect(sql).toContain('CREATE INDEX "account_action_tokens_user_kind_idx"');
+    expect(sql).toContain('CREATE INDEX "auth_rate_limits_expiry_idx"');
+    expect(sql).toContain('INSERT INTO "nicknames" ("user_id", "nickname", "avatar_key")');
+    expect(sql).toContain('INSERT INTO "account_balances" ("user_id", "currency", "amount_minor")');
+  });
 });
