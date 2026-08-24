@@ -60,7 +60,7 @@ export function getViewerBadgeText(
     return `${count} WATCHING NOW`;
   }
 
-  return "â€” VIEWING NOW";
+  return "\u2014 VIEWING NOW";
 }
 
 export function getVideoStatusLabel(mockMode: boolean): "PREVIEW" | "● LIVE / DIRECT" {

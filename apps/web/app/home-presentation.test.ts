@@ -54,11 +54,11 @@ describe("getViewerBadgeText", () => {
   });
 
   test("does not invent a count while the socket is connecting", () => {
-    expect(getViewerBadgeText(null, "connecting")).toBe("â€” VIEWING NOW");
+    expect(getViewerBadgeText(null, "connecting")).toBe("\u2014 VIEWING NOW");
   });
 
   test("does not invent a count when the socket is unavailable", () => {
-    expect(getViewerBadgeText(null, "unavailable")).toBe("â€” VIEWING NOW");
+    expect(getViewerBadgeText(null, "unavailable")).toBe("\u2014 VIEWING NOW");
   });
 });
 
