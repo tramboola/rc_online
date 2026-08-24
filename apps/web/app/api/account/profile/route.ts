@@ -17,6 +17,7 @@ const profileRequestSchema = z.object({
 }).strict();
 
 type AccountProfileRouteDependencies = {
+  canonicalOrigin?: string;
   getSubject(): Promise<string | null>;
   getOwnProfile(subject: string): Promise<OwnProfile | null>;
   updateOwnProfile(
@@ -34,25 +35,22 @@ type AccountProfileRouteDependencies = {
   now(): Date;
 };
 
+function privateJson(body: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("cache-control", "private, no-store");
+  return Response.json(body, { ...init, headers });
+}
+
 function profileResponse(profile: OwnProfile): Response {
-  return Response.json({
+  return privateJson({
     email: profile.email,
     nickname: profile.nickname,
     avatarKey: profile.avatarKey,
-  }, { headers: { "cache-control": "private, no-store" } });
+  });
 }
 
-function requestOrigin(request: Request): string {
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",", 1)[0]?.trim();
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",", 1)[0]?.trim();
-  if ((forwardedProto === "http" || forwardedProto === "https") && forwardedHost) {
-    try {
-      return new URL(`${forwardedProto}://${forwardedHost}`).origin;
-    } catch {
-      // Fall back to the request URL when proxy headers are malformed.
-    }
-  }
-  return new URL(request.url).origin;
+function requestOrigin(request: Request, canonicalOrigin?: string): string {
+  return canonicalOrigin ?? new URL(request.url).origin;
 }
 
 async function parseBoundedJson(request: Request): Promise<unknown | null> {
@@ -93,15 +91,15 @@ export function createAccountProfileRoute(dependencies: AccountProfileRouteDepen
   return {
     async GET(_request: Request): Promise<Response> {
       const subject = await dependencies.getSubject();
-      if (!subject) return Response.json({ error: "Sign in required" }, { status: 401 });
+      if (!subject) return privateJson({ error: "Sign in required" }, { status: 401 });
 
       const profile = await dependencies.getOwnProfile(subject);
-      if (!profile) return Response.json({ error: "Profile unavailable" }, { status: 404 });
+      if (!profile) return privateJson({ error: "Profile unavailable" }, { status: 404 });
       return profileResponse(profile);
     },
 
     async PATCH(request: Request): Promise<Response> {
-      if (request.headers.get("origin") !== requestOrigin(request)) {
+      if (request.headers.get("origin") !== requestOrigin(request, dependencies.canonicalOrigin)) {
         return Response.json({ error: "Cross-origin request rejected" }, { status: 403 });
       }
       if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
@@ -166,17 +164,33 @@ export function createAccountProfileRoute(dependencies: AccountProfileRouteDepen
 }
 
 function unavailableResponse(): Response {
-  return Response.json({ error: "Profile service unavailable" }, { status: 503 });
+  return privateJson({ error: "Profile service unavailable" }, { status: 503 });
 }
 
 async function createProductionRoute() {
   const databaseUrl = process.env.DATABASE_URL;
   const rateLimitSecret = process.env.AUTH_RATE_LIMIT_SECRET;
-  if (!databaseUrl || !rateLimitSecret) return null;
+  const configuredAuthUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
+  const isProduction = process.env.NODE_ENV === "production";
+  let canonicalOrigin: string | undefined;
+  if (configuredAuthUrl) {
+    try {
+      const normalizedAuthUrl = configuredAuthUrl.trim();
+      const parsedAuthUrl = new URL(normalizedAuthUrl);
+      if (parsedAuthUrl.origin !== normalizedAuthUrl || (isProduction && parsedAuthUrl.protocol !== "https:")) {
+        return null;
+      }
+      canonicalOrigin = parsedAuthUrl.origin;
+    } catch {
+      return null;
+    }
+  }
+  if (!databaseUrl || !rateLimitSecret || (isProduction && !canonicalOrigin)) return null;
   const { createPostgresAccountStore } = await import("../../../../auth/postgres-account-store");
   const store = createPostgresAccountStore(databaseUrl);
   const { auth } = await import("../../../../auth");
   return createAccountProfileRoute({
+    ...(canonicalOrigin ? { canonicalOrigin } : {}),
     getSubject: async () => (await auth())?.user?.id ?? null,
     getOwnProfile: (subject) => store.getOwnProfile(subject),
     updateOwnProfile: (subject, profile) => store.updateOwnProfile(subject, profile),

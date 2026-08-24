@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { OwnProfile, RateLimitAttempt } from "../../../../auth/account-store";
-import { createAccountProfileRoute } from "./route";
+import { createAccountProfileRoute, GET as productionGet } from "./route";
 
 const subject = "11111111-2222-4333-8444-555555555555";
 const ownProfile: OwnProfile = {
@@ -56,10 +56,35 @@ describe("private account profile endpoint", () => {
   test("rejects unauthenticated and unavailable own-profile reads", async () => {
     const unauthenticated = createRoute({ getSubject: async () => null });
     const unavailable = createRoute({ getOwnProfile: async () => null });
+    const unauthenticatedResponse = await unauthenticated.route.GET(
+      new Request("https://rcmania.live/api/account/profile"),
+    );
+    const unavailableResponse = await unavailable.route.GET(
+      new Request("https://rcmania.live/api/account/profile"),
+    );
 
-    expect((await unauthenticated.route.GET(new Request("https://rcmania.live/api/account/profile"))).status).toBe(401);
+    expect(unauthenticatedResponse.status).toBe(401);
+    expect(unauthenticatedResponse.headers.get("cache-control")).toBe("private, no-store");
     expect((await unauthenticated.route.PATCH(patchRequest({ nickname: "Driver Two", avatarKey: "racer-red" }))).status).toBe(401);
-    expect((await unavailable.route.GET(new Request("https://rcmania.live/api/account/profile"))).status).toBe(404);
+    expect(unavailableResponse.status).toBe(404);
+    expect(unavailableResponse.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  test("marks a service-unavailable GET response as private and non-cacheable", async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const response = await productionGet(new Request("https://rcmania.live/api/account/profile"));
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    } finally {
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    }
   });
 
   test("uses only the server session subject and rejects client attempts to address another user", async () => {
@@ -104,6 +129,36 @@ describe("private account profile endpoint", () => {
 
     expect([crossOrigin.status, nonJson.status, oversized.status]).toEqual([403, 415, 413]);
     expect(calls.subject).toBeUndefined();
+  });
+
+  test("does not let forwarded headers redefine the trusted request origin", async () => {
+    const { route, calls } = createRoute();
+    const response = await route.PATCH(patchRequest(
+      { nickname: "Driver Two", avatarKey: "racer-red" },
+      {
+        origin: "https://evil.example",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "evil.example",
+      },
+    ));
+
+    expect(response.status).toBe(403);
+    expect(calls.subject).toBeUndefined();
+  });
+
+  test("uses the configured canonical origin behind an internal production proxy", async () => {
+    const { route } = createRoute({ canonicalOrigin: "https://rcmania.live" });
+    const response = await route.PATCH(new Request("http://web:3000/api/account/profile", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://rcmania.live",
+        "x-forwarded-host": "evil.example",
+      },
+      body: JSON.stringify({ nickname: "Driver Two", avatarKey: "racer-red" }),
+    }));
+
+    expect(response.status).toBe(200);
   });
 
   test("rate-limits nickname changes using only an HMAC digest and updates only the session subject", async () => {

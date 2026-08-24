@@ -38,6 +38,12 @@ function webpDimensions(contents: Buffer): { width: number; height: number } {
   throw new Error("WebP dimensions are missing");
 }
 
+function expectMetadataFreeWebp(contents: Buffer): void {
+  expect(contents.includes(Buffer.from("ICCP"))).toBe(false);
+  expect(contents.includes(Buffer.from("EXIF"))).toBe(false);
+  expect(contents.includes(Buffer.from("XMP "))).toBe(false);
+}
+
 describe("preset avatar keys", () => {
   test("allows exactly the bundled preset identifiers", () => {
     expect(avatarKeys).toEqual([
@@ -68,6 +74,7 @@ describe("preset avatar keys", () => {
 describe("profile nickname validation", () => {
   test("normalizes NFKC and outer whitespace before accepting a visible nickname", () => {
     expect(normalizeProfileNickname("  ＲＣ Racer  ")).toBe("RC Racer");
+    expect(normalizeProfileNickname("  Zoe\u0308 Racer  ")).toBe("Zoë Racer");
   });
 
   test.each([
@@ -77,6 +84,8 @@ describe("profile nickname validation", () => {
     "Driver\u0000One",
     "Driver\u200BOne",
     "Driver\u202EOne",
+    "\u0301\u0301\u0301",
+    "\uFE0F\uFE0F\uFE0F",
     "admin",
     "RC Mania",
     "deleted driver",
@@ -86,6 +95,10 @@ describe("profile nickname validation", () => {
 });
 
 describe("preset avatar assets", () => {
+  test("rejects embedded ICC color profiles", () => {
+    expect(() => expectMetadataFreeWebp(Buffer.from("RIFF....WEBPICCP"))).toThrow();
+  });
+
   test("ships every preset as a compact metadata-free 256px WebP", async () => {
     const avatarsDirectory = path.resolve(import.meta.dirname, "../public/assets/avatars");
     for (const avatarKey of avatarKeys) {
@@ -95,8 +108,7 @@ describe("preset avatar assets", () => {
       expect(file.size).toBeLessThan(40 * 1024);
       expect(contents.subarray(0, 4).toString("ascii")).toBe("RIFF");
       expect(contents.subarray(8, 12).toString("ascii")).toBe("WEBP");
-      expect(contents.includes(Buffer.from("EXIF"))).toBe(false);
-      expect(contents.includes(Buffer.from("XMP "))).toBe(false);
+      expectMetadataFreeWebp(contents);
       expect(webpDimensions(contents)).toEqual({ width: 256, height: 256 });
     }
   });

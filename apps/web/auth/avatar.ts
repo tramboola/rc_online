@@ -10,6 +10,7 @@ export const avatarKeys = [
 export type AvatarKey = (typeof avatarKeys)[number];
 
 const avatarKeySet = new Set<string>(avatarKeys);
+const visibleNicknameCodePointPattern = /[\p{L}\p{N}\p{P}\p{S}]/u;
 const reservedNicknameSet = new Set([
   "admin",
   "administrator",
@@ -35,6 +36,7 @@ export function normalizeProfileNickname(value: string): string | null {
   if (
     codePoints.length < 3
     || codePoints.length > 24
+    || !visibleNicknameCodePointPattern.test(nickname)
     || reservedNicknameSet.has(nickname.toLowerCase())
   ) {
     return null;
