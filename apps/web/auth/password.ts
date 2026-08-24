@@ -20,6 +20,10 @@ export async function verifyPassword(
   storedHash: string,
   password: string,
 ): Promise<{ valid: boolean; needsRehash: boolean }> {
+  if (!hasValidPasswordLength(password)) {
+    return { valid: false, needsRehash: false };
+  }
+
   try {
     const valid = await verify(storedHash, password);
 
@@ -33,11 +37,23 @@ export async function verifyPassword(
 }
 
 function assertPasswordLength(password: string): void {
-  const length = Array.from(password).length;
-
-  if (length < 12 || length > 128) {
+  if (!hasValidPasswordLength(password)) {
     throw new Error(passwordLengthError);
   }
+}
+
+function hasValidPasswordLength(password: string): boolean {
+  let length = 0;
+
+  for (const _character of password) {
+    length += 1;
+
+    if (length > 128) {
+      return false;
+    }
+  }
+
+  return length >= 12;
 }
 
 function matchesPasswordPolicy(storedHash: string): boolean {
@@ -61,7 +77,7 @@ function matchesPasswordPolicy(storedHash: string): boolean {
   return (
     Number(memoryCost) >= passwordPolicy.memoryCost &&
     Number(timeCost) >= passwordPolicy.timeCost &&
-    Number(parallelism) >= passwordPolicy.parallelism &&
+    Number(parallelism) === passwordPolicy.parallelism &&
     Buffer.from(digest, "base64").byteLength >= passwordPolicy.outputLen
   );
 }

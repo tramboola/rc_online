@@ -19,6 +19,12 @@ describe("account tokens", () => {
     expect(token.hash).not.toBe(token.raw);
   });
 
+  test("binds the generated raw token to its digest instead of returning unrelated storage data", () => {
+    const token = createAccountToken();
+
+    expect(hashAccountToken(token.raw)).toBe(token.hash);
+  });
+
   test("derives SHA-256 rather than an incompatible digest for a fixed account token", () => {
     expect(hashAccountToken("fixed-token")).toBe(
       "648f312cf893d191028cba09f60f8ffe95624c9ef2d40a0c2f0db0e356e37e0f",
