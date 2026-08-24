@@ -1,7 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import type { OwnProfile, RateLimitAttempt } from "../../../../auth/account-store";
-import { createAccountProfileRoute, GET as productionGet } from "./route";
+import {
+  createAccountProfileProductionHandlers,
+  createAccountProfileRoute,
+  GET as productionGet,
+} from "./route";
 
 const subject = "11111111-2222-4333-8444-555555555555";
 const ownProfile: OwnProfile = {
@@ -125,6 +129,46 @@ describe("private account profile endpoint", () => {
       if (previousNextAuthUrl === undefined) delete process.env.NEXTAUTH_URL;
       else process.env.NEXTAUTH_URL = previousNextAuthUrl;
     }
+  });
+
+  test("reuses the cached runtime account store across concurrent production profile calls", async () => {
+    const accountStore = {
+      getOwnProfile: vi.fn(async () => ownProfile),
+      updateOwnProfile: vi.fn(async (_subject: string, profile: Pick<OwnProfile, "nickname" | "avatarKey">) => ({
+        ...ownProfile,
+        ...profile,
+      })),
+      takeRateLimitAttempt: vi.fn(async () => ({
+        allowed: true,
+        remaining: 4,
+        retryAfterMs: 0,
+      } satisfies RateLimitAttempt)),
+    };
+    const runtime = {
+      accountStore,
+      canonicalOrigin: "https://rcmania.live",
+      rateLimitSecret: "ab".repeat(32),
+    };
+    const createRuntime = vi.fn(async () => runtime);
+    const getSubject = vi.fn(async () => subject);
+    const handlers = createAccountProfileProductionHandlers({
+      createRuntime,
+      getSubject,
+      now: () => new Date("2026-08-24T12:00:00.000Z"),
+    });
+
+    const [firstGet, secondGet, patch] = await Promise.all([
+      handlers.GET(new Request("https://rcmania.live/api/account/profile")),
+      handlers.GET(new Request("https://rcmania.live/api/account/profile")),
+      handlers.PATCH(patchRequest({ nickname: "Driver Two", avatarKey: "helmet-lime" })),
+    ]);
+
+    expect([firstGet.status, secondGet.status, patch.status]).toEqual([200, 200, 200]);
+    expect(createRuntime).toHaveBeenCalledTimes(3);
+    expect(getSubject).toHaveBeenCalledTimes(3);
+    expect(accountStore.getOwnProfile).toHaveBeenCalledTimes(2);
+    expect(accountStore.takeRateLimitAttempt).toHaveBeenCalledTimes(1);
+    expect(accountStore.updateOwnProfile).toHaveBeenCalledTimes(1);
   });
 
   test.each(["", "https://rcmania.live/path", "not an origin"])(

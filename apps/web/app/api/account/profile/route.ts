@@ -1,7 +1,15 @@
 import { z } from "zod";
 
+import {
+  createAccountRuntime,
+  type AccountRuntime,
+} from "../../../../auth/account-runtime";
 import { hashRateLimitKey } from "../../../../auth/rate-limit";
-import type { OwnProfile, RateLimitAttempt } from "../../../../auth/account-store";
+import type {
+  AccountStore,
+  OwnProfile,
+  RateLimitAttempt,
+} from "../../../../auth/account-store";
 import {
   isAvatarKey,
   normalizeProfileNickname,
@@ -32,6 +40,20 @@ type AccountProfileRouteDependencies = {
     limit: number;
   }): Promise<RateLimitAttempt>;
   rateLimitSecret: string;
+  now(): Date;
+};
+
+type AccountProfileProductionDependencies = {
+  createRuntime(): Promise<
+    Pick<AccountRuntime, "canonicalOrigin" | "rateLimitSecret">
+    & {
+      accountStore: Pick<
+        AccountStore,
+        "getOwnProfile" | "updateOwnProfile" | "takeRateLimitAttempt"
+      >;
+    }
+  >;
+  getSubject(): Promise<string | null>;
   now(): Date;
 };
 
@@ -178,48 +200,49 @@ function unavailableResponse(): Response {
   return privateJson({ error: "Profile service unavailable" }, { status: 503 });
 }
 
-async function createProductionRoute() {
-  const databaseUrl = process.env.DATABASE_URL;
-  const rateLimitSecret = process.env.AUTH_RATE_LIMIT_SECRET;
-  const configuredAuthUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
-  const isProduction = process.env.NODE_ENV === "production";
-  if (!configuredAuthUrl) return null;
-  let canonicalOrigin: string;
-  try {
-    canonicalOrigin = requireCanonicalOrigin(configuredAuthUrl.trim());
-    if (isProduction && new URL(canonicalOrigin).protocol !== "https:") return null;
-  } catch {
-    return null;
+export function createAccountProfileProductionHandlers(
+  dependencies: AccountProfileProductionDependencies,
+) {
+  async function createRoute() {
+    const runtime = await dependencies.createRuntime();
+    const store = runtime.accountStore;
+    return createAccountProfileRoute({
+      canonicalOrigin: runtime.canonicalOrigin,
+      getSubject: dependencies.getSubject,
+      getOwnProfile: (subject) => store.getOwnProfile(subject),
+      updateOwnProfile: (subject, profile) => store.updateOwnProfile(subject, profile),
+      takeRateLimitAttempt: (input) => store.takeRateLimitAttempt(input),
+      rateLimitSecret: runtime.rateLimitSecret,
+      now: dependencies.now,
+    });
   }
-  if (!databaseUrl || !rateLimitSecret) return null;
-  const { createPostgresAccountStore } = await import("../../../../auth/postgres-account-store");
-  const store = createPostgresAccountStore(databaseUrl);
-  const { auth } = await import("../../../../auth");
-  return createAccountProfileRoute({
-    canonicalOrigin,
-    getSubject: async () => (await auth())?.user?.id ?? null,
-    getOwnProfile: (subject) => store.getOwnProfile(subject),
-    updateOwnProfile: (subject, profile) => store.updateOwnProfile(subject, profile),
-    takeRateLimitAttempt: (input) => store.takeRateLimitAttempt(input),
-    rateLimitSecret,
-    now: () => new Date(),
-  });
+
+  return {
+    async GET(request: Request): Promise<Response> {
+      try {
+        return (await createRoute()).GET(request);
+      } catch {
+        return unavailableResponse();
+      }
+    },
+    async PATCH(request: Request): Promise<Response> {
+      try {
+        return (await createRoute()).PATCH(request);
+      } catch {
+        return unavailableResponse();
+      }
+    },
+  };
 }
 
-export async function GET(request: Request): Promise<Response> {
-  try {
-    const route = await createProductionRoute();
-    return route ? route.GET(request) : unavailableResponse();
-  } catch {
-    return unavailableResponse();
-  }
-}
+const productionHandlers = createAccountProfileProductionHandlers({
+  createRuntime: () => createAccountRuntime(),
+  getSubject: async () => {
+    const { auth } = await import("../../../../auth");
+    return (await auth())?.user?.id ?? null;
+  },
+  now: () => new Date(),
+});
 
-export async function PATCH(request: Request): Promise<Response> {
-  try {
-    const route = await createProductionRoute();
-    return route ? route.PATCH(request) : unavailableResponse();
-  } catch {
-    return unavailableResponse();
-  }
-}
+export const GET = productionHandlers.GET;
+export const PATCH = productionHandlers.PATCH;

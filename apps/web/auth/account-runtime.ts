@@ -27,6 +27,7 @@ import {
 const dummyPassword = "RC Mania dummy credential";
 
 export type AccountRuntime = {
+  accountStore: AccountStore;
   service: AccountService;
   canonicalOrigin: string;
   rateLimitSecret: string;
@@ -85,11 +86,13 @@ export function createAccountRuntimeFactory(
         dummyPasswordHash = undefined;
         throw error;
       }
+      const accountStore = dependencies.createAccountStore(environment.databaseUrl);
       return {
+        accountStore,
         canonicalOrigin: environment.authUrl,
         rateLimitSecret: environment.authRateLimitSecret,
         service: createAccountService({
-          accountStore: dependencies.createAccountStore(environment.databaseUrl),
+          accountStore,
           authStore: dependencies.createAuthStore(environment.databaseUrl),
           email: dependencies.createEmail({
             apiKey: resendApiKey,

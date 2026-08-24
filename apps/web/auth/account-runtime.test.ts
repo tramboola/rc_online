@@ -16,20 +16,21 @@ const environment = {
 } satisfies Record<string, string>;
 
 function runtimeFactory() {
+  const accountStore = {} as never;
   const factories = {
-    createAccountStore: vi.fn(() => ({}) as never),
+    createAccountStore: vi.fn(() => accountStore),
     createAuthStore: vi.fn(() => ({}) as never),
     createEmail: vi.fn(() => ({}) as never),
     hashDummyPassword: vi.fn(async () => "dummy-argon-hash"),
     scheduleAfterResponse: vi.fn(() => undefined),
     reportDelivery: vi.fn(async () => undefined),
   };
-  return { createRuntime: createAccountRuntimeFactory(factories), factories };
+  return { createRuntime: createAccountRuntimeFactory(factories), factories, accountStore };
 }
 
 describe("account runtime cache", () => {
   test("reuses one in-flight runtime, service, and pair of stores for identical configuration", async () => {
-    const { createRuntime, factories } = runtimeFactory();
+    const { createRuntime, factories, accountStore } = runtimeFactory();
 
     const [first, second] = await Promise.all([
       createRuntime(environment),
@@ -37,6 +38,8 @@ describe("account runtime cache", () => {
     ]);
 
     expect(second).toBe(first);
+    expect(first.accountStore).toBe(accountStore);
+    expect(second.accountStore).toBe(accountStore);
     expect(factories.createAccountStore).toHaveBeenCalledTimes(1);
     expect(factories.createAuthStore).toHaveBeenCalledTimes(1);
     expect(factories.createEmail).toHaveBeenCalledTimes(1);
