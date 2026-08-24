@@ -60,6 +60,7 @@ describe("forgot-password route", () => {
     })(streamed);
     expect(response.status).toBe(413);
     expect(requestPasswordReset).not.toHaveBeenCalled();
+    expect(streamed.body?.locked).toBe(false);
   });
 
   test("rejects a cross-origin recovery request before calling the service", async () => {

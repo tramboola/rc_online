@@ -68,8 +68,12 @@ describe("Resend transactional email", () => {
       html: string;
     };
     expect(payload.text).toContain(
-      "https://rcmania.live/auth/reset-password?token=reset-token",
+      "https://rcmania.live/auth/reset-password#token=reset-token",
     );
+    expect(payload.html).toContain(
+      "https://rcmania.live/auth/reset-password#token=reset-token",
+    );
+    expect(`${payload.text}${payload.html}`).not.toContain("/auth/reset-password?token=");
     expect(payload.html).not.toContain("driver@example.com");
     expect(() => createResendTransactionalEmail({
       ...config,

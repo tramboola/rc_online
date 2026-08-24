@@ -363,14 +363,27 @@ describe("account service", () => {
     });
   });
 
-  test("issues a 30-minute reset token only for an eligible account while preserving a generic result", async () => {
-    const eligible = dependencies();
-    const ineligible = dependencies();
-    ineligible.accountStore.createOrRotateActionToken.mockResolvedValueOnce(null);
+  test("schedules one retained reset task and returns before eligible or ineligible lookup settles", async () => {
+    const eligibleTasks: Array<() => Promise<void>> = [];
+    const ineligibleTasks: Array<() => Promise<void>> = [];
+    const eligible = dependencies({
+      scheduleAfterResponse: (task: () => Promise<void>) => eligibleTasks.push(task),
+    });
+    const ineligible = dependencies({
+      scheduleAfterResponse: (task: () => Promise<void>) => ineligibleTasks.push(task),
+    });
+    ineligible.accountStore.createOrRotateActionToken.mockResolvedValue(null);
     const input = { email: " Driver@Example.COM ", ipKeyHash, accountKeyHash };
 
     await expect(eligible.service.requestPasswordReset(input)).resolves.toEqual({ kind: "accepted" });
     await expect(ineligible.service.requestPasswordReset(input)).resolves.toEqual({ kind: "accepted" });
+    expect(eligibleTasks).toHaveLength(1);
+    expect(ineligibleTasks).toHaveLength(1);
+    expect(eligible.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+    expect(ineligible.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+
+    await eligibleTasks[0]!();
+    await ineligibleTasks[0]!();
     expect(eligible.accountStore.createOrRotateActionToken).toHaveBeenCalledWith({
       email: "driver@example.com",
       kind: "reset_password",
@@ -378,11 +391,43 @@ describe("account service", () => {
       expiresAt: new Date("2026-08-24T12:30:00.000Z"),
       now,
     });
+    expect(eligible.email.sendPasswordReset).toHaveBeenCalledWith({
+      to: "driver@example.com",
+      token: "raw-verification-token",
+    });
     expect(ineligible.email.sendPasswordReset).not.toHaveBeenCalled();
   });
 
+  test("redacts an unexpected reset lookup failure inside the retained task", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    const failed = dependencies({
+      scheduleAfterResponse: (task: () => Promise<void>) => tasks.push(task),
+    });
+    failed.accountStore.createOrRotateActionToken.mockRejectedValueOnce(
+      new Error("driver@example.com raw-verification-token database detail"),
+    );
+
+    await expect(failed.service.requestPasswordReset({
+      email: "driver@example.com",
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "accepted" });
+    await expect(tasks[0]!()).resolves.toBeUndefined();
+    expect(failed.base.reportDelivery).toHaveBeenCalledWith({
+      templateKind: "password_reset",
+      outcome: "failure",
+      statusClass: "other",
+    });
+    expect(JSON.stringify(failed.base.reportDelivery.mock.calls)).not.toMatch(
+      /driver@example\.com|raw-verification-token|database detail/u,
+    );
+  });
+
   test("replaces a password once, revokes every session through the store, and notifies the account", async () => {
-    const { service, accountStore, email, base } = dependencies();
+    const tasks: Array<() => Promise<void>> = [];
+    const { service, accountStore, email, base } = dependencies({
+      scheduleAfterResponse: (task: () => Promise<void>) => tasks.push(task),
+    });
     accountStore.replacePasswordAndRevokeSessions.mockResolvedValueOnce({ userId, email: "driver@example.com" });
     accountStore.replacePasswordAndRevokeSessions.mockResolvedValueOnce(null);
 
@@ -404,7 +449,8 @@ describe("account service", () => {
       now,
     });
     expect(base.hashPassword).toHaveBeenCalledWith("new correct horse battery");
-    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(tasks).toHaveLength(1);
+    await tasks[0]!();
     expect(email.sendPasswordChanged).toHaveBeenCalledWith({ to: "driver@example.com" });
   });
 

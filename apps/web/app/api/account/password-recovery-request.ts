@@ -32,21 +32,32 @@ async function readBoundedRequestText(request: Request): Promise<string | Respon
       if (done) break;
       length += value.byteLength;
       if (length > maximumPasswordRecoveryBodyBytes) {
-        await reader.cancel();
+        try {
+          await reader.cancel();
+        } catch {
+          // The size rejection remains authoritative if the source cannot cancel cleanly.
+        }
         return errorResponse(413);
       }
       chunks.push(value);
     }
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
+    try {
+      await reader.cancel();
+    } catch {
+      // A malformed or failed source still maps to one generic request error.
+    }
     return errorResponse(400);
+  } finally {
+    reader.releaseLock();
   }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
 }
 
 export async function readPasswordRecoveryPost<T>(

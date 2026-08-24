@@ -23,6 +23,14 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/auth/reset-password",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+      {
+        source: "/api/account/reset-password",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
     ];
   },
 };

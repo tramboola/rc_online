@@ -24,6 +24,7 @@ describe("reset-password route", () => {
     })(request({ token, password: "new correct horse battery" }));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(await response.json()).toEqual({ ok: true, message: "Password updated." });
     expect(resetPassword).toHaveBeenCalledWith(expect.objectContaining({
       token,

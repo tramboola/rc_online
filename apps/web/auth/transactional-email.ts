@@ -85,9 +85,15 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function actionLink(origin: string, path: string, token: string): string {
+function queryActionLink(origin: string, path: string, token: string): string {
   const link = new URL(path, origin);
   link.searchParams.set("token", token);
+  return link.toString();
+}
+
+function fragmentActionLink(origin: string, path: string, token: string): string {
+  const link = new URL(path, origin);
+  link.hash = new URLSearchParams({ token }).toString();
   return link.toString();
 }
 
@@ -122,7 +128,7 @@ function linkedMessage(options: {
 }
 
 function verificationMessage(origin: string, token: string): EmailMessage {
-  const link = actionLink(origin, "/auth/verify", token);
+  const link = queryActionLink(origin, "/auth/verify", token);
   return {
     subject: "RC Mania: verify your email",
     ...linkedMessage({
@@ -136,7 +142,7 @@ function verificationMessage(origin: string, token: string): EmailMessage {
 }
 
 function passwordResetMessage(origin: string, token: string): EmailMessage {
-  const link = actionLink(origin, "/auth/reset-password", token);
+  const link = fragmentActionLink(origin, "/auth/reset-password", token);
   return {
     subject: "RC Mania: reset your password",
     ...linkedMessage({
