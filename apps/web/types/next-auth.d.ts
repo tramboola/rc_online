@@ -10,6 +10,8 @@ declare module "next-auth" {
         currency: "USD";
         amountMinor: number;
       };
+      nickname: string;
+      avatarKey: string;
     };
   }
 }

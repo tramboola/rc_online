@@ -1,4 +1,5 @@
 import type { UserRole } from "./user-role";
+import type { SessionProfile } from "./account-profile";
 
 export type StoredAuthUser = {
   id: string;
@@ -33,4 +34,5 @@ export interface AuthStore {
   updateSession(session: StoredAuthSession): Promise<StoredAuthSession>;
   deleteSession(tokenHash: string): Promise<StoredAuthSession | null>;
   getBalance(userId: string): Promise<AccountBalance>;
+  getSessionProfile(userId: string): Promise<SessionProfile>;
 }

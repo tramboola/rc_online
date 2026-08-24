@@ -20,6 +20,8 @@ describe("getAccountPresentation", () => {
         email: "driver@example.com",
         image: null,
         balance: { currency: "USD", amountMinor: 0 },
+        nickname: "Driver-1234ABCD",
+        avatarKey: "racer-red",
       },
       expires: "2026-08-10T00:00:00.000Z",
     })).toEqual({
@@ -41,6 +43,8 @@ describe("getAccountPresentation", () => {
         email: "driver@example.com",
         image: null,
         balance: { currency: "USD", amountMinor: 12345 },
+        nickname: "Driver-1234ABCD",
+        avatarKey: "racer-red",
       },
       expires: "2026-08-10T00:00:00.000Z",
     });
@@ -57,6 +61,8 @@ describe("getAccountPresentation", () => {
         email: "driver@example.com",
         image: null,
         balance: { currency: "USD", amountMinor: 0 },
+        nickname: "Driver-1234ABCD",
+        avatarKey: "racer-red",
       },
       expires: "2026-08-10T00:00:00.000Z",
     });
@@ -76,6 +82,8 @@ describe("getAccountPresentation", () => {
         email: "driver@example.com",
         image: null,
         balance: { currency: "USD", amountMinor: 0 },
+        nickname: "Driver-1234ABCD",
+        avatarKey: "racer-red",
       },
       expires: "2026-08-10T00:00:00.000Z",
     });

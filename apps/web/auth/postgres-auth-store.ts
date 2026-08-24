@@ -2,6 +2,7 @@ import {
   accountBalances,
   authSessions,
   createDatabase,
+  nicknames,
   oauthIdentities,
   users,
 } from "@rc/database";
@@ -13,10 +14,12 @@ import type {
   StoredAuthSession,
   StoredAuthUser,
 } from "./auth-store";
+import { createDefaultNickname, defaultAvatarKey } from "./account-profile";
 import { normalizeUserRole } from "./user-role";
 
 type UserRow = typeof users.$inferSelect;
 type SessionRow = typeof authSessions.$inferSelect;
+const profileCreationAttempts = 10;
 
 function mapUser(row: UserRow): StoredAuthUser {
   return {
@@ -60,6 +63,24 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
           currency: "USD",
           amountMinor: 0,
         });
+        let profileCreated = false;
+        for (let attempt = 0; attempt < profileCreationAttempts; attempt += 1) {
+          const [profile] = await transaction.insert(nicknames).values({
+            userId: created.id,
+            nickname: createDefaultNickname(
+              created.id,
+              attempt === 0 ? undefined : attempt,
+            ),
+            avatarKey: defaultAvatarKey,
+          }).onConflictDoNothing().returning({ id: nicknames.id });
+          if (profile) {
+            profileCreated = true;
+            break;
+          }
+        }
+        if (!profileCreated) {
+          throw new Error("Session profile is unavailable");
+        }
         return mapUser(created);
       });
     },
@@ -187,6 +208,47 @@ export function createPostgresAuthStore(databaseUrl: string): AuthStore {
         throw new Error("USD account balance is unavailable");
       }
       return { currency: "USD", amountMinor: row.amountMinor };
+    },
+
+    async getSessionProfile(userId) {
+      const selectProfile = async () => {
+        const [profile] = await db.select({
+          nickname: nicknames.nickname,
+          avatarKey: nicknames.avatarKey,
+        }).from(nicknames)
+          .where(eq(nicknames.userId, userId))
+          .limit(1);
+        return profile ?? null;
+      };
+
+      const existing = await selectProfile();
+      if (existing) {
+        return existing;
+      }
+
+      for (let attempt = 0; attempt < profileCreationAttempts; attempt += 1) {
+        const [created] = await db.insert(nicknames).values({
+          userId,
+          nickname: createDefaultNickname(
+            userId,
+            attempt === 0 ? undefined : attempt,
+          ),
+          avatarKey: defaultAvatarKey,
+        }).onConflictDoNothing().returning({
+          nickname: nicknames.nickname,
+          avatarKey: nicknames.avatarKey,
+        });
+        if (created) {
+          return created;
+        }
+
+        const racedProfile = await selectProfile();
+        if (racedProfile) {
+          return racedProfile;
+        }
+      }
+
+      throw new Error("Session profile is unavailable");
     },
   };
 }

@@ -57,6 +57,8 @@ const nextAuth: NextAuthResult = NextAuth(() => {
         session.user.id = sessionUser.id;
         session.user.role = sessionUser.role;
         session.user.balance = sessionUser.balance;
+        session.user.nickname = sessionUser.nickname;
+        session.user.avatarKey = sessionUser.avatarKey;
         return session;
       },
       async redirect({ url }) {
