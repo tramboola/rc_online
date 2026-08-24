@@ -32,6 +32,7 @@ export class ViewerPresence {
   }
 
   attach(socket: ViewerSocket): () => void {
+    if (socket.readyState !== socket.OPEN) return () => undefined;
     this.#sockets.add(socket);
     this.#broadcast();
 
@@ -45,14 +46,19 @@ export class ViewerPresence {
   }
 
   #broadcast(): void {
-    const message = JSON.stringify({ v: 1, type: "viewer.count", count: this.count });
     for (const socket of this.#sockets) {
-      if (socket.readyState !== socket.OPEN) continue;
+      if (socket.readyState !== socket.OPEN) this.#sockets.delete(socket);
+    }
+    const message = JSON.stringify({ v: 1, type: "viewer.count", count: this.count });
+    let removed = false;
+    for (const socket of this.#sockets) {
       try {
         socket.send(message);
       } catch {
         this.#sockets.delete(socket);
+        removed = true;
       }
     }
+    if (removed) this.#broadcast();
   }
 }

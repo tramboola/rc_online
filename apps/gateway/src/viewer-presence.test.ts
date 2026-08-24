@@ -58,7 +58,7 @@ describe("ViewerPresence", () => {
     expect(presence.count).toBe(0);
   });
 
-  it("skips closed viewers and removes viewers whose count send fails", () => {
+  it("keeps closed and failed viewers out of the live count", () => {
     const presence = new ViewerPresence();
     const closed = new FakeViewerSocket();
     closed.readyState = 3;
@@ -67,13 +67,13 @@ describe("ViewerPresence", () => {
     const open = new FakeViewerSocket();
 
     presence.attach(closed);
-    presence.attach(broken);
     presence.attach(open);
+    presence.attach(broken);
 
     expect(closed.sent).toEqual([]);
     expect(broken.sent).toEqual([]);
-    expect(open.sent).toEqual([count(2)]);
-    expect(presence.count).toBe(2);
+    expect(open.sent).toEqual([count(1), count(2), count(1)]);
+    expect(presence.count).toBe(1);
   });
 
   it("pings viewers every sweep and closes viewers that miss the next pong window", () => {
