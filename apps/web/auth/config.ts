@@ -73,10 +73,13 @@ export function readAuthRuntimeEnvironment(
     throw new Error("AUTH_SECRET must contain at least 32 characters");
   }
 
-  const authRateLimitSecret = required(env, "AUTH_RATE_LIMIT_SECRET");
-  if (Array.from(authRateLimitSecret).length < 32) {
-    throw new Error("AUTH_RATE_LIMIT_SECRET must contain at least 32 characters");
+  const rawRateLimitSecret = untrimmedRequired(env, "AUTH_RATE_LIMIT_SECRET");
+  if (!/^[a-f0-9]{64}$/iu.test(rawRateLimitSecret)) {
+    throw new Error(
+      "AUTH_RATE_LIMIT_SECRET must be a 32-byte key encoded as 64 hexadecimal characters",
+    );
   }
+  const authRateLimitSecret = rawRateLimitSecret.toLowerCase();
 
   const authUrl = required(env, "AUTH_URL");
   let parsedAuthUrl: URL;

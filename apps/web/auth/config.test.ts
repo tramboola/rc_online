@@ -5,6 +5,8 @@ import {
   sanitizeReturnPath,
 } from "./config";
 
+const validRateLimitSecret = "ab".repeat(32);
+
 describe("sanitizeReturnPath", () => {
   test.each(["/", "/pricing", "/leaderboard?season=2026"])(
     "accepts same-origin path %s",
@@ -34,7 +36,7 @@ describe("readAuthRuntimeEnvironment", () => {
       RESEND_API_KEY: "resend-secret",
       AUTH_EMAIL_FROM: "RC Mania <accounts@updates.rcmania.live>",
       AUTH_SUPPORT_EMAIL: "support@rcmania.live",
-      AUTH_RATE_LIMIT_SECRET: "r".repeat(32),
+      AUTH_RATE_LIMIT_SECRET: validRateLimitSecret.toUpperCase(),
       NODE_ENV: "production",
     })).toEqual({
       authSecret: "a".repeat(32),
@@ -45,7 +47,7 @@ describe("readAuthRuntimeEnvironment", () => {
       resendApiKey: "resend-secret",
       authEmailFrom: "RC Mania <accounts@updates.rcmania.live>",
       authSupportEmail: "support@rcmania.live",
-      authRateLimitSecret: "r".repeat(32),
+      authRateLimitSecret: validRateLimitSecret,
     });
   });
 
@@ -58,7 +60,7 @@ describe("readAuthRuntimeEnvironment", () => {
       RESEND_API_KEY: "resend-secret",
       AUTH_EMAIL_FROM: "RC Mania <accounts@updates.rcmania.live>",
       AUTH_SUPPORT_EMAIL: "support@rcmania.live",
-      AUTH_RATE_LIMIT_SECRET: "r".repeat(32),
+      AUTH_RATE_LIMIT_SECRET: validRateLimitSecret,
       NODE_ENV: "production",
     })).toThrow("Missing required auth environment variable: GOOGLE_OAUTH_CLIENT_SECRET");
   });
@@ -78,7 +80,7 @@ describe("readAuthRuntimeEnvironment", () => {
       RESEND_API_KEY: "resend-secret",
       AUTH_EMAIL_FROM: "RC Mania <accounts@updates.rcmania.live>",
       AUTH_SUPPORT_EMAIL: "support@rcmania.live",
-      AUTH_RATE_LIMIT_SECRET: "r".repeat(32),
+      AUTH_RATE_LIMIT_SECRET: validRateLimitSecret,
       NODE_ENV: "production",
     };
     delete env[missingKey];
@@ -104,7 +106,7 @@ describe("readAuthRuntimeEnvironment", () => {
       RESEND_API_KEY: "resend-secret",
       AUTH_EMAIL_FROM: "RC Mania <accounts@updates.rcmania.live>",
       AUTH_SUPPORT_EMAIL: "support@rcmania.live",
-      AUTH_RATE_LIMIT_SECRET: "r".repeat(32),
+      AUTH_RATE_LIMIT_SECRET: validRateLimitSecret,
       NODE_ENV: "production",
     })).toThrow("AUTH_URL must be a canonical HTTPS origin");
   });
@@ -116,7 +118,7 @@ describe("readAuthRuntimeEnvironment", () => {
       DATABASE_URL: "postgresql://rc:secret@postgres:5432/rcmania",
       GOOGLE_OAUTH_CLIENT_ID: "client.apps.googleusercontent.com",
       GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
-      AUTH_RATE_LIMIT_SECRET: "r".repeat(32),
+      AUTH_RATE_LIMIT_SECRET: validRateLimitSecret,
       NODE_ENV: "development",
     })).toMatchObject({
       authUrl: "http://localhost:3000",
@@ -127,9 +129,12 @@ describe("readAuthRuntimeEnvironment", () => {
   });
 
   test.each([
-    ["x".repeat(31), "31 ASCII characters"],
-    ["\u{1F3C1}".repeat(31), "31 Unicode code points"],
-  ])("rejects a weak rate-limit secret containing %s", (secret) => {
+    ["a".repeat(63), "63 hex characters"],
+    ["a".repeat(65), "65 hex characters"],
+    ["g".repeat(64), "64 non-hex characters"],
+    ["rate-limit-secret".padEnd(64, "x"), "human-readable text"],
+    [` ${validRateLimitSecret} `, "hex with surrounding whitespace"],
+  ])("rejects a rate-limit secret with invalid format: %s", (secret) => {
     expect(() => readAuthRuntimeEnvironment({
       AUTH_SECRET: "a".repeat(32),
       AUTH_URL: "http://127.0.0.1:3000",
@@ -138,11 +143,13 @@ describe("readAuthRuntimeEnvironment", () => {
       GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
       AUTH_RATE_LIMIT_SECRET: secret,
       NODE_ENV: "test",
-    })).toThrow("AUTH_RATE_LIMIT_SECRET must contain at least 32 characters");
+    })).toThrow(
+      "AUTH_RATE_LIMIT_SECRET must be a 32-byte key encoded as 64 hexadecimal characters",
+    );
   });
 
-  test("accepts a 32-code-point rate-limit secret without echoing it", () => {
-    const secret = "\u{1F3C1}".repeat(32);
+  test("normalizes an uppercase 32-byte hex rate-limit key without echoing it", () => {
+    const secret = "CD".repeat(32);
     expect(readAuthRuntimeEnvironment({
       AUTH_SECRET: "a".repeat(32),
       AUTH_URL: "http://localhost:3000",
@@ -151,7 +158,7 @@ describe("readAuthRuntimeEnvironment", () => {
       GOOGLE_OAUTH_CLIENT_SECRET: "google-secret",
       AUTH_RATE_LIMIT_SECRET: secret,
       NODE_ENV: "test",
-    }).authRateLimitSecret).toBe(secret);
+    }).authRateLimitSecret).toBe(secret.toLowerCase());
   });
 
   test.each([
@@ -170,7 +177,7 @@ describe("readAuthRuntimeEnvironment", () => {
       RESEND_API_KEY: "resend-secret",
       AUTH_EMAIL_FROM: "RC Mania <accounts@updates.rcmania.live>",
       AUTH_SUPPORT_EMAIL: supportEmail,
-      AUTH_RATE_LIMIT_SECRET: "r".repeat(32),
+      AUTH_RATE_LIMIT_SECRET: validRateLimitSecret,
       NODE_ENV: "production",
     })).toThrow("AUTH_SUPPORT_EMAIL must be one plain email address");
   });
