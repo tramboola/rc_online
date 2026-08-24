@@ -17,7 +17,7 @@ const profileRequestSchema = z.object({
 }).strict();
 
 type AccountProfileRouteDependencies = {
-  canonicalOrigin?: string;
+  canonicalOrigin: string;
   getSubject(): Promise<string | null>;
   getOwnProfile(subject: string): Promise<OwnProfile | null>;
   updateOwnProfile(
@@ -49,8 +49,14 @@ function profileResponse(profile: OwnProfile): Response {
   });
 }
 
-function requestOrigin(request: Request, canonicalOrigin?: string): string {
-  return canonicalOrigin ?? new URL(request.url).origin;
+function requireCanonicalOrigin(value: string): string {
+  try {
+    const origin = new URL(value).origin;
+    if (origin !== value) throw new Error("Invalid canonical origin");
+    return origin;
+  } catch {
+    throw new Error("Invalid canonical origin");
+  }
 }
 
 async function parseBoundedJson(request: Request): Promise<unknown | null> {
@@ -81,25 +87,30 @@ async function parseBoundedJson(request: Request): Promise<unknown | null> {
     offset += chunk.byteLength;
   }
   try {
-    return JSON.parse(new TextDecoder().decode(body));
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
   } catch {
     return null;
   }
 }
 
 export function createAccountProfileRoute(dependencies: AccountProfileRouteDependencies) {
+  const canonicalOrigin = requireCanonicalOrigin(dependencies.canonicalOrigin);
   return {
     async GET(_request: Request): Promise<Response> {
-      const subject = await dependencies.getSubject();
-      if (!subject) return privateJson({ error: "Sign in required" }, { status: 401 });
+      try {
+        const subject = await dependencies.getSubject();
+        if (!subject) return privateJson({ error: "Sign in required" }, { status: 401 });
 
-      const profile = await dependencies.getOwnProfile(subject);
-      if (!profile) return privateJson({ error: "Profile unavailable" }, { status: 404 });
-      return profileResponse(profile);
+        const profile = await dependencies.getOwnProfile(subject);
+        if (!profile) return privateJson({ error: "Profile unavailable" }, { status: 404 });
+        return profileResponse(profile);
+      } catch {
+        return unavailableResponse();
+      }
     },
 
     async PATCH(request: Request): Promise<Response> {
-      if (request.headers.get("origin") !== requestOrigin(request, dependencies.canonicalOrigin)) {
+      if (request.headers.get("origin") !== canonicalOrigin) {
         return Response.json({ error: "Cross-origin request rejected" }, { status: 403 });
       }
       if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
@@ -172,25 +183,20 @@ async function createProductionRoute() {
   const rateLimitSecret = process.env.AUTH_RATE_LIMIT_SECRET;
   const configuredAuthUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
   const isProduction = process.env.NODE_ENV === "production";
-  let canonicalOrigin: string | undefined;
-  if (configuredAuthUrl) {
-    try {
-      const normalizedAuthUrl = configuredAuthUrl.trim();
-      const parsedAuthUrl = new URL(normalizedAuthUrl);
-      if (parsedAuthUrl.origin !== normalizedAuthUrl || (isProduction && parsedAuthUrl.protocol !== "https:")) {
-        return null;
-      }
-      canonicalOrigin = parsedAuthUrl.origin;
-    } catch {
-      return null;
-    }
+  if (!configuredAuthUrl) return null;
+  let canonicalOrigin: string;
+  try {
+    canonicalOrigin = requireCanonicalOrigin(configuredAuthUrl.trim());
+    if (isProduction && new URL(canonicalOrigin).protocol !== "https:") return null;
+  } catch {
+    return null;
   }
-  if (!databaseUrl || !rateLimitSecret || (isProduction && !canonicalOrigin)) return null;
+  if (!databaseUrl || !rateLimitSecret) return null;
   const { createPostgresAccountStore } = await import("../../../../auth/postgres-account-store");
   const store = createPostgresAccountStore(databaseUrl);
   const { auth } = await import("../../../../auth");
   return createAccountProfileRoute({
-    ...(canonicalOrigin ? { canonicalOrigin } : {}),
+    canonicalOrigin,
     getSubject: async () => (await auth())?.user?.id ?? null,
     getOwnProfile: (subject) => store.getOwnProfile(subject),
     updateOwnProfile: (subject, profile) => store.updateOwnProfile(subject, profile),
@@ -201,11 +207,19 @@ async function createProductionRoute() {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const route = await createProductionRoute();
-  return route ? route.GET(request) : unavailableResponse();
+  try {
+    const route = await createProductionRoute();
+    return route ? route.GET(request) : unavailableResponse();
+  } catch {
+    return unavailableResponse();
+  }
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  const route = await createProductionRoute();
-  return route ? route.PATCH(request) : unavailableResponse();
+  try {
+    const route = await createProductionRoute();
+    return route ? route.PATCH(request) : unavailableResponse();
+  } catch {
+    return unavailableResponse();
+  }
 }

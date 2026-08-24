@@ -84,6 +84,8 @@ describe("profile nickname validation", () => {
     "Driver\u0000One",
     "Driver\u200BOne",
     "Driver\u202EOne",
+    "Driver\u2028One",
+    "Driver\u2029One",
     "\u0301\u0301\u0301",
     "\uFE0F\uFE0F\uFE0F",
     "admin",

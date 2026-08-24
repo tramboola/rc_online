@@ -28,7 +28,7 @@ export function isAvatarKey(value: unknown): value is AvatarKey {
 
 export function normalizeProfileNickname(value: string): string | null {
   const normalizedValue = value.normalize("NFKC");
-  if (/\p{C}/u.test(normalizedValue)) {
+  if (/[\p{C}\p{Zl}\p{Zp}]/u.test(normalizedValue)) {
     return null;
   }
   const nickname = normalizedValue.trim();

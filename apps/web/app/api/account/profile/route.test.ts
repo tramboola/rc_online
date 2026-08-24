@@ -13,6 +13,7 @@ const ownProfile: OwnProfile = {
 function createRoute(overrides: Partial<Parameters<typeof createAccountProfileRoute>[0]> = {}) {
   const calls: { subject?: string; profile?: Pick<OwnProfile, "nickname" | "avatarKey">; rateLimit?: unknown } = {};
   const route = createAccountProfileRoute({
+    canonicalOrigin: "https://rcmania.live",
     getSubject: async () => subject,
     getOwnProfile: async () => ownProfile,
     updateOwnProfile: async (receivedSubject, profile) => {
@@ -87,6 +88,52 @@ describe("private account profile endpoint", () => {
     }
   });
 
+  test.each([
+    ["session lookup", { getSubject: async () => { throw new Error("session unavailable"); } }],
+    ["profile lookup", { getOwnProfile: async () => { throw new Error("database unavailable"); } }],
+  ])("returns a private non-cacheable 503 when %s fails", async (_failure, overrides) => {
+    const { route } = createRoute(overrides);
+    const response = await route.GET(new Request("https://rcmania.live/api/account/profile"));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ error: "Profile service unavailable" });
+  });
+
+  test("returns a private non-cacheable 503 when production route creation fails", async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    const previousRateLimitSecret = process.env.AUTH_RATE_LIMIT_SECRET;
+    const previousAuthUrl = process.env.AUTH_URL;
+    const previousNextAuthUrl = process.env.NEXTAUTH_URL;
+    process.env.DATABASE_URL = "not a url";
+    process.env.AUTH_RATE_LIMIT_SECRET = "ab".repeat(32);
+    process.env.AUTH_URL = "https://rcmania.live";
+    delete process.env.NEXTAUTH_URL;
+    try {
+      const response = await productionGet(new Request("https://rcmania.live/api/account/profile"));
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(await response.json()).toEqual({ error: "Profile service unavailable" });
+    } finally {
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+      if (previousRateLimitSecret === undefined) delete process.env.AUTH_RATE_LIMIT_SECRET;
+      else process.env.AUTH_RATE_LIMIT_SECRET = previousRateLimitSecret;
+      if (previousAuthUrl === undefined) delete process.env.AUTH_URL;
+      else process.env.AUTH_URL = previousAuthUrl;
+      if (previousNextAuthUrl === undefined) delete process.env.NEXTAUTH_URL;
+      else process.env.NEXTAUTH_URL = previousNextAuthUrl;
+    }
+  });
+
+  test.each(["", "https://rcmania.live/path", "not an origin"])(
+    "rejects a non-canonical configured origin %#",
+    (canonicalOrigin) => {
+      expect(() => createRoute({ canonicalOrigin })).toThrow("canonical origin");
+    },
+  );
+
   test("uses only the server session subject and rejects client attempts to address another user", async () => {
     const { route, calls } = createRoute();
     const response = await route.PATCH(patchRequest({
@@ -128,6 +175,25 @@ describe("private account profile endpoint", () => {
     ));
 
     expect([crossOrigin.status, nonJson.status, oversized.status]).toEqual([403, 415, 413]);
+    expect(calls.subject).toBeUndefined();
+  });
+
+  test("rejects malformed UTF-8 instead of storing replacement characters", async () => {
+    const { route, calls } = createRoute();
+    const prefix = new TextEncoder().encode('{"nickname":"Dri');
+    const suffix = new TextEncoder().encode('ver","avatarKey":"racer-red"}');
+    const body = new Uint8Array(prefix.length + 1 + suffix.length);
+    body.set(prefix);
+    body[prefix.length] = 0xff;
+    body.set(suffix, prefix.length + 1);
+
+    const response = await route.PATCH(new Request("https://rcmania.live/api/account/profile", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", origin: "https://rcmania.live" },
+      body,
+    }));
+
+    expect(response.status).toBe(400);
     expect(calls.subject).toBeUndefined();
   });
 
