@@ -99,6 +99,10 @@ export const accountActionTokens = pgTable("account_action_tokens", {
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  check(
+    "account_action_tokens_kind_check",
+    sql`${table.kind} in ('verify_email', 'reset_password')`,
+  ),
   uniqueIndex("account_action_tokens_token_hash_unique").on(table.tokenHash),
   index("account_action_tokens_user_kind_idx").on(table.userId, table.kind, table.expiresAt),
 ]);

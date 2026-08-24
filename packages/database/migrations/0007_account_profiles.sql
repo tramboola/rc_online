@@ -45,11 +45,48 @@ CREATE TABLE "auth_rate_limits" (
 CREATE INDEX "auth_rate_limits_expiry_idx"
   ON "auth_rate_limits" ("expires_at");
 
-INSERT INTO "nicknames" ("user_id", "nickname", "avatar_key")
-SELECT u."id", 'Driver-' || upper(substr(replace(u."id"::text, '-', ''), 1, 8)), 'racer-red'
-FROM "users" u
-LEFT JOIN "nicknames" n ON n."user_id" = u."id"
-WHERE n."user_id" IS NULL AND u."disabled_at" IS NULL;
+DO $account_profile_backfill$
+DECLARE
+  user_record record;
+  base_nickname text;
+  uuid_suffix text;
+  candidate_nickname text;
+  collision_attempt integer;
+BEGIN
+  FOR user_record IN
+    SELECT u."id"
+    FROM "users" u
+    LEFT JOIN "nicknames" n ON n."user_id" = u."id"
+    WHERE n."user_id" IS NULL AND u."disabled_at" IS NULL
+    ORDER BY u."id"
+  LOOP
+    base_nickname := 'Driver-' || upper(substr(replace(user_record."id"::text, '-', ''), 1, 8));
+    uuid_suffix := upper(substr(replace(user_record."id"::text, '-', ''), 9, 24));
+    candidate_nickname := base_nickname;
+    collision_attempt := 0;
+
+    IF EXISTS (
+      SELECT 1
+      FROM "nicknames" n
+      WHERE lower(n."nickname") = lower(candidate_nickname)
+    ) THEN
+      candidate_nickname := base_nickname || '-' || uuid_suffix;
+    END IF;
+
+    WHILE EXISTS (
+      SELECT 1
+      FROM "nicknames" n
+      WHERE lower(n."nickname") = lower(candidate_nickname)
+    ) LOOP
+      collision_attempt := collision_attempt + 1;
+      candidate_nickname := base_nickname || '-' || uuid_suffix || '-' || collision_attempt::text;
+    END LOOP;
+
+    INSERT INTO "nicknames" ("user_id", "nickname", "avatar_key")
+    VALUES (user_record."id", candidate_nickname, 'racer-red');
+  END LOOP;
+END;
+$account_profile_backfill$;
 
 INSERT INTO "account_balances" ("user_id", "currency", "amount_minor")
 SELECT u."id", 'USD', 0

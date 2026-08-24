@@ -3,6 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
+
+import { accountActionTokens } from "./schema.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,5 +120,40 @@ describe("versioned SQL migrations", () => {
     expect(sql).toContain('CREATE INDEX "auth_rate_limits_expiry_idx"');
     expect(sql).toContain('INSERT INTO "nicknames" ("user_id", "nickname", "avatar_key")');
     expect(sql).toContain('INSERT INTO "account_balances" ("user_id", "currency", "amount_minor")');
+  });
+
+  it("backfills a nickname for every active user without case-insensitive collisions", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0007_account_profiles.sql"),
+      "utf8",
+    );
+
+    expect(sql).toMatch(/FOR user_record IN[\s\S]+u\."disabled_at" IS NULL[\s\S]+ORDER BY u\."id"/i);
+    expect(sql).toMatch(
+      /uuid_suffix := upper\(substr\(replace\(user_record\."id"::text, '-', ''\), 9, 24\)\)/i,
+    );
+    expect(sql).toMatch(
+      /WHILE EXISTS[\s\S]+lower\(n\."nickname"\) = lower\(candidate_nickname\)[\s\S]+LOOP/i,
+    );
+    expect(sql).toMatch(/candidate_nickname := base_nickname \|\| '-' \|\| uuid_suffix/i);
+    expect(sql).toMatch(
+      /candidate_nickname := base_nickname \|\| '-' \|\| uuid_suffix \|\| '-' \|\| collision_attempt::text/i,
+    );
+    expect(sql).toMatch(
+      /INSERT INTO "nicknames" \("user_id", "nickname", "avatar_key"\)[\s\S]+VALUES \(user_record\."id", candidate_nickname, 'racer-red'\)/i,
+    );
+  });
+
+  it("declares the account token kind constraint in the Drizzle schema", () => {
+    const kindCheck = getTableConfig(accountActionTokens).checks.find(
+      (constraint) => constraint.name === "account_action_tokens_kind_check",
+    );
+
+    expect(kindCheck).toBeDefined();
+    if (!kindCheck) return;
+
+    const checkSql = new PgDialect().sqlToQuery(kindCheck.value).sql;
+    expect(checkSql).toContain("'verify_email'");
+    expect(checkSql).toContain("'reset_password'");
   });
 });
