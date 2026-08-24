@@ -44,6 +44,24 @@ afterEach(() => {
 });
 
 describe("ProfileDialog", () => {
+  test("keeps the decorative profile frame outside the scrolling content", () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {
+      email: "driver@example.com",
+      nickname: "Night Racer",
+      avatarKey: "racer-red",
+    })));
+    render(<ProfileDialog onClose={vi.fn()} onDeleted={vi.fn()} onSaved={vi.fn()} open />);
+
+    const dialog = screen.getByRole("dialog");
+    const frameShell = dialog.querySelector(".profile-dialog-frame-shell");
+    const scrollingContent = dialog.querySelector(".profile-dialog-frame");
+
+    expect(frameShell).toBeTruthy();
+    expect(scrollingContent).toBeTruthy();
+    expect(frameShell).not.toBe(scrollingContent);
+    expect(frameShell?.contains(scrollingContent)).toBe(true);
+  });
+
   test("loads only the private profile fields and offers all six bundled avatars", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {
       email: "driver@example.com",

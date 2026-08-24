@@ -231,7 +231,8 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
       }}
       ref={dialogRef}
     >
-      <div className="rc-dialog-frame profile-dialog-frame">
+      <div className="profile-dialog-frame-shell">
+        <div className="rc-dialog-frame profile-dialog-frame">
         <button aria-label="Close profile dialog" className="rc-dialog-close" disabled={deleting} onClick={closeProfileDialog} type="button">
           <X aria-hidden="true" size={22} />
         </button>
@@ -341,7 +342,7 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
 
             {statusMessage ? <p className="form-status" role="status">{statusMessage}</p> : null}
             {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
-            <button className="dialog-primary-action" disabled={saving} type="submit">
+            <button className="dialog-primary-action profile-save-action" disabled={saving} type="submit">
               <FloppyDisk aria-hidden="true" size={20} /> {saving ? "SAVING..." : "SAVE PROFILE"}
             </button>
             <div className="profile-danger-zone">
@@ -364,6 +365,7 @@ export function ProfileDialog({ open, onClose, onDeleted, onSaved }: ProfileDial
             </div>
           </form>
         ) : null}
+        </div>
       </div>
     </dialog>
   );
