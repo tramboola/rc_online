@@ -90,6 +90,26 @@ async function listen(store: GatewayStore) {
   return { server, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
+function nextMessage(socket: WebSocket): Promise<unknown> {
+  return new Promise((resolve) => {
+    socket.once("message", (data) => resolve(JSON.parse(data.toString())));
+  });
+}
+
+async function openSocket(socket: WebSocket): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+}
+
+function waitForClose(socket: WebSocket): Promise<number> {
+  return new Promise((resolve, reject) => {
+    socket.once("close", resolve);
+    socket.once("error", reject);
+  });
+}
+
 describe("gateway enrollment and device socket", () => {
   it("exchanges a one-time enrollment code for a secret exactly once", async () => {
     const { store } = createStore();
@@ -240,5 +260,63 @@ describe("gateway enrollment and device socket", () => {
 
     expect(fixture.updateStatuses).toEqual([{ updateId: "44444444-4444-4444-8444-444444444444", status: "applying", reason: null }]);
     socket.close();
+  });
+});
+
+describe("anonymous viewer socket", () => {
+  it("lets unauthenticated viewers receive the live count", async () => {
+    const { store } = createStore();
+    const { baseUrl } = await listen(store);
+    const first = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const firstInitial = nextMessage(first);
+    await openSocket(first);
+
+    expect(await firstInitial).toEqual({ v: 1, type: "viewer.count", count: 1 });
+
+    const firstUpdate = nextMessage(first);
+    const second = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const secondInitial = nextMessage(second);
+    await openSocket(second);
+
+    expect(await firstUpdate).toEqual({ v: 1, type: "viewer.count", count: 2 });
+    expect(await secondInitial).toEqual({ v: 1, type: "viewer.count", count: 2 });
+
+    const firstReduced = nextMessage(first);
+    second.close();
+    await waitForClose(second);
+
+    expect(await firstReduced).toEqual({ v: 1, type: "viewer.count", count: 1 });
+    first.close();
+  });
+
+  it.each([
+    ["text", () => "not an application protocol"],
+    ["binary", () => Buffer.from([1, 2, 3])]
+  ])("closes a viewer that sends a %s application payload", async (_kind, payload) => {
+    const { store } = createStore();
+    const { baseUrl } = await listen(store);
+    const socket = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const initial = nextMessage(socket);
+    await openSocket(socket);
+    await initial;
+
+    const closed = waitForClose(socket);
+    socket.send(payload());
+
+    expect(await closed).toBe(4400);
+  });
+
+  it("closes viewers during gateway shutdown", async () => {
+    const { store } = createStore();
+    const { server, baseUrl } = await listen(store);
+    const socket = new WebSocket(baseUrl.replace("http", "ws") + "/v1/viewers");
+    const initial = nextMessage(socket);
+    await openSocket(socket);
+    await initial;
+
+    const closed = waitForClose(socket);
+    await server.close();
+
+    expect(await closed).toBe(1001);
   });
 });

@@ -9,6 +9,7 @@ import { createGatewayIceServers, type GatewayConfig } from "./config.js";
 import { PresenceRegistry } from "./presence.js";
 import { SessionRegistry, type GatewayPeer } from "./sessions.js";
 import type { AuthenticatedDevice, GatewayStore } from "./store.js";
+import { ViewerPresence, sweepViewerPings } from "./viewer-presence.js";
 
 const enrollmentSchema = z.object({
   enrollmentCode: z.string().min(24).max(256),
@@ -23,6 +24,10 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
   const sessions = new SessionRegistry();
   const devices = new Map<string, WebSocket>();
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 1_100_000, perMessageDeflate: false });
+  const viewerPresence = new ViewerPresence();
+  const viewerSockets = new Set<WebSocket>();
+  const viewerAlive = new WeakSet<WebSocket>();
+  const viewers = new WebSocketServer({ noServer: true, maxPayload: 256, perMessageDeflate: false });
 
   app.get("/health/live", async () => ({ status: "ok" }));
   app.get("/health/ready", async (_request, reply) => {
@@ -56,13 +61,19 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
 
   app.server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-    if (url.pathname !== "/v1/socket") {
-      socket.destroy();
+    if (url.pathname === "/v1/socket") {
+      sockets.handleUpgrade(request, socket, head, (webSocket) => {
+        sockets.emit("connection", webSocket, request);
+      });
       return;
     }
-    sockets.handleUpgrade(request, socket, head, (webSocket) => {
-      sockets.emit("connection", webSocket, request);
-    });
+    if (url.pathname === "/v1/viewers") {
+      viewers.handleUpgrade(request, socket, head, (webSocket) => {
+        viewers.emit("connection", webSocket, request);
+      });
+      return;
+    }
+    socket.destroy();
   });
 
   sockets.on("connection", (socket) => {
@@ -189,6 +200,25 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
     socket.on("error", () => undefined);
   });
 
+  viewers.on("connection", (socket) => {
+    viewerSockets.add(socket);
+    viewerAlive.add(socket);
+    const detach = viewerPresence.attach(socket);
+
+    socket.on("message", () => {
+      socket.close(4400, "viewer payload unsupported");
+    });
+    socket.on("pong", () => {
+      viewerAlive.add(socket);
+    });
+    socket.on("close", () => {
+      viewerSockets.delete(socket);
+      viewerAlive.delete(socket);
+      detach();
+    });
+    socket.on("error", () => undefined);
+  });
+
   const sweepTimer = setInterval(() => {
     void presence.sweep().catch((error: unknown) => app.log.error({ err: error }, "presence sweep failed"));
     for (const sessionId of sessions.sweep()) {
@@ -197,10 +227,28 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
   }, 5_000);
   sweepTimer.unref();
 
-  app.addHook("onClose", async () => {
+  const viewerPingTimer = setInterval(() => {
+    sweepViewerPings(viewerSockets, viewerAlive);
+  }, 45_000);
+  viewerPingTimer.unref();
+
+  let connectionsClosing = false;
+  const closeGatewaySockets = () => {
+    if (connectionsClosing) return;
+    connectionsClosing = true;
     clearInterval(sweepTimer);
+    clearInterval(viewerPingTimer);
     for (const socket of devices.values()) socket.close(1001, "server shutdown");
+    for (const socket of viewerSockets) socket.close(1001, "server shutdown");
     sockets.close();
+    viewers.close();
+  };
+
+  app.addHook("preClose", async () => {
+    closeGatewaySockets();
+  });
+  app.addHook("onClose", async () => {
+    closeGatewaySockets();
   });
 
   return app;
