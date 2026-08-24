@@ -17,6 +17,14 @@ const userId = "11111111-2222-4333-8444-555555555555";
 const ipKeyHash = "1".repeat(64);
 const accountKeyHash = "2".repeat(64);
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 function dependencies(overrides: Record<string, unknown> = {}) {
   const accountStore = {
     registerPendingAccount: vi.fn(async () => ({ userId, email: "driver@example.com" })),
@@ -84,6 +92,10 @@ describe("account service", () => {
       legalRevision: "2026-08-24",
     })).resolves.toEqual({ kind: "accepted" });
 
+    expect(accountStore.registerPendingAccount).not.toHaveBeenCalled();
+    expect(email.sendVerification).not.toHaveBeenCalled();
+    expect(scheduledTasks).toHaveLength(1);
+    await scheduledTasks[0]!();
     expect(accountStore.registerPendingAccount).toHaveBeenCalledWith({
       email: "driver@example.com",
       passwordHash: "argon:correct horse battery",
@@ -91,9 +103,6 @@ describe("account service", () => {
       verificationExpiresAt: new Date("2026-08-25T12:00:00.000Z"),
       legalRevision: "2026-08-24",
     });
-    expect(email.sendVerification).not.toHaveBeenCalled();
-    expect(scheduledTasks).toHaveLength(1);
-    await scheduledTasks[0]!();
     expect(email.sendVerification).toHaveBeenCalledWith({
       to: "driver@example.com",
       token: "raw-verification-token",
@@ -103,7 +112,7 @@ describe("account service", () => {
     expect(accountStore.takeRateLimitAttempt).toHaveBeenCalledTimes(2);
   });
 
-  test("returns the same accepted result for unavailable accounts and delivery failures", async () => {
+  test("contains unavailable, database, and delivery failures inside retained registration tasks", async () => {
     const unavailable = dependencies();
     unavailable.accountStore.registerPendingAccount.mockRejectedValueOnce(
       new AccountRegistrationUnavailableError(),
@@ -111,6 +120,10 @@ describe("account service", () => {
     const failedDelivery = dependencies();
     failedDelivery.email.sendVerification.mockRejectedValueOnce(
       new TransactionalEmailError("verification", 503),
+    );
+    const failedDatabase = dependencies();
+    failedDatabase.accountStore.registerPendingAccount.mockRejectedValueOnce(
+      new Error("secret-driver@example.com database detail"),
     );
 
     const input = {
@@ -122,16 +135,29 @@ describe("account service", () => {
     };
     await expect(unavailable.service.register(input)).resolves.toEqual({ kind: "accepted" });
     await expect(failedDelivery.service.register(input)).resolves.toEqual({ kind: "accepted" });
+    await expect(failedDatabase.service.register(input)).resolves.toEqual({ kind: "accepted" });
     expect(unavailable.scheduledTasks).toHaveLength(1);
     expect(failedDelivery.scheduledTasks).toHaveLength(1);
+    expect(failedDatabase.scheduledTasks).toHaveLength(1);
+    expect(unavailable.accountStore.registerPendingAccount).not.toHaveBeenCalled();
+    expect(failedDatabase.accountStore.registerPendingAccount).not.toHaveBeenCalled();
     expect(unavailable.email.sendVerification).not.toHaveBeenCalled();
     await expect(unavailable.scheduledTasks[0]!()).resolves.toBeUndefined();
     await expect(failedDelivery.scheduledTasks[0]!()).resolves.toBeUndefined();
+    await expect(failedDatabase.scheduledTasks[0]!()).resolves.toBeUndefined();
+    expect(unavailable.base.reportDelivery).not.toHaveBeenCalled();
+    expect(failedDatabase.base.reportDelivery).toHaveBeenCalledWith({
+      templateKind: "verification",
+      outcome: "failure",
+      statusClass: "other",
+    });
     expect(failedDelivery.base.reportDelivery).toHaveBeenCalledWith({
       templateKind: "verification",
       outcome: "failure",
       statusClass: "5xx",
     });
+    expect(JSON.stringify(failedDatabase.base.reportDelivery.mock.calls))
+      .not.toMatch(/secret-driver|database detail|token/iu);
   });
 
   test("rotates and retries verification delivery without revealing account eligibility", async () => {
@@ -142,6 +168,13 @@ describe("account service", () => {
 
     await expect(eligible.service.resendVerification(input)).resolves.toEqual({ kind: "accepted" });
     await expect(ineligible.service.resendVerification(input)).resolves.toEqual({ kind: "accepted" });
+    expect(eligible.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+    expect(ineligible.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+    expect(eligible.email.sendVerification).not.toHaveBeenCalled();
+    expect(eligible.scheduledTasks).toHaveLength(1);
+    expect(ineligible.scheduledTasks).toHaveLength(1);
+    await eligible.scheduledTasks[0]!();
+    await ineligible.scheduledTasks[0]!();
     expect(eligible.accountStore.createOrRotateActionToken).toHaveBeenCalledWith({
       email: "driver@example.com",
       kind: "verify_email",
@@ -149,16 +182,112 @@ describe("account service", () => {
       expiresAt: new Date("2026-08-25T12:00:00.000Z"),
       now,
     });
-    expect(eligible.email.sendVerification).not.toHaveBeenCalled();
-    expect(eligible.scheduledTasks).toHaveLength(1);
-    expect(ineligible.scheduledTasks).toHaveLength(1);
-    await eligible.scheduledTasks[0]!();
-    await ineligible.scheduledTasks[0]!();
     expect(eligible.email.sendVerification).toHaveBeenCalledWith({
       to: "driver@example.com",
       token: "raw-verification-token",
     });
     expect(ineligible.email.sendVerification).not.toHaveBeenCalled();
+    expect(ineligible.base.reportDelivery).not.toHaveBeenCalled();
+  });
+
+  test("registration returns before its eligibility-dependent database promise resolves", async () => {
+    const setup = dependencies();
+    const account = deferred<{ userId: string; email: string }>();
+    setup.accountStore.registerPendingAccount.mockImplementationOnce(() => account.promise);
+
+    await expect(setup.service.register({
+      email: "driver@example.com",
+      password: "correct horse battery",
+      ipKeyHash,
+      accountKeyHash,
+      legalRevision: "2026-08-24",
+    })).resolves.toEqual({ kind: "accepted" });
+    expect(setup.scheduledTasks).toHaveLength(1);
+    expect(setup.accountStore.registerPendingAccount).not.toHaveBeenCalled();
+
+    let taskSettled = false;
+    const running = setup.scheduledTasks[0]!().then(() => {
+      taskSettled = true;
+    });
+    await Promise.resolve();
+    expect(taskSettled).toBe(false);
+    account.resolve({ userId, email: "driver@example.com" });
+    await running;
+    expect(setup.email.sendVerification).toHaveBeenCalledTimes(1);
+  });
+
+  test("resend returns before its eligibility-dependent database promise resolves", async () => {
+    const setup = dependencies();
+    const account = deferred<{ userId: string; email: string } | null>();
+    setup.accountStore.createOrRotateActionToken.mockImplementationOnce(() => account.promise);
+
+    await expect(setup.service.resendVerification({
+      email: "driver@example.com",
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "accepted" });
+    expect(setup.scheduledTasks).toHaveLength(1);
+    expect(setup.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+
+    let taskSettled = false;
+    const running = setup.scheduledTasks[0]!().then(() => {
+      taskSettled = true;
+    });
+    await Promise.resolve();
+    expect(taskSettled).toBe(false);
+    account.resolve({ userId, email: "driver@example.com" });
+    await running;
+    expect(setup.email.sendVerification).toHaveBeenCalledTimes(1);
+  });
+
+  test("contains a resend database failure in one redacted retained task", async () => {
+    const setup = dependencies();
+    setup.accountStore.createOrRotateActionToken.mockRejectedValueOnce(
+      new Error("secret-driver@example.com token query failed"),
+    );
+
+    await expect(setup.service.resendVerification({
+      email: "secret-driver@example.com",
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "accepted" });
+
+    expect(setup.scheduledTasks).toHaveLength(1);
+    expect(setup.accountStore.createOrRotateActionToken).not.toHaveBeenCalled();
+    await expect(setup.scheduledTasks[0]!()).resolves.toBeUndefined();
+    expect(setup.email.sendVerification).not.toHaveBeenCalled();
+    const signal = setup.base.reportDelivery.mock.calls[0]![0];
+    expect(signal).toEqual({
+      templateKind: "verification",
+      outcome: "failure",
+      statusClass: "other",
+    });
+    expect(JSON.stringify(signal)).not.toMatch(/secret-driver|token|query|failed/iu);
+  });
+
+  test("contains repeated registration races without delaying either accepted response", async () => {
+    const setup = dependencies();
+    setup.accountStore.registerPendingAccount
+      .mockResolvedValueOnce({ userId, email: "driver@example.com" })
+      .mockRejectedValueOnce(new AccountRegistrationUnavailableError());
+    const input = {
+      email: "driver@example.com",
+      password: "correct horse battery",
+      ipKeyHash,
+      accountKeyHash,
+      legalRevision: "2026-08-24",
+    };
+
+    await expect(Promise.all([
+      setup.service.register(input),
+      setup.service.register(input),
+    ])).resolves.toEqual([{ kind: "accepted" }, { kind: "accepted" }]);
+    expect(setup.scheduledTasks).toHaveLength(2);
+    expect(setup.accountStore.registerPendingAccount).not.toHaveBeenCalled();
+
+    await expect(Promise.all(setup.scheduledTasks.map((task) => task())))
+      .resolves.toEqual([undefined, undefined]);
+    expect(setup.email.sendVerification).toHaveBeenCalledTimes(1);
   });
 
   test("returns before verification network delivery and retains it in the injected scheduler", async () => {
@@ -180,7 +309,7 @@ describe("account service", () => {
     expect(setup.email.sendVerification).not.toHaveBeenCalled();
     expect(setup.base.scheduleAfterResponse).toHaveBeenCalledTimes(1);
     const running = setup.scheduledTasks[0]!();
-    expect(setup.email.sendVerification).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(setup.email.sendVerification).toHaveBeenCalledTimes(1));
     resolveDelivery();
     await expect(running).resolves.toBeUndefined();
     expect(setup.base.reportDelivery).toHaveBeenCalledWith({

@@ -88,10 +88,21 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
     return "other";
   }
 
-  function scheduleVerificationDelivery(
-    input: { to: string; token: string } | null,
+  function scheduleVerificationWork(
+    resolveInput: () => Promise<{ to: string; token: string } | null>,
   ): void {
     dependencies.scheduleAfterResponse(async () => {
+      let input: { to: string; token: string } | null;
+      try {
+        input = await resolveInput();
+      } catch {
+        await safelyReportDelivery({
+          templateKind: "verification",
+          outcome: "failure",
+          statusClass: "other",
+        });
+        return;
+      }
       if (!input) return;
       try {
         await dependencies.email.sendVerification(input);
@@ -144,26 +155,24 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
         return { kind: "rate_limited" };
       }
       const email = normalizeEmail(input.email);
+      const legalRevision = input.legalRevision;
       const passwordHash = await dependencies.hashPassword(input.password);
       const token = dependencies.createAccountToken();
-      let account: { email: string };
-      try {
-        account = await dependencies.accountStore.registerPendingAccount({
-          email,
-          passwordHash,
-          verificationTokenHash: token.hash,
-          verificationExpiresAt: new Date(now.getTime() + accountPolicies.verificationTtlMs),
-          legalRevision: input.legalRevision,
-        });
-      } catch (error) {
-        if (error instanceof AccountRegistrationUnavailableError) {
-          scheduleVerificationDelivery(null);
-          return { kind: "accepted" };
+      scheduleVerificationWork(async () => {
+        try {
+          const account = await dependencies.accountStore.registerPendingAccount({
+            email,
+            passwordHash,
+            verificationTokenHash: token.hash,
+            verificationExpiresAt: new Date(now.getTime() + accountPolicies.verificationTtlMs),
+            legalRevision,
+          });
+          return { to: account.email, token: token.raw };
+        } catch (error) {
+          if (error instanceof AccountRegistrationUnavailableError) return null;
+          throw error;
         }
-        throw error;
-      }
-
-      scheduleVerificationDelivery({ to: account.email, token: token.raw });
+      });
       return { kind: "accepted" };
     },
 
@@ -176,16 +185,16 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
       }
       const email = normalizeEmail(input.email);
       const token = dependencies.createAccountToken();
-      const account = await dependencies.accountStore.createOrRotateActionToken({
-        email,
-        kind: "verify_email",
-        tokenHash: token.hash,
-        expiresAt: new Date(now.getTime() + accountPolicies.verificationTtlMs),
-        now,
+      scheduleVerificationWork(async () => {
+        const account = await dependencies.accountStore.createOrRotateActionToken({
+          email,
+          kind: "verify_email",
+          tokenHash: token.hash,
+          expiresAt: new Date(now.getTime() + accountPolicies.verificationTtlMs),
+          now,
+        });
+        return account ? { to: account.email, token: token.raw } : null;
       });
-      scheduleVerificationDelivery(account
-        ? { to: account.email, token: token.raw }
-        : null);
       return { kind: "accepted" };
     },
 
