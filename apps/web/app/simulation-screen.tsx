@@ -67,6 +67,7 @@ import {
   updatePressedKeys,
 } from "./keyboard-control";
 import { RealRideScreen } from "./real-ride-screen";
+import { LegalFooter } from "./legal-footer";
 import { useViewerCount } from "./use-viewer-count";
 
 export type ScreenName =
@@ -1134,29 +1135,29 @@ export function SimulationScreen({
   operationalStatus?: OperationalStatus | undefined;
   screen: ScreenName;
 }) {
-  if (screen === "pricing") return <PricingScreen />;
-  if (screen === "how-it-works") return <HowItWorksScreen />;
-  if (screen === "leaderboard") return <LeaderboardScreen mockMode={mockMode} />;
-  if (screen === "preflight") return <PreflightScreen />;
-  if (screen === "queue") return <QueueScreen operationalStatus={operationalStatus} />;
+  if (screen === "pricing") return <><PricingScreen /><LegalFooter /></>;
+  if (screen === "how-it-works") return <><HowItWorksScreen /><LegalFooter /></>;
+  if (screen === "leaderboard") return <><LeaderboardScreen mockMode={mockMode} /><LegalFooter /></>;
+  if (screen === "preflight") return <><PreflightScreen /><LegalFooter /></>;
+  if (screen === "queue") return <><QueueScreen operationalStatus={operationalStatus} /><LegalFooter /></>;
   if (screen === "loading") {
     return (
-      <ConnectionLoadingScreen
-        adminAccess={adminAccess}
-        mockMode={mockMode}
-        operationalStatus={operationalStatus}
-      />
+      <><ConnectionLoadingScreen
+          adminAccess={adminAccess}
+          mockMode={mockMode}
+          operationalStatus={operationalStatus}
+        /><LegalFooter /></>
     );
   }
   if (screen === "ride") return mockMode && adminAccess ? <RealRideScreen /> : <RideScreen mockMode={mockMode} />;
-  if (screen === "results") return <ResultsScreen />;
-  if (screen === "operator") return <OperatorScreen />;
+  if (screen === "results") return <><ResultsScreen /><LegalFooter /></>;
+  if (screen === "operator") return <><OperatorScreen /><LegalFooter /></>;
   return (
-    <HomeScreen
-      adminAccess={adminAccess}
-      authenticated={authenticated || adminAccess}
-      mockMode={mockMode}
-      operationalStatus={operationalStatus}
-    />
+    <><HomeScreen
+        adminAccess={adminAccess}
+        authenticated={authenticated || adminAccess}
+        mockMode={mockMode}
+        operationalStatus={operationalStatus}
+      /><LegalFooter /></>
   );
 }
