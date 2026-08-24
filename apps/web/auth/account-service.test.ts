@@ -363,6 +363,51 @@ describe("account service", () => {
     });
   });
 
+  test("issues a 30-minute reset token only for an eligible account while preserving a generic result", async () => {
+    const eligible = dependencies();
+    const ineligible = dependencies();
+    ineligible.accountStore.createOrRotateActionToken.mockResolvedValueOnce(null);
+    const input = { email: " Driver@Example.COM ", ipKeyHash, accountKeyHash };
+
+    await expect(eligible.service.requestPasswordReset(input)).resolves.toEqual({ kind: "accepted" });
+    await expect(ineligible.service.requestPasswordReset(input)).resolves.toEqual({ kind: "accepted" });
+    expect(eligible.accountStore.createOrRotateActionToken).toHaveBeenCalledWith({
+      email: "driver@example.com",
+      kind: "reset_password",
+      tokenHash: "a".repeat(64),
+      expiresAt: new Date("2026-08-24T12:30:00.000Z"),
+      now,
+    });
+    expect(ineligible.email.sendPasswordReset).not.toHaveBeenCalled();
+  });
+
+  test("replaces a password once, revokes every session through the store, and notifies the account", async () => {
+    const { service, accountStore, email, base } = dependencies();
+    accountStore.replacePasswordAndRevokeSessions.mockResolvedValueOnce({ userId, email: "driver@example.com" });
+    accountStore.replacePasswordAndRevokeSessions.mockResolvedValueOnce(null);
+
+    await expect(service.resetPassword({
+      token: "raw-reset-token",
+      password: "new correct horse battery",
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "reset" });
+    await expect(service.resetPassword({
+      token: "raw-reset-token",
+      password: "new correct horse battery",
+      ipKeyHash,
+      accountKeyHash,
+    })).resolves.toEqual({ kind: "invalid" });
+    expect(accountStore.replacePasswordAndRevokeSessions).toHaveBeenNthCalledWith(1, {
+      resetTokenHash: "hashed:raw-reset-token",
+      newPasswordHash: "argon:new correct horse battery",
+      now,
+    });
+    expect(base.hashPassword).toHaveBeenCalledWith("new correct horse battery");
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(email.sendPasswordChanged).toHaveBeenCalledWith({ to: "driver@example.com" });
+  });
+
   test("performs dummy password verification and returns one invalid result for unknown accounts", async () => {
     const { service, accountStore, base, authStore } = dependencies();
     accountStore.findPasswordSignIn.mockResolvedValueOnce(null);

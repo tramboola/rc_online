@@ -14,6 +14,7 @@ export const accountPolicies = {
   registration: { limit: 5, windowMs: 60 * 60 * 1_000 },
   signIn: { limit: 10, windowMs: 15 * 60 * 1_000 },
   resend: { limit: 3, windowMs: 60 * 60 * 1_000 },
+  passwordReset: { limit: 3, windowMs: 60 * 60 * 1_000 },
 } as const;
 
 type AccountToken = { raw: string; hash: string };
@@ -67,6 +68,11 @@ export type PasswordSignInResult =
   | { kind: "rate_limited" }
   | { kind: "authenticated"; token: string; expiresAt: Date };
 
+export type ResetPasswordResult =
+  | { kind: "reset" }
+  | { kind: "invalid" }
+  | { kind: "rate_limited" };
+
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -88,32 +94,22 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
     return "other";
   }
 
-  function scheduleVerificationWork(
-    resolveInput: () => Promise<{ to: string; token: string } | null>,
+  function scheduleDeliveryWork(
+    templateKind: TransactionalEmailTemplateKind,
+    work: () => Promise<boolean>,
   ): void {
     dependencies.scheduleAfterResponse(async () => {
-      let input: { to: string; token: string } | null;
       try {
-        input = await resolveInput();
-      } catch {
+        const delivered = await work();
+        if (!delivered) return;
         await safelyReportDelivery({
-          templateKind: "verification",
-          outcome: "failure",
-          statusClass: "other",
-        });
-        return;
-      }
-      if (!input) return;
-      try {
-        await dependencies.email.sendVerification(input);
-        await safelyReportDelivery({
-          templateKind: "verification",
+          templateKind,
           outcome: "success",
           statusClass: "success",
         });
       } catch (error) {
         await safelyReportDelivery({
-          templateKind: "verification",
+          templateKind,
           outcome: "failure",
           statusClass: deliveryFailureClass(error),
         });
@@ -122,7 +118,7 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
   }
 
   async function passesRateLimit(
-    kind: "registration" | "sign_in" | "resend",
+    kind: "registration" | "sign_in" | "resend" | "password_reset",
     policy: { limit: number; windowMs: number },
     input: RateLimitedInput,
     now: Date,
@@ -158,7 +154,7 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
       const legalRevision = input.legalRevision;
       const passwordHash = await dependencies.hashPassword(input.password);
       const token = dependencies.createAccountToken();
-      scheduleVerificationWork(async () => {
+      scheduleDeliveryWork("verification", async () => {
         try {
           const account = await dependencies.accountStore.registerPendingAccount({
             email,
@@ -167,9 +163,10 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
             verificationExpiresAt: new Date(now.getTime() + accountPolicies.verificationTtlMs),
             legalRevision,
           });
-          return { to: account.email, token: token.raw };
+          await dependencies.email.sendVerification({ to: account.email, token: token.raw });
+          return true;
         } catch (error) {
-          if (error instanceof AccountRegistrationUnavailableError) return null;
+          if (error instanceof AccountRegistrationUnavailableError) return false;
           throw error;
         }
       });
@@ -185,7 +182,7 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
       }
       const email = normalizeEmail(input.email);
       const token = dependencies.createAccountToken();
-      scheduleVerificationWork(async () => {
+      scheduleDeliveryWork("verification", async () => {
         const account = await dependencies.accountStore.createOrRotateActionToken({
           email,
           kind: "verify_email",
@@ -193,7 +190,33 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
           expiresAt: new Date(now.getTime() + accountPolicies.verificationTtlMs),
           now,
         });
-        return account ? { to: account.email, token: token.raw } : null;
+        if (!account) return false;
+        await dependencies.email.sendVerification({ to: account.email, token: token.raw });
+        return true;
+      });
+      return { kind: "accepted" };
+    },
+
+    async requestPasswordReset(input: {
+      email: string;
+    } & RateLimitedInput): Promise<GenericAccountResult> {
+      const now = dependencies.now();
+      if (!await passesRateLimit("password_reset", accountPolicies.passwordReset, input, now)) {
+        return { kind: "rate_limited" };
+      }
+      const email = normalizeEmail(input.email);
+      const token = dependencies.createAccountToken();
+      scheduleDeliveryWork("password_reset", async () => {
+        const account = await dependencies.accountStore.createOrRotateActionToken({
+          email,
+          kind: "reset_password",
+          tokenHash: token.hash,
+          expiresAt: new Date(now.getTime() + accountPolicies.passwordResetTtlMs),
+          now,
+        });
+        if (!account) return false;
+        await dependencies.email.sendPasswordReset({ to: account.email, token: token.raw });
+        return true;
       });
       return { kind: "accepted" };
     },
@@ -205,6 +228,30 @@ export function createAccountService(dependencies: AccountServiceDependencies) {
         now: dependencies.now(),
       });
       return account ? { kind: "verified" } : { kind: "invalid" };
+    },
+
+    async resetPassword(input: {
+      token: string;
+      password: string;
+    } & RateLimitedInput): Promise<ResetPasswordResult> {
+      const now = dependencies.now();
+      if (!await passesRateLimit("password_reset", accountPolicies.passwordReset, input, now)) {
+        return { kind: "rate_limited" };
+      }
+      const newPasswordHash = await dependencies.hashPassword(input.password);
+      const account = await dependencies.accountStore.replacePasswordAndRevokeSessions({
+        resetTokenHash: dependencies.hashAccountToken(input.token),
+        newPasswordHash,
+        now,
+      });
+      if (!account) {
+        return { kind: "invalid" };
+      }
+      scheduleDeliveryWork("password_changed", async () => {
+        await dependencies.email.sendPasswordChanged({ to: account.email });
+        return true;
+      });
+      return { kind: "reset" };
     },
 
     async signInPassword(input: {
