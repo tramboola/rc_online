@@ -21,11 +21,15 @@ export const privacySections: readonly LegalSection[] = [
   },
   {
     heading: "Purposes and lawful bases",
-    body: "We use this data to provide and secure the service, authenticate accounts, operate remote sessions, respond to support requests, prevent abuse, meet legal obligations and, where applicable, manage a purchase. Depending on the purpose, our lawful bases are performance of a contract, compliance with a legal obligation, our legitimate interests in security and operating the service, or consent where we specifically ask for it.",
+    body: "We process data to create and authenticate accounts, provide account features, respond to service support requests, operate remote driving sessions and, where applicable, manage a purchase because this is necessary for performance of a contract or to take steps you request before entering one. We protect the service, apply rate limits and prevent abuse on the basis of our legitimate interests in operating a reliable and secure service. We keep accounting and other records required by law to comply with a legal obligation. We carry out optional processing that is not needed for the service only when we identify it and ask for your specific consent.",
   },
   {
     heading: "Data required to provide the service",
     body: "An email address, authentication credential or Google identity, and the necessary session and security records are required to create and authenticate an account and provide account and drive access. If you do not provide this necessary account and authentication data, we may be unable to create or authenticate your account, and account or drive access may be unavailable. Optional profile choices, such as a custom nickname or avatar, are not required to use the core service.",
+  },
+  {
+    heading: "Google sign-in data source",
+    body: "When you choose Google sign-in, Google provides your email address, Google profile name, email verification status and provider account identifier. We use those fields to create or link your RC Mania account and authenticate later sign-ins. RC Mania does not import your Google avatar.",
   },
   {
     heading: "Service providers",
@@ -33,7 +37,7 @@ export const privacySections: readonly LegalSection[] = [
   },
   {
     heading: "International transfers",
-    body: "Some service providers may process data outside the European Economic Area. Where a transfer is required, we will use the transfer mechanism and safeguards applicable to that provider and processing activity, such as an adequacy decision or appropriate contractual safeguards.",
+    body: `Resend states that it transfers and primarily processes transactional-email personal data in the United States. Resend's current Data Processing Addendum describes its participation in the EU-U.S. Data Privacy Framework and incorporates the European Commission's Standard Contractual Clauses for transfers not covered by an adequacy decision; see https://resend.com/legal/dpa. Google may process Google sign-in data internationally and publishes transfer frameworks that include adequacy decisions, the EU-U.S. Data Privacy Framework and the European Commission's Standard Contractual Clauses; see https://policies.google.com/privacy/frameworks. RC Mania's dedicated TURN relay is currently hosted in the Netherlands, within the European Economic Area; other infrastructure locations are assessed separately and are not represented here as necessarily EEA-only. Where RC Mania transfers personal data outside the EEA, we use the mechanism applicable to that provider and transfer. You may request current information or a copy of the applicable safeguards by contacting ${operator.email}.`,
   },
   {
     heading: "Retention",
@@ -41,7 +45,7 @@ export const privacySections: readonly LegalSection[] = [
   },
   {
     heading: "Your rights and deletion",
-    body: "Subject to applicable law, you may request access, correction, deletion, restriction, objection, portability, or withdrawal of consent where consent is the basis. You can request account deletion through the account tools when available or by contacting support. Deletion may leave limited de-identified or retained records where required for accounting, fraud prevention, legal claims or other legal duties. You also have the right to lodge a complaint with a competent supervisory authority, including the Czech Office for Personal Data Protection (\u00da\u0159ad pro ochranu osobn\u00edch \u00fadaj\u016f, \u00daOO\u00da). Its official contact route is https://uoou.gov.cz/en/consultation/contact and its contact email is posta@uoou.gov.cz.",
+    body: "Subject to applicable law, you may request access, correction, deletion, restriction, objection, portability, or withdrawal of consent where consent is the basis. Withdrawing consent does not affect the lawfulness of processing carried out before the withdrawal. You can request account deletion through the account tools when available or by contacting support. Deletion may leave limited de-identified or retained records where required for accounting, fraud prevention, legal claims or other legal duties. You also have the right to lodge a complaint with a competent supervisory authority, including the Czech Office for Personal Data Protection (\u00da\u0159ad pro ochranu osobn\u00edch \u00fadaj\u016f, \u00daOO\u00da). Its official contact route is https://uoou.gov.cz/en/consultation/contact and its contact email is posta@uoou.gov.cz.",
   },
   {
     heading: "Necessary authentication and browser storage",
@@ -85,6 +89,10 @@ export const termsSections: readonly LegalSection[] = [
   {
     heading: "Governing law and contact",
     body: `These Terms are governed by the laws of the Czech Republic, without limiting protections that mandatory consumer law gives you. Questions about the service may be sent to ${operator.email}.`,
+  },
+  {
+    heading: "Out-of-court consumer dispute resolution",
+    body: "If a consumer dispute arising from a purchase contract or a contract for services cannot be resolved directly, the consumer may submit a proposal for out-of-court resolution to: Česká obchodní inspekce, Ústřední inspektorát – oddělení ADR, Gorazdova 1969/24, 120 00 Praha 2, Czech Republic; adr@coi.gov.cz; https://coi.gov.cz/informace-o-adr/.",
   },
   {
     heading: "Children under 13",
