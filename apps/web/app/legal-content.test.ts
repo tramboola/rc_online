@@ -35,6 +35,13 @@ describe("versioned legal content", () => {
     expect(content).toMatch(/deletion/i);
     expect(content).toMatch(/security/i);
     expect(content).toMatch(/necessary authentication/i);
+    expect(content).toMatch(/required to create and authenticate an account/i);
+    expect(content).toMatch(/account or drive access may be unavailable/i);
+    expect(content).toMatch(/lodge a complaint/i);
+    expect(content).toMatch(/Czech Office for Personal Data Protection/i);
+    expect(content).toContain("\u00daOO\u00da");
+    expect(content).toContain("https://uoou.gov.cz/en/consultation/contact");
+    expect(content).toContain("posta@uoou.gov.cz");
     expect(content).toMatch(/no advertising analytics, pixels, behavioral tracking, or marketing email/i);
   });
 

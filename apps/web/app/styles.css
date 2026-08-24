@@ -51,7 +51,6 @@ img { display: block; max-width: 100%; }
 .legal-page h1 { margin: 0 0 28px; font: italic 600 clamp(48px, 8vw, 78px)/.95 var(--font-display); letter-spacing: 1.5px; }
 .legal-page h2 { margin: 0 0 10px; color: var(--cyan); font: 500 24px/1 var(--font-display); letter-spacing: 1.2px; text-transform: uppercase; }
 .legal-page p { margin: 0; color: #c6ced1; font-size: 19px; line-height: 1.5; }
-.legal-draft-notice { margin-bottom: 28px !important; padding: 15px 18px; border-left: 3px solid var(--amber); background: rgba(255, 183, 27, .07); color: #f6d698 !important; }
 .legal-operator, .legal-section { padding: 26px 0; border-top: 1px solid var(--line); }
 .legal-operator a { color: var(--cyan); text-decoration: underline; text-underline-offset: 3px; }
 .legal-footer {

@@ -12,6 +12,7 @@ import { SessionProvider } from "next-auth/react";
 import { connection } from "next/server";
 
 import { auth } from "../auth";
+import { LegalFooter } from "./legal-footer";
 
 export const metadata: Metadata = {
   title: "RC Mania — Drive it for real",
@@ -28,7 +29,10 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SessionProvider session={session}>{children}</SessionProvider>
+        <SessionProvider session={session}>
+          {children}
+          <LegalFooter />
+        </SessionProvider>
       </body>
     </html>
   );

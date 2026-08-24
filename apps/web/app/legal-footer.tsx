@@ -2,8 +2,13 @@
 
 import { InstagramLogo } from "@phosphor-icons/react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function LegalFooter() {
+  const pathname = usePathname();
+
+  if (pathname === "/ride") return null;
+
   return (
     <footer className="legal-footer">
       <nav aria-label="Legal and social links">

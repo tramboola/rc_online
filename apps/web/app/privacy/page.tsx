@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 
-import { LegalFooter } from "../legal-footer";
 import {
   LEGAL_REVISION,
-  legalDraftNotice,
   operator,
   privacySections,
 } from "../legal-content";
@@ -18,7 +16,6 @@ export default function PrivacyPage() {
       <main className="legal-page">
         <p className="eyebrow">PRIVACY / EFFECTIVE {LEGAL_REVISION}</p>
         <h1>PRIVACY POLICY</h1>
-        <p className="legal-draft-notice">{legalDraftNotice}</p>
         <section className="legal-operator" aria-labelledby="privacy-operator">
           <h2 id="privacy-operator">Operator and contact</h2>
           <p>{operator.company}<br />{operator.ico} · {operator.dic}<br />{operator.address}<br />Commercial Register: {operator.register}<br /><a href={`mailto:${operator.email}`}>{operator.email}</a></p>
@@ -30,7 +27,6 @@ export default function PrivacyPage() {
           </section>
         ))}
       </main>
-      <LegalFooter />
     </div>
   );
 }

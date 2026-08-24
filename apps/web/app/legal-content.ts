@@ -24,6 +24,10 @@ export const privacySections: readonly LegalSection[] = [
     body: "We use this data to provide and secure the service, authenticate accounts, operate remote sessions, respond to support requests, prevent abuse, meet legal obligations and, where applicable, manage a purchase. Depending on the purpose, our lawful bases are performance of a contract, compliance with a legal obligation, our legitimate interests in security and operating the service, or consent where we specifically ask for it.",
   },
   {
+    heading: "Data required to provide the service",
+    body: "An email address, authentication credential or Google identity, and the necessary session and security records are required to create and authenticate an account and provide account and drive access. If you do not provide this necessary account and authentication data, we may be unable to create or authenticate your account, and account or drive access may be unavailable. Optional profile choices, such as a custom nickname or avatar, are not required to use the core service.",
+  },
+  {
     heading: "Service providers",
     body: "Google acts as an identity provider only when you choose Google sign-in. Resend delivers transactional account email. Hosting and infrastructure providers operate the systems needed to provide RC Mania. A future payment processor would process payment data only if you choose a paid offering. These providers do not necessarily receive every category of data described in this notice.",
   },
@@ -37,7 +41,7 @@ export const privacySections: readonly LegalSection[] = [
   },
   {
     heading: "Your rights and deletion",
-    body: "Subject to applicable law, you may request access, correction, deletion, restriction, objection, portability, or withdrawal of consent where consent is the basis. You can request account deletion through the account tools when available or by contacting support. Deletion may leave limited de-identified or retained records where required for accounting, fraud prevention, legal claims or other legal duties.",
+    body: "Subject to applicable law, you may request access, correction, deletion, restriction, objection, portability, or withdrawal of consent where consent is the basis. You can request account deletion through the account tools when available or by contacting support. Deletion may leave limited de-identified or retained records where required for accounting, fraud prevention, legal claims or other legal duties. You also have the right to lodge a complaint with a competent supervisory authority, including the Czech Office for Personal Data Protection (\u00da\u0159ad pro ochranu osobn\u00edch \u00fadaj\u016f, \u00daOO\u00da). Its official contact route is https://uoou.gov.cz/en/consultation/contact and its contact email is posta@uoou.gov.cz.",
   },
   {
     heading: "Necessary authentication and browser storage",
@@ -87,5 +91,3 @@ export const termsSections: readonly LegalSection[] = [
     body: "RC Mania is not directed to children under 13, and we do not knowingly collect their account data. If you believe a child under 13 has provided account data, please contact us so we can review and take appropriate action.",
   },
 ];
-
-export const legalDraftNotice = "These documents are implementation-ready product drafts, not legal advice, and should be reviewed by Czech counsel before consumer payments are offered internationally.";
