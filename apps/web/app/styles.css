@@ -1954,6 +1954,8 @@ p { color: #a9afb3; }
   .offer-panel { padding: 22px; }
   .offer-heading h2 { font-size: clamp(38px, 9vw, 52px); }
   .car-choice-grid { grid-template-columns: minmax(0, 1fr); }
+  .offer-actions { grid-template-columns: minmax(0, 1fr); padding-inline: 6px; }
+  .offer-actions .action-button { min-width: 0; padding-inline: 14px; gap: 12px; font-size: clamp(17px, 5vw, 20px); }
 }
 
 @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
@@ -1992,8 +1994,6 @@ p { color: #a9afb3; }
   .queue-line .you img { width: min(48px, 100%); }
   .queue-progress em { max-width: 100%; font-size: 9px; line-height: 1.05; overflow-wrap: anywhere; text-align: center; }
   .queue-progress small { font-size: 9px; }
-  .offer-actions { grid-template-columns: minmax(0, 1fr); }
-  .offer-actions .action-button { min-width: 0; padding-inline: 15px; font-size: 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

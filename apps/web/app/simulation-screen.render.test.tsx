@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SimulationScreen } from "./simulation-screen";
 
 const source = readFileSync(new URL("./simulation-screen.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -117,6 +118,15 @@ describe("driving setup screens", () => {
     expect(markup).toContain("NO CAR IS READY YET");
     expect(markup).toContain("Stay in the queue. You can connect as soon as a car comes online.");
     expect(markup).not.toContain("YOUR CAR IS READY");
+  });
+
+  it("keeps queue offer actions inside narrow portrait panels", () => {
+    expect(styles).toContain(
+      ".offer-actions { grid-template-columns: minmax(0, 1fr); padding-inline: 6px; }",
+    );
+    expect(styles).toContain(
+      ".offer-actions .action-button { min-width: 0; padding-inline: 14px; gap: 12px; font-size: clamp(17px, 5vw, 20px); }",
+    );
   });
 
   it("renders the car connection loading screen", () => {

@@ -190,6 +190,30 @@ final result: passed
 
 ---
 
+# Portrait queue acceptance button — 2026-08-25
+
+## Evidence
+
+- Source: `C:\Users\user\AppData\Local\Temp\codex-clipboard-04c1c5f2-0e56-41fb-a391-d23bc748036e.png`.
+- Corrected 390 × 844 render: `C:\Users\user\Documents\github\RC\artifacts\design-qa\queue-button-mobile-fixed.png`.
+- Interactive preview: `artifacts/design-qa/queue-button-mobile-preview.html`.
+
+## Checks
+
+- The portrait breakpoint now stacks both queue actions at mobile widths instead of waiting for the 360 px breakpoint.
+- The acceptance button uses responsive 17–20 px type, 14 px horizontal padding, a 12 px icon gap, and 6 px action-rail inset.
+- Measured offer panel: left 14 px, right 361 px. Measured acceptance button: left 43 px, right 332 px. The button remains 29 px inside both panel edges.
+- Document width stays within the 390 px viewport with no queue-action overflow.
+- Desktop queue rules and button styling outside the mobile breakpoint are unchanged.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain for the reported portrait overflow. The static QA fixture simplifies car artwork but uses the production stylesheet and exact action markup geometry needed for this regression.
+
+final result: passed
+
+---
+
 # Mobile ride dynamic viewport — 2026-08-25
 
 ## Evidence
