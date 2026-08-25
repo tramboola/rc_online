@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag, GameController, ShieldCheck, WifiHigh } from "@phosphor-icons/react";
+import { BatteryHigh, Flag, GameController, ShieldCheck, WifiHigh } from "@phosphor-icons/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -18,7 +18,7 @@ import {
   RideConnectionAttempt,
   type RideConnectionSnapshot,
 } from "./ride-connection-attempt";
-import type { RideConnectionState, StoredDriveSession } from "./ride-session-client";
+import type { RideBatteryTelemetry, RideConnectionState, StoredDriveSession } from "./ride-session-client";
 import { formatSessionTime, SessionCountdown } from "./session-countdown";
 import { normalizeSteeringTrim, saveSteeringTrim } from "./steering-trim";
 import { MobileDriveControls } from "./mobile-drive-controls";
@@ -63,6 +63,10 @@ export function RealRideScreen() {
   const [armed, setArmed] = useState(false);
   const [pressedKeys, setPressedKeys] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [batteryTelemetry, setBatteryTelemetry] = useState<RideBatteryTelemetry>({
+    batteryVoltage: null,
+    batteryPercent: null,
+  });
   const [videoMode, setVideoMode] = useState("WAITING FOR VIDEO");
   const [control, setControl] = useState<KeyboardControlIntent>(NEUTRAL_CONTROL);
   const [connection, setConnection] = useState<RideConnectionSnapshot>(initialConnectionSnapshot);
@@ -73,6 +77,8 @@ export function RealRideScreen() {
   const [steeringTrimPercent, setSteeringTrimPercent] = useState(0);
   const [trimSaveStatus, setTrimSaveStatus] = useState<TrimSaveStatus>("saved");
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
+  const batteryPercent = batteryTelemetry.batteryPercent;
+  const isBatteryLow = batteryPercent !== null && batteryPercent < 20;
   const applyMobileInput = useCallback((input: { steering: number; throttle: number; nitro: boolean }) => {
     loopRef.current?.setInput(input);
   }, []);
@@ -81,6 +87,7 @@ export function RealRideScreen() {
     setConnection(initialConnectionSnapshot());
     setState("CONNECTING");
     setError(null);
+    setBatteryTelemetry({ batteryVoltage: null, batteryPercent: null });
     setReadyLoop(null);
     setRideSession(null);
     sessionRef.current = null;
@@ -126,7 +133,7 @@ export function RealRideScreen() {
           ? `${settings.width}×${settings.height}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} FPS` : ""}`
           : "LIVE VIDEO");
       },
-      onTelemetry: () => undefined,
+      onTelemetry: setBatteryTelemetry,
       onReady: (loop, route) => {
         const browserLoop = loop as BrowserControlLoop;
         browserLoop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);
@@ -292,6 +299,12 @@ export function RealRideScreen() {
         <p><WifiHigh size={23} /> CONNECTION <strong className={["DIRECT", "TURN", "CONNECTED"].includes(state) ? "ok" : ""}>{state}</strong></p>
         <p><GameController size={23} /> CONTROLS <strong className={armed ? "ok" : ""}>{armed ? "KEYBOARD ACTIVE" : "SAFE / NEUTRAL"}</strong></p>
         <p><ShieldCheck size={23} /> VIDEO <strong>{videoMode}</strong></p>
+        <p className={`real-ride-battery ${isBatteryLow ? "battery-warning" : ""}`}>
+          <BatteryHigh size={23} /> BATTERY
+          <strong className={batteryPercent === null ? "" : isBatteryLow ? "warning" : "ok"}>
+            {formatBatteryPercent(batteryPercent)}
+          </strong>
+        </p>
         {error ? <p className="real-ride-error">{error}</p> : null}
       </section>
       <section className="real-keyboard-panel" aria-label="Live keyboard controls">
@@ -348,6 +361,10 @@ export function RideSessionClock({ remainingSeconds }: { readonly remainingSecon
       <strong>{formatSessionTime(remainingSeconds)}</strong>
     </section>
   );
+}
+
+export function formatBatteryPercent(value: number | null): string {
+  return value === null ? "—" : `${value}%`;
 }
 
 export function SteeringTrimControl({

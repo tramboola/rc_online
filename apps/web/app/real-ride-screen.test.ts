@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import * as realRideScreen from "./real-ride-screen";
+
 const source = readFileSync(new URL("./real-ride-screen.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
@@ -41,6 +43,27 @@ describe("real ride keyboard UI", () => {
     expect(source).not.toContain('className="real-ride-status data-panel"');
     expect(styles).toMatch(/\.real-ride-status \{[^}]*background: transparent;[^}]*border: 0;[^}]*box-shadow: none;/s);
     expect(styles).toMatch(/\.real-steering-trim \{[^}]*background: transparent;[^}]*border: 0;[^}]*filter: none;/s);
+  });
+
+  it("formats unknown and reported battery percentages for the driver", () => {
+    const formatter = Reflect.get(realRideScreen, "formatBatteryPercent");
+
+    expect(formatter).toBeTypeOf("function");
+    if (typeof formatter !== "function") return;
+
+    expect(formatter(null)).toBe("—");
+    expect(formatter(94)).toBe("94%");
+  });
+
+  it("shows live battery telemetry and reserves its warning state for readings below 20 percent", () => {
+    expect(source).toMatch(/const \[batteryTelemetry, setBatteryTelemetry\] = useState<RideBatteryTelemetry>\(\{\s*batteryVoltage: null,\s*batteryPercent: null,\s*}\);/s);
+    expect(source).toContain("onTelemetry: setBatteryTelemetry,");
+    expect(source).toContain("batteryPercent !== null && batteryPercent < 20");
+    expect(source).toContain('className={`real-ride-battery ${isBatteryLow ? "battery-warning" : ""}`}');
+    expect(source).toContain("formatBatteryPercent(batteryPercent)");
+    expect(styles).toMatch(/\.real-ride-status strong\.ok \{[^}]*color: var\(--lime\);/s);
+    expect(styles).toMatch(/\.real-ride-battery\.battery-warning strong\.warning \{[^}]*color: var\(--red\);/s);
+    expect(styles).toMatch(/\.real-ride-status p:first-child,\s*\.real-ride-status \.real-ride-battery \{[^}]*display: grid;/s);
   });
 
   it("provides a separate hold-to-use mobile nitro control", () => {

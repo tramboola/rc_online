@@ -84,6 +84,11 @@ describe("driving setup screens", () => {
             id: "40000000-0000-4000-8000-000000000001",
             name: "RC Mania One",
             slug: "rc-mania-one",
+            batteryPercent: 94,
+          }, {
+            id: "40000000-0000-4000-8000-000000000002",
+            name: "RC Mania Two",
+            slug: "rc-mania-two",
             batteryPercent: null,
           }],
           queueCount: 0,
@@ -93,6 +98,8 @@ describe("driving setup screens", () => {
     );
 
     expect(markup).toContain("Choose a car when you&#x27;re ready.");
+    expect(markup).toContain("94%");
+    expect(markup).toContain("—");
     expect(markup).not.toContain("Accept within");
     expect(markup).not.toContain("countdown");
     expect(markup).toContain("LEAVE QUEUE");

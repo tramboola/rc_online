@@ -1174,6 +1174,7 @@ p { color: #a9afb3; }
 .real-ride-status svg { filter: drop-shadow(0 2px 4px #000); }
 .real-ride-status strong { color: var(--text); font-family: var(--font-display); }
 .real-ride-status strong.ok { color: var(--lime); }
+.real-ride-battery.battery-warning strong.warning { color: var(--red); }
 .real-ride-status .real-ride-error { display: block; color: #ff7568; border-top: 1px solid #563233; padding-top: 14px; }
 .real-keyboard-panel { position: absolute; left: 34px; bottom: 34px; width: min(600px, calc(100vw - 68px)); padding: 0; border: 0; background: transparent; color: var(--cyan); box-shadow: none; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .9)); }
 .real-control-readout { margin-bottom: 13px; font: 600 18px var(--font-display); letter-spacing: .025em; text-shadow: 0 2px 8px #000; }
@@ -1236,9 +1237,12 @@ p { color: #a9afb3; }
   .real-session-clock strong { font-size: 16px; letter-spacing: .02em; }
   .real-ride-status { left: 18px; right: auto; top: 42px; width: 160px; }
   .real-ride-status p { display: none; }
-  .real-ride-status p:first-child { display: grid; grid-template-columns: 16px 1fr auto; gap: 5px; margin: 0; font-size: 10px; }
-  .real-ride-status p:first-child svg { width: 14px; height: 14px; }
-  .real-ride-status p:first-child strong { font-size: 11px; }
+  .real-ride-status p:first-child,
+  .real-ride-status .real-ride-battery { display: grid; grid-template-columns: 16px 1fr auto; gap: 5px; margin: 0; font-size: 10px; }
+  .real-ride-status p:first-child svg,
+  .real-ride-status .real-ride-battery svg { width: 14px; height: 14px; }
+  .real-ride-status p:first-child strong,
+  .real-ride-status .real-ride-battery strong { font-size: 11px; }
   .real-keyboard-panel { display: none; }
   .mobile-drive-controls { position: absolute; inset: 0; display: block; z-index: 6; pointer-events: none; }
   .mobile-steering-meter { position: absolute; left: 24px; right: 190px; bottom: 22px; display: grid; grid-template-columns: auto minmax(140px, 1fr) 52px auto; align-items: center; gap: 12px; color: var(--text); text-shadow: 0 2px 8px #000; pointer-events: auto; }
