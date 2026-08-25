@@ -163,6 +163,11 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
 
         if (authenticatedDevice && message.type === "device.heartbeat") {
           await presence.heartbeat(authenticatedDevice.deviceId, message.health);
+          sessions.sendDeviceTelemetry(
+            authenticatedDevice.carId,
+            message.health.batteryVoltage ?? null,
+            message.health.batteryPercent ?? null
+          );
           await offerPendingUpdate(authenticatedDevice, socket);
           return;
         }

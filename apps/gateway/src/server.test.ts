@@ -4,6 +4,8 @@ import { Socket } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
+import { signBrowserTicket } from "@rc/device-auth";
+
 import { createGatewayServer } from "./server.js";
 import type {
   AuthenticatedDevice,
@@ -58,6 +60,8 @@ function createStore() {
       heartbeats.push(health);
       return { carId: "a98ddba0-65f2-453d-b45a-c7d094a45b24", adminBlocked: false };
     },
+    authorizeDriveSession: async () => ({ expiresAt: new Date("2026-08-25T19:00:00Z") }),
+    endDriveSession: async () => undefined,
     setPresenceState: async () => undefined,
     markDeviceOffline: async () => undefined,
     expireStaleDevices: async () => 0
@@ -99,6 +103,23 @@ async function listen(store: GatewayStore, viewerCapacity = 500) {
 function nextMessage(socket: WebSocket): Promise<unknown> {
   return new Promise((resolve) => {
     socket.once("message", (data) => resolve(JSON.parse(data.toString())));
+  });
+}
+
+function nextMessageOfType(socket: WebSocket, type: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("message", onMessage);
+      reject(new Error(`Expected ${type} before timeout`));
+    }, 1_000);
+    const onMessage = (data: WebSocket.RawData) => {
+      const message = JSON.parse(data.toString());
+      if (message.type !== type) return;
+      clearTimeout(timeout);
+      socket.off("message", onMessage);
+      resolve(message);
+    };
+    socket.on("message", onMessage);
   });
 }
 
@@ -210,6 +231,84 @@ describe("gateway enrollment and device socket", () => {
     expect(messages).toContainEqual({ v: 1, type: "auth.accepted", peer: "device" });
     expect(heartbeats).toHaveLength(1);
     socket.close();
+  });
+
+  it("sends a device heartbeat's battery telemetry only to its authenticated browser", async () => {
+    const { store, heartbeats } = createStore();
+    const { server, baseUrl } = await listen(store);
+    const enrollment = await server.inject({
+      method: "POST",
+      url: "/v1/enroll",
+      payload: {
+        enrollmentCode: "enr_this-code-is-long-enough-for-a-test",
+        serialNumber: "10000000abc12345",
+        agentVersion: "0.1.0",
+        capabilities: {}
+      }
+    });
+    const credentials = enrollment.json();
+    const device = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket");
+    let browser: WebSocket | null = null;
+    try {
+      await openSocket(device);
+      const deviceAccepted = nextMessage(device);
+      device.send(JSON.stringify({
+        v: 1,
+        type: "device.authenticate",
+        deviceId: credentials.deviceId,
+        secret: credentials.deviceSecret,
+        agentVersion: "0.1.0"
+      }));
+      expect(await deviceAccepted).toEqual({ v: 1, type: "auth.accepted", peer: "device" });
+
+      browser = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket");
+      const sessionStarted = nextMessageOfType(browser, "session.start");
+      await openSocket(browser);
+      browser.send(JSON.stringify({
+        v: 1,
+        type: "browser.authenticate",
+        ticket: signBrowserTicket({
+          aud: "rcmania-gateway",
+          sub: "79c2b116-d739-413d-99fb-da59f577f88b",
+          role: "admin",
+          carId: credentials.carId,
+          sessionId: "47b691ed-0b69-4bdb-8040-6740560596c2",
+          iat: Math.floor(Date.now() / 1_000) - 1,
+          exp: Math.floor(Date.now() / 1_000) + 60
+        }, "test-browser-secret-with-enough-entropy")
+      }));
+      await sessionStarted;
+      const telemetry = nextMessageOfType(browser, "device.telemetry");
+
+      device.send(JSON.stringify({
+        v: 1,
+        type: "device.heartbeat",
+        health: {
+          cameraReady: true,
+          gpioReady: true,
+          watchdogReady: true,
+          width: 1280,
+          height: 720,
+          fps: 60,
+          cpuTemperatureC: 44,
+          wifiSignalDbm: -50,
+          batteryVoltage: 8.279,
+          batteryPercent: 94
+        }
+      }));
+
+      expect(await telemetry).toEqual({
+        v: 1,
+        type: "device.telemetry",
+        sessionId: "47b691ed-0b69-4bdb-8040-6740560596c2",
+        batteryVoltage: 8.279,
+        batteryPercent: 94
+      });
+      expect(heartbeats).toHaveLength(1);
+    } finally {
+      device.terminate();
+      browser?.terminate();
+    }
   });
 
   it("closes a socket that does not authenticate promptly", async () => {

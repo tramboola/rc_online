@@ -49,6 +49,30 @@ describe("SessionRegistry", () => {
     expect(registry.hasActiveCar(session.carId)).toBe(true);
   });
 
+  it("sends live telemetry only to the browser paired with the reporting car", () => {
+    const registry = new SessionRegistry();
+    const activeDevice = peer();
+    const otherDevice = peer();
+    const activeBrowser = peer();
+    const otherBrowser = peer();
+    const otherCarId = "605594be-e4d5-468c-a2c1-20f3db29f4d7";
+
+    registry.attachDevice(session.carId, "device-1", activeDevice.value);
+    registry.attachDevice(otherCarId, "device-2", otherDevice.value);
+
+    expect(registry.sendDeviceTelemetry(otherCarId, 8.279, 94)).toBe(false);
+    expect(registry.attachBrowser(session, activeBrowser.value)).toBe(true);
+    expect(registry.sendDeviceTelemetry(session.carId, 8.279, 94)).toBe(true);
+    expect(activeBrowser.messages.filter((message) => message.type === "device.telemetry")).toEqual([{
+      v: 1,
+      type: "device.telemetry",
+      sessionId: session.sessionId,
+      batteryVoltage: 8.279,
+      batteryPercent: 94
+    }]);
+    expect(otherBrowser.messages).toEqual([]);
+  });
+
   it("rejects a second browser and a session whose car has no connected device", () => {
     const registry = new SessionRegistry();
     registry.attachDevice(session.carId, "device-1", peer().value);

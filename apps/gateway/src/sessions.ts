@@ -79,6 +79,14 @@ export class SessionRegistry {
     return true;
   }
 
+  sendDeviceTelemetry(carId: string, batteryVoltage: number | null, batteryPercent: number | null): boolean {
+    const sessionId = this.#sessionsByCar.get(carId);
+    const session = sessionId ? this.#sessions.get(sessionId) : undefined;
+    if (!sessionId || !session) return false;
+    session.browser.send({ v: 1, type: "device.telemetry", sessionId, batteryVoltage, batteryPercent });
+    return true;
+  }
+
   detachBrowser(sessionId: string, reason: string): void {
     this.end(sessionId, reason, true);
   }
