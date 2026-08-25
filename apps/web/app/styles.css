@@ -1223,7 +1223,7 @@ p { color: #a9afb3; }
 .mobile-end-confirm button.confirm { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-color: var(--red); background: var(--red); }
 
 @media (pointer: coarse), (max-width: 1000px) and (max-height: 500px) {
-  .real-ride-page { width: 100vw; height: 100svh; min-height: 0; overflow: hidden; touch-action: none; }
+  .real-ride-page { width: 100vw; height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; touch-action: none; }
   .real-ride-page > .ride-brand { display: none; }
   .mobile-end-session { position: absolute; left: 18px; top: 8px; z-index: 7; display: inline-flex; height: 30px; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--red); background: rgba(19, 3, 5, .72); color: #ff5a55; font: 700 11px var(--font-display); letter-spacing: .06em; cursor: pointer; }
   .mobile-end-session:active { translate: 0 1px; background: var(--red); color: var(--text); }
@@ -1249,7 +1249,7 @@ p { color: #a9afb3; }
   .mobile-steering-meter strong { color: var(--lime); font: 700 17px var(--font-display); text-align: right; }
   .mobile-steering-meter button { min-height: 42px; padding: 0 14px; border: 1px solid var(--cyan); background: rgba(4, 16, 21, .72); color: var(--cyan); font: 700 13px var(--font-display); letter-spacing: .045em; }
   .mobile-steering-meter em { grid-column: 1 / -1; color: #ff7568; font: 700 11px var(--font-body); font-style: normal; text-align: center; }
-  .mobile-throttle-pad { position: absolute; right: 22px; top: 102px; bottom: 22px; width: 124px; display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 8px; padding: 10px; border: 1px solid rgba(54, 212, 248, .8); background: rgba(3, 15, 20, .46); color: var(--cyan); font: 700 11px var(--font-display); letter-spacing: .04em; pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .mobile-throttle-pad { position: absolute; right: 22px; top: 48px; bottom: 10px; width: 124px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; justify-items: center; gap: 8px; padding: 10px; border: 1px solid rgba(54, 212, 248, .8); background: rgba(3, 15, 20, .46); color: var(--cyan); font: 700 11px var(--font-display); letter-spacing: .04em; pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none; }
   .mobile-throttle-track { position: relative; width: 44px; height: 100%; border: 1px solid #49616a; background: linear-gradient(to bottom, rgba(194, 255, 0, .24) 0 74.5%, rgba(255, 45, 45, .22) 75.5% 100%); touch-action: none; }
   .mobile-throttle-track::after { position: absolute; left: -10px; right: -10px; top: 75%; height: 2px; background: var(--text); content: ""; opacity: .7; }
   .mobile-throttle-track i { position: absolute; left: 50%; width: 66px; height: 24px; border: 2px solid var(--lime); background: rgba(194, 255, 0, .18); translate: -50% -50%; box-shadow: 0 0 14px rgba(194, 255, 0, .3); }

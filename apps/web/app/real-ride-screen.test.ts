@@ -66,4 +66,13 @@ describe("real ride keyboard UI", () => {
     expect(styles).toContain(".mobile-steering-trim-toggle");
     expect(styles).toContain('.real-steering-trim[data-mobile-open="true"]');
   });
+
+  it("tracks the dynamic mobile viewport when Safari hides its toolbar", () => {
+    expect(styles).toMatch(/\.real-ride-page \{[^}]*height: 100dvh;/s);
+    expect(styles).not.toMatch(/\.real-ride-page \{[^}]*height: 100svh;/s);
+  });
+
+  it("uses nearly the full mobile ride height for proportional throttle", () => {
+    expect(styles).toMatch(/\.mobile-throttle-pad \{[^}]*top: 48px;[^}]*bottom: 10px;/s);
+  });
 });

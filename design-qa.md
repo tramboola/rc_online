@@ -190,6 +190,30 @@ final result: passed
 
 ---
 
+# Mobile ride dynamic viewport — 2026-08-25
+
+## Evidence
+
+- Source state: `C:\Users\user\AppData\Local\Temp\codex-clipboard-a32e2d03-c7f1-4f0e-b629-d9456ecde1bd.png` (1280 × 720, iPhone Safari with the toolbar hidden).
+- Corrected local render: `C:\Users\user\Documents\github\RC\artifacts\design-qa\mobile-ride-dynamic-viewport.png` (1280 × 720).
+- The local render uses the existing mock camera asset so the app-owned layout can be compared independently of a live car connection.
+
+## Geometry and behavior checks
+
+- The ride surface and video now follow the dynamic visible viewport: measured at 1280 × 720 with no unused area below the video.
+- The mobile throttle panel spans from 48 px below the top edge to 10 px above the bottom edge, for a measured height of 662 px at this viewport.
+- The compact session timer remains above the throttle panel without overlap.
+- Existing mobile controls remain visible and reachable; no horizontal or vertical document overflow was measured.
+- The CSS uses `100dvh` with a `100vh` fallback, replacing `100svh`, which remained locked to Safari's smaller toolbar-visible viewport.
+
+## Findings
+
+No actionable P0, P1, or P2 layout differences remain in the local render. Final confirmation of Safari's toolbar transition still requires testing the deployed build on the physical iPhone.
+
+final result: passed
+
+---
+
 # Car connection loading screen design QA — 2026-08-16
 
 ## Comparison target
