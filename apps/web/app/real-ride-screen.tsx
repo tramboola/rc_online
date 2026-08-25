@@ -126,6 +126,7 @@ export function RealRideScreen() {
           ? `${settings.width}×${settings.height}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} FPS` : ""}`
           : "LIVE VIDEO");
       },
+      onTelemetry: () => undefined,
       onReady: (loop, route) => {
         const browserLoop = loop as BrowserControlLoop;
         browserLoop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);

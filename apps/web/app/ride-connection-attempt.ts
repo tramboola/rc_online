@@ -37,9 +37,6 @@ export type RideConnectionAttemptCallbacks = {
   onReady: (loop: RideControlLoop, route: Exclude<RideConnectionState, "CONNECTING" | "DISCONNECTED">) => void;
 };
 
-type RideConnectionAttemptCallbacksInput = Omit<RideConnectionAttemptCallbacks, "onTelemetry">
-  & Partial<Pick<RideConnectionAttemptCallbacks, "onTelemetry">>;
-
 export type RideConnectionAttemptDependencies = {
   clearTimeout: (handle: number) => void;
   createClient: (session: StoredDriveSession) => RideSessionClientLike;
@@ -91,11 +88,11 @@ export class RideConnectionAttempt {
 
   public constructor(
     carId: string,
-    callbacks: RideConnectionAttemptCallbacksInput,
+    callbacks: RideConnectionAttemptCallbacks,
     dependencies: RideConnectionAttemptDependencies,
   ) {
     this.#carId = carId;
-    this.#callbacks = { onTelemetry: () => undefined, ...callbacks };
+    this.#callbacks = callbacks;
     this.#dependencies = dependencies;
   }
 

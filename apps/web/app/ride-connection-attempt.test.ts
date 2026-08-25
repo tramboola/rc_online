@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { RideConnectionAttempt } from "./ride-connection-attempt";
+import { RideConnectionAttempt, type RideConnectionAttemptCallbacks } from "./ride-connection-attempt";
 import type { RideBatteryTelemetry, RideConnectionProgress, RideConnectionState, StoredDriveSession } from "./ride-session-client";
+
+type Assert<T extends true> = T;
+type IsRequired<T, Key extends keyof T> = {} extends Pick<T, Key> ? false : true;
+type ConstructorCallbacks = ConstructorParameters<typeof RideConnectionAttempt>[1];
+type ConstructorTelemetryIsRequired = Assert<IsRequired<ConstructorCallbacks, "onTelemetry">>;
+type PublicTelemetryIsRequired = Assert<IsRequired<RideConnectionAttemptCallbacks, "onTelemetry">>;
 
 const session: StoredDriveSession = {
   sessionId: "bd450fe7-ec99-4983-a5fe-46ca30f260de",
