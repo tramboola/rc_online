@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { SimulationScreen } from "./simulation-screen";
+import { getQueueBatteryPresentation, SimulationScreen } from "./simulation-screen";
 
 const source = readFileSync(new URL("./simulation-screen.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
@@ -20,6 +20,15 @@ vi.mock("next-auth/react", () => ({
 }));
 
 describe("driving setup screens", () => {
+  it.each([
+    [0, { label: "0%", tone: "warning" }],
+    [19, { label: "19%", tone: "warning" }],
+    [20, { label: "20%", tone: "ok" }],
+    [null, { label: "—", tone: "unavailable" }],
+  ] as const)("presents queue battery percentage %s honestly", (value, expected) => {
+    expect(getQueueBatteryPresentation(value)).toEqual(expected);
+  });
+
   it("renders keyboard controls as the default preflight setup", () => {
     const markup = renderToStaticMarkup(
       <SimulationScreen adminAccess mockMode screen="preflight" />,
@@ -84,11 +93,21 @@ describe("driving setup screens", () => {
             id: "40000000-0000-4000-8000-000000000001",
             name: "RC Mania One",
             slug: "rc-mania-one",
-            batteryPercent: 94,
+            batteryPercent: 0,
           }, {
             id: "40000000-0000-4000-8000-000000000002",
             name: "RC Mania Two",
             slug: "rc-mania-two",
+            batteryPercent: 19,
+          }, {
+            id: "40000000-0000-4000-8000-000000000003",
+            name: "RC Mania Three",
+            slug: "rc-mania-three",
+            batteryPercent: 20,
+          }, {
+            id: "40000000-0000-4000-8000-000000000004",
+            name: "RC Mania Four",
+            slug: "rc-mania-four",
             batteryPercent: null,
           }],
           queueCount: 0,
@@ -98,8 +117,13 @@ describe("driving setup screens", () => {
     );
 
     expect(markup).toContain("Choose a car when you&#x27;re ready.");
-    expect(markup).toContain("94%");
+    expect(markup).toContain("0%");
+    expect(markup).toContain("19%");
+    expect(markup).toContain("20%");
     expect(markup).toContain("—");
+    expect(markup.match(/battery-status battery-warning/g)).toHaveLength(2);
+    expect(markup.match(/battery-status battery-ok/g)).toHaveLength(1);
+    expect(markup.match(/battery-status battery-unavailable/g)).toHaveLength(1);
     expect(markup).not.toContain("Accept within");
     expect(markup).not.toContain("countdown");
     expect(markup).toContain("LEAVE QUEUE");

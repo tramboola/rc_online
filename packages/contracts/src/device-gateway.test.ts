@@ -50,6 +50,10 @@ describe("device gateway contracts", () => {
     }).success).toBe(true);
     expect(GatewayClientMessageSchema.safeParse({
       ...legacyHeartbeat,
+      health: { ...legacyHeartbeat.health, batteryVoltage: 6.6, batteryPercent: 0 },
+    }).success).toBe(true);
+    expect(GatewayClientMessageSchema.safeParse({
+      ...legacyHeartbeat,
       health: { ...legacyHeartbeat.health, batteryVoltage: null, batteryPercent: null },
     }).success).toBe(true);
   });

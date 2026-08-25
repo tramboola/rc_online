@@ -26,5 +26,6 @@ describe("batteryCarUpdate", () => {
 
   it("persists a numeric device battery percentage", () => {
     expect(batteryCarUpdate({ ...baseHealth, batteryPercent: 94 })).toEqual({ batteryPercent: 94 });
+    expect(batteryCarUpdate({ ...baseHealth, batteryPercent: 0 })).toEqual({ batteryPercent: 0 });
   });
 });

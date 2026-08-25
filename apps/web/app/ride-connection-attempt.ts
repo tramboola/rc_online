@@ -85,6 +85,7 @@ export class RideConnectionAttempt {
   #client: RideSessionClientLike | null = null;
   #loop: RideControlLoop | null = null;
   #timeoutHandle: number | null = null;
+  #hasBatteryTelemetry = false;
 
   public constructor(
     carId: string,
@@ -120,17 +121,23 @@ export class RideConnectionAttempt {
         if (state === "DIRECT" || state === "TURN" || state === "CONNECTED") {
           this.#connectedRoute = state;
           this.#tryReady();
-        } else if (state === "DISCONNECTED" && !this.#ready) {
-          this.fail("Camera connection was interrupted");
+        } else if (state === "DISCONNECTED") {
+          this.#clearBatteryTelemetry();
+          if (!this.#ready) this.fail("Camera connection was interrupted");
         }
       };
       client.onStream = (stream) => {
         if (this.#active) this.#callbacks.onStream(stream);
       };
       client.onTelemetry = (telemetry) => {
-        if (this.#active) this.#callbacks.onTelemetry(telemetry);
+        if (!this.#active) return;
+        this.#hasBatteryTelemetry = telemetry.batteryVoltage !== null || telemetry.batteryPercent !== null;
+        this.#callbacks.onTelemetry(telemetry);
       };
-      client.onError = (message) => this.fail(message);
+      client.onError = (message) => {
+        this.#clearBatteryTelemetry();
+        this.fail(message);
+      };
       client.connect();
 
       const channels = client.channels;
@@ -214,9 +221,16 @@ export class RideConnectionAttempt {
     const client = this.#client;
     this.#loop = null;
     this.#client = null;
+    this.#clearBatteryTelemetry();
     loop?.disarm(reason);
     loop?.stop();
     client?.close(reason);
+  }
+
+  #clearBatteryTelemetry(): void {
+    if (!this.#hasBatteryTelemetry) return;
+    this.#hasBatteryTelemetry = false;
+    this.#callbacks.onTelemetry({ batteryVoltage: null, batteryPercent: null });
   }
 }
 

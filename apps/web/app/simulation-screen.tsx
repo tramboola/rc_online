@@ -92,9 +92,22 @@ type QueueCarPresentation = {
   number: string;
   name: string;
   src: string | null;
-  battery: string;
+  batteryPercent: number | null;
   connection: string;
 };
+
+type QueueBatteryTone = "ok" | "unavailable" | "warning";
+
+export function getQueueBatteryPresentation(batteryPercent: number | null): {
+  label: string;
+  tone: QueueBatteryTone;
+} {
+  if (batteryPercent === null) return { label: "—", tone: "unavailable" };
+  return {
+    label: `${batteryPercent}%`,
+    tone: batteryPercent < 20 ? "warning" : "ok",
+  };
+}
 
 const simulationQueueCars: QueueCarPresentation[] = [
   {
@@ -102,7 +115,7 @@ const simulationQueueCars: QueueCarPresentation[] = [
     number: "CAR 01",
     name: "NIGHT RUNNER",
     src: "/assets/car-blue.webp",
-    battery: "86%",
+    batteryPercent: 86,
     connection: "EXCELLENT",
   },
   {
@@ -110,7 +123,7 @@ const simulationQueueCars: QueueCarPresentation[] = [
     number: "CAR 02",
     name: "RED COMET",
     src: "/assets/car-red.webp",
-    battery: "74%",
+    batteryPercent: 74,
     connection: "GOOD",
   },
 ];
@@ -125,7 +138,7 @@ function getQueueCars(
     number: `CAR ${String(index + 1).padStart(2, "0")}`,
     name: car.name.toUpperCase(),
     src: null,
-    battery: car.batteryPercent === null ? "—" : `${car.batteryPercent}%`,
+    batteryPercent: car.batteryPercent,
     connection: "AVAILABLE",
   }));
 }
@@ -846,20 +859,23 @@ function QueueScreen({
           </div>
           <h3>SELECT YOUR CAR</h3>
           <div className="car-choice-grid">
-            {queueCars.map(({ id, number, name, src, battery, connection }) => (
-              <button
-                aria-pressed={selectedCar === id}
-                className={`car-choice ${selectedCar === id ? "selected" : ""}`}
-                key={id}
-                onClick={() => setSelectedCar(id)}
-                type="button"
-              >
-                {selectedCar === id ? <CheckCircle className="choice-check" size={32} weight="fill" /> : null}
-                {src ? <img src={src} alt={`${name} RC car`} /> : <CarProfile aria-hidden="true" size={72} />}
-                <small>{number}</small><strong>{name}</strong>
-                <span><BatteryHigh size={28} /> {battery}</span><span><WifiHigh size={28} /> {connection}</span>
-              </button>
-            ))}
+            {queueCars.map(({ id, number, name, src, batteryPercent, connection }) => {
+              const battery = getQueueBatteryPresentation(batteryPercent);
+              return (
+                <button
+                  aria-pressed={selectedCar === id}
+                  className={`car-choice ${selectedCar === id ? "selected" : ""}`}
+                  key={id}
+                  onClick={() => setSelectedCar(id)}
+                  type="button"
+                >
+                  {selectedCar === id ? <CheckCircle className="choice-check" size={32} weight="fill" /> : null}
+                  {src ? <img src={src} alt={`${name} RC car`} /> : <CarProfile aria-hidden="true" size={72} />}
+                  <small>{number}</small><strong>{name}</strong>
+                  <span className={`battery-status battery-${battery.tone}`}><BatteryHigh size={28} /> {battery.label}</span><span><WifiHigh size={28} /> {connection}</span>
+                </button>
+              );
+            })}
             {queueCars.length === 0 ? (
               <div className="car-choice-empty" role="status">
                 <CarProfile aria-hidden="true" size={54} />

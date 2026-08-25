@@ -161,7 +161,55 @@ describe("RideConnectionAttempt", () => {
     attempt.close();
     client.onTelemetry({ batteryVoltage: null, batteryPercent: null });
 
-    expect(callbacks.onTelemetry).toHaveBeenCalledOnce();
-    expect(callbacks.onTelemetry).toHaveBeenCalledWith({ batteryVoltage: 12.6, batteryPercent: 84 });
+    expect(callbacks.onTelemetry).toHaveBeenCalledTimes(2);
+    expect(callbacks.onTelemetry).toHaveBeenNthCalledWith(1, { batteryVoltage: 12.6, batteryPercent: 84 });
+    expect(callbacks.onTelemetry).toHaveBeenNthCalledWith(2, { batteryVoltage: null, batteryPercent: null });
+  });
+
+  it("clears live battery telemetry when an active client disconnects", async () => {
+    const { attempt, callbacks, client } = harness();
+    await attempt.start();
+    client.onState("DIRECT");
+    attempt.markVideoLoadedData();
+
+    client.onTelemetry({ batteryVoltage: 8.279, batteryPercent: 94 });
+    client.onState("DISCONNECTED");
+
+    expect(callbacks.onTelemetry).toHaveBeenNthCalledWith(1, {
+      batteryVoltage: 8.279,
+      batteryPercent: 94,
+    });
+    expect(callbacks.onTelemetry).toHaveBeenNthCalledWith(2, {
+      batteryVoltage: null,
+      batteryPercent: null,
+    });
+  });
+
+  it("clears live battery telemetry when the session closes", async () => {
+    const { attempt, callbacks, client } = harness();
+    await attempt.start();
+    client.onTelemetry({ batteryVoltage: 8.279, batteryPercent: 94 });
+
+    attempt.close("session ended");
+
+    expect(callbacks.onTelemetry).toHaveBeenLastCalledWith({
+      batteryVoltage: null,
+      batteryPercent: null,
+    });
+  });
+
+  it("clears live battery telemetry when the active client reports a failure", async () => {
+    const { attempt, callbacks, client } = harness();
+    await attempt.start();
+    client.onState("DIRECT");
+    attempt.markVideoLoadedData();
+    client.onTelemetry({ batteryVoltage: 8.279, batteryPercent: 94 });
+
+    client.onError("Gateway connection failed");
+
+    expect(callbacks.onTelemetry).toHaveBeenLastCalledWith({
+      batteryVoltage: null,
+      batteryPercent: null,
+    });
   });
 });

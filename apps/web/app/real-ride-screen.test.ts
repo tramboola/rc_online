@@ -51,6 +51,7 @@ describe("real ride keyboard UI", () => {
 
   it.each([
     [null, { label: "—", tone: "unknown" }],
+    [0, { label: "0%", tone: "warning" }],
     [19, { label: "19%", tone: "warning" }],
     [20, { label: "20%", tone: "ok" }],
     [94, { label: "94%", tone: "ok" }],
