@@ -82,6 +82,10 @@ describe("device gateway contracts", () => {
     }).success).toBe(true);
     expect(GatewayClientMessageSchema.safeParse({
       ...legacyAuthenticate,
+      capabilities: { controlProtocolVersion: 5, otaRuntimeGeneration: 1 },
+    }).success).toBe(true);
+    expect(GatewayClientMessageSchema.safeParse({
+      ...legacyAuthenticate,
       capabilities: { otaRuntimeGeneration: 1, shell: true },
     }).success).toBe(false);
   });

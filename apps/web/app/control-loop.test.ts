@@ -89,6 +89,27 @@ describe("BrowserControlLoop", () => {
     });
   });
 
+  it("sends proportional signed axes in v5 frames", () => {
+    vi.useFakeTimers();
+    const fast = channel();
+    const reliable = channel();
+    const loop = new BrowserControlLoop("7f2fb843-b03b-442b-848b-b2a249b8702a", undefined, 5);
+    loop.bindChannels(fast, reliable);
+    loop.arm();
+    loop.setSteeringTrim(8);
+    loop.setInput({ steering: -0.375, throttle: 0.62 });
+    loop.start();
+    vi.advanceTimersByTime(20);
+
+    expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).toMatchObject({
+      v: 5,
+      steering: -375,
+      throttle: 620,
+      steeringTrimPercent: 8,
+      armed: true,
+    });
+  });
+
   it("queues automatic arming until a connecting reliable channel opens", () => {
     const fast = channel();
     const reliable = channel();

@@ -6,7 +6,7 @@ export type StoredDriveSession = {
   gatewayUrl: string;
   expiresAt: string;
   steeringTrimPercent: number;
-  controlProtocolVersion: 3 | 4;
+  controlProtocolVersion: 3 | 4 | 5;
   iceServers: IceServer[];
   iceTransportPolicy: "all" | "relay";
 };
@@ -240,7 +240,7 @@ export function loadDriveSession(): StoredDriveSession | null {
       Number.isInteger(parsed.steeringTrimPercent) &&
       parsed.steeringTrimPercent >= -20 &&
       parsed.steeringTrimPercent <= 20 &&
-      (parsed.controlProtocolVersion === 3 || parsed.controlProtocolVersion === 4)
+      (parsed.controlProtocolVersion === 3 || parsed.controlProtocolVersion === 4 || parsed.controlProtocolVersion === 5)
     ) ? parsed : null;
   } catch {
     return null;

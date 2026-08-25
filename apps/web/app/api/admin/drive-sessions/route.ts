@@ -13,7 +13,7 @@ type DriveSessionPostDependencies = {
     sessionId: string;
     expiresAt: Date;
     steeringTrimPercent: number;
-    controlProtocolVersion: 3 | 4;
+    controlProtocolVersion: 3 | 4 | 5;
   } | null>;
   now(): Date;
   ticketSecret: string;

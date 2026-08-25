@@ -42,4 +42,28 @@ describe("real ride keyboard UI", () => {
     expect(styles).toMatch(/\.real-ride-status \{[^}]*background: transparent;[^}]*border: 0;[^}]*box-shadow: none;/s);
     expect(styles).toMatch(/\.real-steering-trim \{[^}]*background: transparent;[^}]*border: 0;[^}]*filter: none;/s);
   });
+
+  it("provides a separate hold-to-use mobile nitro control", () => {
+    const mobileSource = readFileSync(new URL("./mobile-drive-controls.tsx", import.meta.url), "utf8");
+    expect(mobileSource).toContain("NITRO");
+    expect(mobileSource).not.toContain("63% MAX");
+    expect(mobileSource).not.toContain("HOLD · 100%");
+    expect(mobileSource).toContain("onPointerDown");
+    expect(mobileSource).toContain("onPointerUp");
+    expect(styles).toContain(".mobile-nitro-button");
+  });
+
+  it("provides a compact mobile end-session button wired to the existing end action", () => {
+    expect(source).toContain('className="mobile-end-session" onClick={() => setEndConfirmationOpen(true)}');
+    expect(source).toContain("ARE YOU SURE?");
+    expect(source).toContain('className="mobile-end-confirm"');
+    expect(styles).toContain(".mobile-end-session");
+  });
+
+  it("opens steering neutral adjustment from a dedicated mobile button", () => {
+    expect(source).toContain('className="mobile-steering-trim-toggle"');
+    expect(source).toContain("SET STEERING NEUTRAL");
+    expect(styles).toContain(".mobile-steering-trim-toggle");
+    expect(styles).toContain('.real-steering-trim[data-mobile-open="true"]');
+  });
 });

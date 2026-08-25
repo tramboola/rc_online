@@ -8,7 +8,7 @@ const ed25519Signature = z.string().regex(/^[A-Za-z0-9_-]{80,128}$/u);
 const httpsUrl = z.string().url().refine((value) => new URL(value).protocol === "https:");
 
 export const DeviceCapabilitiesSchema = z.object({
-  controlProtocolVersion: z.literal(4).optional(),
+  controlProtocolVersion: z.union([z.literal(4), z.literal(5)]).optional(),
   otaRuntimeGeneration: z.number().int().min(1).max(32767).optional(),
 }).strict();
 export type DeviceCapabilities = z.infer<typeof DeviceCapabilitiesSchema>;

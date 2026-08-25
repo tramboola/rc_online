@@ -4,15 +4,15 @@ interface DriveCommandBase {
   readonly type: "control.intent";
   readonly sessionId: string;
   readonly sequence: number;
-  readonly steering: -1 | 0 | 1;
-  readonly throttle: -1 | 0 | 1;
+  readonly steering: number;
+  readonly throttle: number;
   readonly nitro: boolean;
   readonly armed: boolean;
 }
 
 export type DriveCommand =
   | (DriveCommandBase & { readonly v: 3 })
-  | (DriveCommandBase & { readonly v: 4; readonly steeringTrimPercent: number });
+  | (DriveCommandBase & { readonly v: 4 | 5; readonly steeringTrimPercent: number });
 
 interface ControlInput {
   readonly steering?: number;
@@ -23,13 +23,13 @@ interface ControlInput {
 export class BrowserControlLoop {
   readonly #sessionId: string;
   readonly #onArmedChange: ((armed: boolean) => void) | undefined;
-  readonly #protocolVersion: 3 | 4;
+  readonly #protocolVersion: 3 | 4 | 5;
   #fastChannel: RTCDataChannel | null = null;
   #reliableChannel: RTCDataChannel | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
   #sequence = 0;
-  #steering: -1 | 0 | 1 = 0;
-  #throttle: -1 | 0 | 1 = 0;
+  #steering = 0;
+  #throttle = 0;
   #nitro = false;
   #steeringTrimPercent = 0;
   #armRequested = false;
@@ -38,7 +38,7 @@ export class BrowserControlLoop {
   public constructor(
     sessionId: string,
     onArmedChange?: (armed: boolean) => void,
-    protocolVersion: 3 | 4 = 3,
+    protocolVersion: 3 | 4 | 5 = 3,
   ) {
     this.#sessionId = sessionId;
     this.#onArmedChange = onArmedChange;
@@ -57,8 +57,8 @@ export class BrowserControlLoop {
   }
 
   public setInput(input: ControlInput): void {
-    this.#steering = discreteAxis(input.steering ?? this.#steering);
-    this.#throttle = discreteAxis(input.throttle ?? this.#throttle);
+    this.#steering = normalizedAxis(input.steering ?? this.#steering);
+    this.#throttle = normalizedAxis(input.throttle ?? this.#throttle);
     this.#nitro = input.nitro ?? this.#nitro;
   }
 
@@ -117,17 +117,18 @@ export class BrowserControlLoop {
   }
 
   private sendLatest(): void {
+    const proportional = this.#protocolVersion === 5;
     const base: DriveCommandBase = {
       type: "control.intent",
       sessionId: this.#sessionId,
       sequence: ++this.#sequence,
-      steering: this.#armed ? this.#steering : 0,
-      throttle: this.#armed ? this.#throttle : 0,
+      steering: this.#armed ? encodeAxis(this.#steering, proportional) : 0,
+      throttle: this.#armed ? encodeAxis(this.#throttle, proportional) : 0,
       nitro: this.#armed && this.#nitro,
       armed: this.#armed,
     };
-    const command: DriveCommand = this.#protocolVersion === 4
-      ? { v: 4, ...base, steeringTrimPercent: this.#steeringTrimPercent }
+    const command: DriveCommand = this.#protocolVersion >= 4
+      ? { v: this.#protocolVersion, ...base, steeringTrimPercent: this.#steeringTrimPercent }
       : { v: 3, ...base };
     if (this.#fastChannel?.readyState === "open") {
       this.#fastChannel.send(JSON.stringify(command));
@@ -155,6 +156,15 @@ export class BrowserControlLoop {
 function discreteAxis(value: number): -1 | 0 | 1 {
   if (!Number.isFinite(value) || value === 0) return 0;
   return value < 0 ? -1 : 1;
+}
+
+function normalizedAxis(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(-1, Math.min(1, value));
+}
+
+function encodeAxis(value: number, proportional: boolean): number {
+  return proportional ? Math.round(normalizedAxis(value) * 1000) : discreteAxis(value);
 }
 
 export function createRidePeerConnection(

@@ -11,9 +11,10 @@ describe("driveSessionExpiresAt", () => {
 });
 
 describe("controlProtocolVersionFromMetadata", () => {
-  it("fails safely to v3 unless a device explicitly advertises numeric v4", () => {
+  it("fails safely to v3 unless a device explicitly advertises a supported protocol", () => {
     expect(controlProtocolVersionFromMetadata({})).toBe(3);
     expect(controlProtocolVersionFromMetadata({ capabilities: { controlProtocolVersion: "4" } })).toBe(3);
     expect(controlProtocolVersionFromMetadata({ capabilities: { controlProtocolVersion: 4 } })).toBe(4);
+    expect(controlProtocolVersionFromMetadata({ capabilities: { controlProtocolVersion: 5 } })).toBe(5);
   });
 });

@@ -5,7 +5,7 @@ export type CreatedDriveSession = {
   sessionId: string;
   expiresAt: Date;
   steeringTrimPercent: number;
-  controlProtocolVersion: 3 | 4;
+  controlProtocolVersion: 3 | 4 | 5;
 };
 
 export const DRIVE_SESSION_DURATION_MS = 5 * 60_000;
@@ -18,11 +18,12 @@ export interface DriveSessionStore {
   create(userId: string, carId: string, now: Date): Promise<CreatedDriveSession | null>;
 }
 
-export function controlProtocolVersionFromMetadata(metadata: unknown): 3 | 4 {
+export function controlProtocolVersionFromMetadata(metadata: unknown): 3 | 4 | 5 {
   if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return 3;
   const capabilities = (metadata as Record<string, unknown>).capabilities;
   if (typeof capabilities !== "object" || capabilities === null || Array.isArray(capabilities)) return 3;
-  return (capabilities as Record<string, unknown>).controlProtocolVersion === 4 ? 4 : 3;
+  const version = (capabilities as Record<string, unknown>).controlProtocolVersion;
+  return version === 5 ? 5 : version === 4 ? 4 : 3;
 }
 
 export function createPostgresDriveSessionStore(databaseUrl: string): DriveSessionStore {

@@ -2,7 +2,7 @@
 
 import { Flag, GameController, ShieldCheck, WifiHigh } from "@phosphor-icons/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ConnectionLoadingOverlay } from "./connection-loading-screen";
 import { BrowserControlLoop } from "./control-loop";
@@ -21,6 +21,7 @@ import {
 import type { RideConnectionState, StoredDriveSession } from "./ride-session-client";
 import { formatSessionTime, SessionCountdown } from "./session-countdown";
 import { normalizeSteeringTrim, saveSteeringTrim } from "./steering-trim";
+import { MobileDriveControls } from "./mobile-drive-controls";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const TRIM_SAVE_DELAY_MS = 300;
@@ -68,6 +69,10 @@ export function RealRideScreen() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [steeringTrimPercent, setSteeringTrimPercent] = useState(0);
   const [trimSaveStatus, setTrimSaveStatus] = useState<TrimSaveStatus>("saved");
+  const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
+  const applyMobileInput = useCallback((input: { steering: number; throttle: number; nitro: boolean }) => {
+    loopRef.current?.setInput(input);
+  }, []);
 
   useEffect(() => {
     setConnection(initialConnectionSnapshot());
@@ -263,6 +268,20 @@ export function RealRideScreen() {
       <div className="ride-shade" />
       <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · NO AUDIO</b></div>
       <RideSessionClock remainingSeconds={remainingSeconds} />
+      <button className="mobile-end-session" onClick={() => setEndConfirmationOpen(true)} type="button"><Flag size={16} /> END SESSION</button>
+      {endConfirmationOpen ? (
+        <div className="mobile-end-confirm" role="dialog" aria-modal="true" aria-labelledby="mobile-end-confirm-title">
+          <section>
+            <span>END CURRENT DRIVE</span>
+            <strong id="mobile-end-confirm-title">ARE YOU SURE?</strong>
+            <p>The car will stop and your session will end.</p>
+            <div>
+              <button onClick={() => setEndConfirmationOpen(false)} type="button">KEEP DRIVING</button>
+              <button className="confirm" onClick={end} type="button"><Flag size={17} /> END SESSION</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       <section className="real-ride-status" aria-live="polite">
         <p><WifiHigh size={23} /> CONNECTION <strong className={["DIRECT", "TURN", "CONNECTED"].includes(state) ? "ok" : ""}>{state}</strong></p>
         <p><GameController size={23} /> CONTROLS <strong className={armed ? "ok" : ""}>{armed ? "KEYBOARD ACTIVE" : "SAFE / NEUTRAL"}</strong></p>
@@ -284,6 +303,12 @@ export function RealRideScreen() {
         </div>
         <p>WASD / ARROWS TO DRIVE · N NITRO</p>
       </section>
+      {rideSession?.controlProtocolVersion === 5 ? (
+        <MobileDriveControls
+          disabled={!armed}
+          onInput={applyMobileInput}
+        />
+      ) : null}
       <SteeringTrimControl
         disabled={!rideSession}
         onChange={updateSteeringTrim}
@@ -332,32 +357,39 @@ export function SteeringTrimControl({
   readonly saveStatus: TrimSaveStatus;
   readonly value: number;
 }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
   const formattedValue = `${value > 0 ? "+" : ""}${value}%`;
   const statusLabel = saveStatus === "not-saved" ? "NOT SAVED" : saveStatus.toUpperCase();
   return (
-    <section className="real-steering-trim" aria-label="Steering neutral adjustment">
-      <header>
-        <span>STEERING NEUTRAL</span>
-        <strong>{formattedValue}</strong>
-        <em data-status={saveStatus}>{statusLabel}</em>
-      </header>
-      <div>
-        <small>-20%</small>
-        <input
-          aria-label="Steering neutral trim"
-          disabled={disabled}
-          max={20}
-          min={-20}
-          onChange={(event) => onChange(Number(event.currentTarget.value))}
-          onKeyDown={(event) => event.stopPropagation()}
-          step={1}
-          type="range"
-          value={value}
-        />
-        <small>+20%</small>
-        <button disabled={disabled || value === 0} onClick={onReset} type="button">RESET</button>
-      </div>
-    </section>
+    <>
+      <button className="mobile-steering-trim-toggle" disabled={disabled} onClick={() => setMobileOpen(true)} type="button">
+        SET STEERING NEUTRAL <strong>{formattedValue}</strong>
+      </button>
+      <section className="real-steering-trim" data-mobile-open={mobileOpen} aria-label="Steering neutral adjustment">
+        <header>
+          <span>STEERING NEUTRAL</span>
+          <strong>{formattedValue}</strong>
+          <em data-status={saveStatus}>{statusLabel}</em>
+        </header>
+        <div>
+          <small>-20%</small>
+          <input
+            aria-label="Steering neutral trim"
+            disabled={disabled}
+            max={20}
+            min={-20}
+            onChange={(event) => onChange(Number(event.currentTarget.value))}
+            onKeyDown={(event) => event.stopPropagation()}
+            step={1}
+            type="range"
+            value={value}
+          />
+          <small>+20%</small>
+          <button disabled={disabled || value === 0} onClick={onReset} type="button">RESET</button>
+          <button className="mobile-steering-trim-done" onClick={() => setMobileOpen(false)} type="button">DONE</button>
+        </div>
+      </section>
+    </>
   );
 }
 
