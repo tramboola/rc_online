@@ -10,7 +10,6 @@ import {
   CheckCircle,
   Clock,
   CreditCard,
-  Desktop,
   Flag,
   GameController,
   Gauge,
@@ -21,7 +20,6 @@ import {
   Repeat,
   ShieldCheck,
   SpeakerHigh,
-  SteeringWheel,
   Stop,
   Timer,
   Trophy,
@@ -67,6 +65,8 @@ import {
   updatePressedKeys,
 } from "./keyboard-control";
 import { RealRideScreen } from "./real-ride-screen";
+import { MobileLandscapeNotice } from "./mobile-landscape-notice";
+import { MobilePreflight } from "./mobile-preflight";
 import { useViewerCount } from "./use-viewer-count";
 
 export type ScreenName =
@@ -216,20 +216,6 @@ function ActionButton({
       <span>{children}</span>
       <ArrowRight size={21} weight="bold" />
     </button>
-  );
-}
-
-function MobileGate() {
-  return (
-    <aside className="mobile-gate">
-      <SteeringWheel size={54} />
-      <h2>Desktop required to drive</h2>
-      <p>
-        Accounts, pricing and leaderboards work on mobile. Preflight, queue and
-        car control require a desktop browser.
-      </p>
-      <Link href="/">Return to live track</Link>
-    </aside>
   );
 }
 
@@ -693,17 +679,17 @@ function PreflightScreen() {
   }, []);
 
   return (
-    <div className="page desktop-flow">
+    <div className="page preflight-page">
       <Header active="preflight" />
-      <MobileGate />
       <main className="flow-main">
         <StepRail active={3} />
         <div className="flow-content">
-          <div className="title-row preflight-title">
-            <div><h1>PRE-FLIGHT CHECK</h1><p>Press the controls once to confirm your keyboard responds in the browser.</p></div>
-          </div>
-          <section className="preflight-grid">
-            <article className="data-panel controller-card">
+          <div className="desktop-preflight">
+            <div className="title-row preflight-title">
+              <div><h1>PRE-FLIGHT CHECK</h1><p>Press the controls once to confirm your keyboard responds in the browser.</p></div>
+            </div>
+            <section className="preflight-grid">
+              <article className="data-panel controller-card">
               <div className="panel-heading">
                 <h2>CONTROLLER SETUP</h2>
                 <div className="segmented">
@@ -745,12 +731,14 @@ function PreflightScreen() {
                 <li><kbd>N</kbd><span>NITRO<small>Hold with forward</small></span></li>
               </ul>
               <p className="success-line"><CheckCircle size={22} /> Keyboard input is ready</p>
-            </article>
-          </section>
-          <section className="neutral-panel data-panel">
-            <IconLabel icon={Keyboard} title="KEYBOARD READY" subtitle="WASD and arrow keys use the same controls." tone="lime" />
-            <ActionButton onClick={() => router.push("/queue")}>CONTINUE TO QUEUE</ActionButton>
-          </section>
+              </article>
+            </section>
+            <section className="neutral-panel data-panel">
+              <IconLabel icon={Keyboard} title="KEYBOARD READY" subtitle="WASD and arrow keys use the same controls." tone="lime" />
+              <ActionButton onClick={() => router.push("/queue")}>CONTINUE TO QUEUE</ActionButton>
+            </section>
+          </div>
+          <MobilePreflight />
         </div>
       </main>
     </div>
@@ -808,9 +796,8 @@ function QueueScreen({
   }
 
   return (
-    <div className="page desktop-flow">
+    <div className="page queue-page">
       <Header active="queue" />
-      <MobileGate />
       <main className="queue-main">
         <section className="queue-left">
           <div className="title-row"><h1>LIVE QUEUE</h1><IconLabel icon={UsersThree} title={operationalStatus ? queueCars.length : "2"} subtitle="CARS ONLINE" tone="lime" /></div>
@@ -967,8 +954,8 @@ function RideScreen({ mockMode }: { mockMode: boolean }) {
   }
 
   return (
-    <div className="ride-page desktop-flow">
-      <MobileGate />
+    <div className="ride-page">
+      <MobileLandscapeNotice detail="Hold it horizontally to use tilt steering and touch controls." />
       {mockMode ? (
         <video
           aria-label="Onboard view behind a green RC car on the Neon Circuit"

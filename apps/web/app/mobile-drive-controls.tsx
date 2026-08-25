@@ -11,9 +11,13 @@ type DeviceOrientationPermission = typeof DeviceOrientationEvent & {
 export function MobileDriveControls({
   disabled,
   onInput,
+  onTiltActivity,
+  onTouchActivity,
 }: {
   readonly disabled: boolean;
   readonly onInput: (input: { steering: number; throttle: number; nitro: boolean }) => void;
+  readonly onTiltActivity?: () => void;
+  readonly onTouchActivity?: () => void;
 }) {
   const centerRef = useRef<number | null>(null);
   const steeringRef = useRef(0);
@@ -45,6 +49,7 @@ export function MobileDriveControls({
           ? event.beta === null ? null : -event.beta
           : event.gamma;
       if (rawTilt === null || !Number.isFinite(rawTilt)) return;
+      onTiltActivity?.();
       if (centerRef.current === null) centerRef.current = rawTilt;
       const target = mapTiltToSteering(rawTilt, centerRef.current);
       publish(smoothAxis(steeringRef.current, target), throttleRef.current);
@@ -59,7 +64,7 @@ export function MobileDriveControls({
       document.removeEventListener("visibilitychange", neutralize);
       neutralize();
     };
-  }, [disabled, enabled, onInput]);
+  }, [disabled, enabled, onInput, onTiltActivity]);
 
   async function enableTilt(): Promise<void> {
     if (!("DeviceOrientationEvent" in window)) {
@@ -81,6 +86,7 @@ export function MobileDriveControls({
 
   function updateThrottle(event: React.PointerEvent<HTMLDivElement>): void {
     if (disabled) return;
+    onTouchActivity?.();
     event.currentTarget.setPointerCapture(event.pointerId);
     const bounds = event.currentTarget.getBoundingClientRect();
     const axis = mapThrottlePosition(event.clientY - bounds.top, bounds.height);
@@ -96,6 +102,7 @@ export function MobileDriveControls({
 
   function setNitroPressed(pressed: boolean): void {
     if (disabled && pressed) return;
+    if (pressed) onTouchActivity?.();
     publish(steeringRef.current, throttleRef.current, pressed);
   }
 

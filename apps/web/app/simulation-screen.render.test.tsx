@@ -49,6 +49,29 @@ describe("driving setup screens", () => {
     expect(source).not.toContain('logicalKey === "STOP"');
   });
 
+  it("renders phone preflight controls without a desktop-only gate", () => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen adminAccess mockMode screen="preflight" />,
+    );
+
+    expect(markup).toContain('class="mobile-preflight"');
+    expect(markup).toContain("PHONE CONTROL CHECK");
+    expect(markup).toContain("ENABLE TILT STEERING");
+    expect(markup).toContain("Proportional throttle and reverse");
+    expect(markup).not.toContain("Desktop required to drive");
+  });
+
+  it.each(["queue", "ride"] as const)(
+    "allows the %s flow to render on mobile instead of showing a desktop gate",
+    (screen) => {
+      const markup = renderToStaticMarkup(
+        <SimulationScreen adminAccess mockMode screen={screen} />,
+      );
+
+      expect(markup).not.toContain("Desktop required to drive");
+    },
+  );
+
   it("renders a queue offer without an acceptance countdown", () => {
     const markup = renderToStaticMarkup(
       <SimulationScreen

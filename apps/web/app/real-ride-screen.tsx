@@ -22,6 +22,7 @@ import type { RideConnectionState, StoredDriveSession } from "./ride-session-cli
 import { formatSessionTime, SessionCountdown } from "./session-countdown";
 import { normalizeSteeringTrim, saveSteeringTrim } from "./steering-trim";
 import { MobileDriveControls } from "./mobile-drive-controls";
+import { MobileLandscapeNotice } from "./mobile-landscape-notice";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const TRIM_SAVE_DELAY_MS = 300;
@@ -256,6 +257,7 @@ export function RealRideScreen() {
 
   return (
     <div className="ride-page real-ride-page">
+      <MobileLandscapeNotice detail="Hold it horizontally to use tilt steering and touch controls." />
       <video
         aria-label="Live onboard camera from RC Mania One"
         autoPlay
