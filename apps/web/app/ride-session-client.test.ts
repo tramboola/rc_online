@@ -87,6 +87,68 @@ describe("RideSessionClient", () => {
     expect(onStream).toHaveBeenCalledWith(stream);
   });
 
+  it("publishes numeric battery telemetry for its authenticated session", () => {
+    const { client, socket } = harness();
+    const onTelemetry = vi.fn();
+    client.onTelemetry = onTelemetry;
+    client.connect();
+    socket.readyState = 1;
+    socket.onopen?.();
+
+    socket.onmessage?.({ data: JSON.stringify({
+      v: 1,
+      type: "device.telemetry",
+      sessionId: session.sessionId,
+      batteryVoltage: 12.6,
+      batteryPercent: 84,
+    }) });
+
+    expect(onTelemetry).toHaveBeenCalledOnce();
+    expect(onTelemetry).toHaveBeenCalledWith({ batteryVoltage: 12.6, batteryPercent: 84 });
+  });
+
+  it("publishes unavailable battery values as null", () => {
+    const { client, socket } = harness();
+    const onTelemetry = vi.fn();
+    client.onTelemetry = onTelemetry;
+    client.connect();
+    socket.readyState = 1;
+    socket.onopen?.();
+
+    socket.onmessage?.({ data: JSON.stringify({
+      v: 1,
+      type: "device.telemetry",
+      sessionId: session.sessionId,
+      batteryVoltage: null,
+      batteryPercent: null,
+    }) });
+
+    expect(onTelemetry).toHaveBeenCalledOnce();
+    expect(onTelemetry).toHaveBeenCalledWith({ batteryVoltage: null, batteryPercent: null });
+  });
+
+  it("rejects telemetry for a different session without publishing it", () => {
+    const { client, socket } = harness();
+    const onTelemetry = vi.fn();
+    const onError = vi.fn();
+    client.onTelemetry = onTelemetry;
+    client.onError = onError;
+    client.connect();
+    socket.readyState = 1;
+    socket.onopen?.();
+
+    socket.onmessage?.({ data: JSON.stringify({
+      v: 1,
+      type: "device.telemetry",
+      sessionId: "566a5cd4-4cd6-4cc5-855e-36bc54c1ae4a",
+      batteryVoltage: 12.6,
+      batteryPercent: 84,
+    }) });
+
+    expect(onError).toHaveBeenCalledWith("Unexpected session");
+    expect(onTelemetry).not.toHaveBeenCalled();
+  });
+
   it("reports real gateway, signaling, peer, and video milestones", async () => {
     const { client, socket, peer } = harness();
     const progress: string[] = [];

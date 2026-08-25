@@ -24,6 +24,11 @@ export type RideConnectionProgress =
 
 export type RideConnectionState = "CONNECTING" | "DIRECT" | "TURN" | "CONNECTED" | "DISCONNECTED";
 
+export type RideBatteryTelemetry = {
+  batteryVoltage: number | null;
+  batteryPercent: number | null;
+};
+
 type RideSessionClientDependencies = {
   createSocket(url: string): WebSocket;
   createPeer(configuration: RTCConfiguration): RTCPeerConnection;
@@ -47,6 +52,7 @@ export class RideSessionClient {
   onState: (state: RideConnectionState) => void = () => undefined;
   onError: (message: string) => void = () => undefined;
   onProgress: (event: RideConnectionProgress) => void = () => undefined;
+  onTelemetry: (telemetry: RideBatteryTelemetry) => void = () => undefined;
 
   constructor(session: StoredDriveSession, dependencies: RideSessionClientDependencies = defaultDependencies) {
     this.#session = session;
@@ -137,6 +143,14 @@ export class RideSessionClient {
       const message = GatewayServerMessageSchema.parse(JSON.parse(raw));
       if (message.type === "auth.rejected" || message.type === "error") {
         this.onError(message.type === "error" ? message.message : message.reason);
+        return;
+      }
+      if (message.type === "device.telemetry") {
+        if (message.sessionId !== this.#session.sessionId) throw new Error("Unexpected session");
+        this.onTelemetry({
+          batteryVoltage: message.batteryVoltage,
+          batteryPercent: message.batteryPercent,
+        });
         return;
       }
       if (message.type === "session.start") {

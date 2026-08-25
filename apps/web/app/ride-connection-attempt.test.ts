@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { RideConnectionAttempt } from "./ride-connection-attempt";
-import type { RideConnectionProgress, RideConnectionState, StoredDriveSession } from "./ride-session-client";
+import type { RideBatteryTelemetry, RideConnectionProgress, RideConnectionState, StoredDriveSession } from "./ride-session-client";
 
 const session: StoredDriveSession = {
   sessionId: "bd450fe7-ec99-4983-a5fe-46ca30f260de",
@@ -26,6 +26,7 @@ function harness() {
     onProgress: (_progress: RideConnectionProgress) => undefined,
     onState: (_state: RideConnectionState) => undefined,
     onStream: (_stream: MediaStream) => undefined,
+    onTelemetry: (_telemetry: RideBatteryTelemetry) => undefined,
   };
   const loop = {
     arm: vi.fn(),
@@ -46,6 +47,7 @@ function harness() {
     onSession: vi.fn(),
     onSnapshot: vi.fn((snapshot: { status: string; errorMessage: string }) => snapshots.push(snapshot)),
     onStream: vi.fn(),
+    onTelemetry: vi.fn(),
   };
   const attempt = new RideConnectionAttempt("car-01", callbacks, {
     clearTimeout: vi.fn(),
@@ -143,5 +145,17 @@ describe("RideConnectionAttempt", () => {
     expect(client.close).toHaveBeenCalledWith("retrying");
     expect(callbacks.onReady).not.toHaveBeenCalled();
     expect(callbacks.onStream).not.toHaveBeenCalled();
+  });
+
+  it("forwards client telemetry only while the connection attempt is active", async () => {
+    const { attempt, callbacks, client } = harness();
+    await attempt.start();
+
+    client.onTelemetry({ batteryVoltage: 12.6, batteryPercent: 84 });
+    attempt.close();
+    client.onTelemetry({ batteryVoltage: null, batteryPercent: null });
+
+    expect(callbacks.onTelemetry).toHaveBeenCalledOnce();
+    expect(callbacks.onTelemetry).toHaveBeenCalledWith({ batteryVoltage: 12.6, batteryPercent: 84 });
   });
 });

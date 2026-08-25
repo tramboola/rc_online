@@ -2,6 +2,7 @@ import type { BrowserControlLoop } from "./control-loop";
 import {
   createAdminDriveSession,
   RideSessionClient,
+  type RideBatteryTelemetry,
   type RideConnectionState,
   type RideConnectionProgress,
   type StoredDriveSession,
@@ -18,7 +19,7 @@ export type RideControlLoop = Pick<
 
 type RideSessionClientLike = Pick<
   RideSessionClient,
-  "channels" | "close" | "connect" | "onError" | "onProgress" | "onState" | "onStream"
+  "channels" | "close" | "connect" | "onError" | "onProgress" | "onState" | "onStream" | "onTelemetry"
 >;
 
 export type RideConnectionSnapshot = {
@@ -32,8 +33,12 @@ export type RideConnectionAttemptCallbacks = {
   onSnapshot: (snapshot: RideConnectionSnapshot) => void;
   onSession: (session: StoredDriveSession) => void;
   onStream: (stream: MediaStream) => void;
+  onTelemetry: (telemetry: RideBatteryTelemetry) => void;
   onReady: (loop: RideControlLoop, route: Exclude<RideConnectionState, "CONNECTING" | "DISCONNECTED">) => void;
 };
+
+type RideConnectionAttemptCallbacksInput = Omit<RideConnectionAttemptCallbacks, "onTelemetry">
+  & Partial<Pick<RideConnectionAttemptCallbacks, "onTelemetry">>;
 
 export type RideConnectionAttemptDependencies = {
   clearTimeout: (handle: number) => void;
@@ -86,11 +91,11 @@ export class RideConnectionAttempt {
 
   public constructor(
     carId: string,
-    callbacks: RideConnectionAttemptCallbacks,
+    callbacks: RideConnectionAttemptCallbacksInput,
     dependencies: RideConnectionAttemptDependencies,
   ) {
     this.#carId = carId;
-    this.#callbacks = callbacks;
+    this.#callbacks = { onTelemetry: () => undefined, ...callbacks };
     this.#dependencies = dependencies;
   }
 
@@ -124,6 +129,9 @@ export class RideConnectionAttempt {
       };
       client.onStream = (stream) => {
         if (this.#active) this.#callbacks.onStream(stream);
+      };
+      client.onTelemetry = (telemetry) => {
+        if (this.#active) this.#callbacks.onTelemetry(telemetry);
       };
       client.onError = (message) => this.fail(message);
       client.connect();
