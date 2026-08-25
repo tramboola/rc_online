@@ -22,6 +22,8 @@ export const DeviceHealthSchema = z.object({
   fps: z.number().int().min(1).max(120),
   cpuTemperatureC: z.number().min(-20).max(120).nullable(),
   wifiSignalDbm: z.number().int().min(-120).max(0).nullable(),
+  batteryVoltage: z.number().min(0).max(16).nullable().optional(),
+  batteryPercent: z.number().int().min(0).max(100).nullable().optional(),
 }).strict();
 export type DeviceHealth = z.infer<typeof DeviceHealthSchema>;
 
@@ -128,6 +130,13 @@ export const GatewayServerMessageSchema = z.discriminatedUnion("type", [
     artifactSizeBytes: z.number().int().min(1).max(8 * 1024 * 1024),
     digestSha256,
     signature: ed25519Signature,
+  }).strict(),
+  z.object({
+    v: z.literal(1),
+    type: z.literal("device.telemetry"),
+    sessionId: uuid,
+    batteryVoltage: z.number().min(0).max(16).nullable(),
+    batteryPercent: z.number().int().min(0).max(100).nullable(),
   }).strict(),
   z.object({
     v: z.literal(1),

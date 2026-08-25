@@ -27,6 +27,51 @@ describe("device gateway contracts", () => {
     })).toMatchObject({ fps: 60, cameraReady: true });
   });
 
+  it("keeps legacy heartbeats valid and accepts nullable battery telemetry", () => {
+    const legacyHeartbeat = {
+      v: 1,
+      type: "device.heartbeat",
+      health: {
+        cameraReady: true,
+        gpioReady: true,
+        watchdogReady: true,
+        width: 1280,
+        height: 720,
+        fps: 60,
+        cpuTemperatureC: 47.5,
+        wifiSignalDbm: -51,
+      },
+    } as const;
+
+    expect(GatewayClientMessageSchema.safeParse(legacyHeartbeat).success).toBe(true);
+    expect(GatewayClientMessageSchema.safeParse({
+      ...legacyHeartbeat,
+      health: { ...legacyHeartbeat.health, batteryVoltage: 8.279, batteryPercent: 94 },
+    }).success).toBe(true);
+    expect(GatewayClientMessageSchema.safeParse({
+      ...legacyHeartbeat,
+      health: { ...legacyHeartbeat.health, batteryVoltage: null, batteryPercent: null },
+    }).success).toBe(true);
+  });
+
+  it("rejects battery telemetry outside its physical bounds", () => {
+    const health = {
+      cameraReady: true,
+      gpioReady: true,
+      watchdogReady: true,
+      width: 1280,
+      height: 720,
+      fps: 60,
+      cpuTemperatureC: 47.5,
+      wifiSignalDbm: -51,
+    } as const;
+
+    expect(DeviceHealthSchema.safeParse({ ...health, batteryVoltage: -0.001 }).success).toBe(false);
+    expect(DeviceHealthSchema.safeParse({ ...health, batteryVoltage: 16.001 }).success).toBe(false);
+    expect(DeviceHealthSchema.safeParse({ ...health, batteryPercent: 94.5 }).success).toBe(false);
+    expect(DeviceHealthSchema.safeParse({ ...health, batteryPercent: 101 }).success).toBe(false);
+  });
+
   it("rejects impossible health values and additional fields", () => {
     expect(DeviceHealthSchema.safeParse({
       cameraReady: true,
@@ -137,5 +182,15 @@ describe("device gateway contracts", () => {
       type: "session.start",
       carId,
     }).success).toBe(false);
+  });
+
+  it("accepts server telemetry with a valid session and nullable battery values", () => {
+    expect(GatewayServerMessageSchema.safeParse({
+      v: 1,
+      type: "device.telemetry",
+      sessionId,
+      batteryVoltage: null,
+      batteryPercent: null,
+    }).success).toBe(true);
   });
 });
