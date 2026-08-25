@@ -14,6 +14,7 @@ import type {
   ProvisionCarInput,
   UpdateProgressStatus
 } from "./store.js";
+import { batteryCarUpdate } from "./battery-health.js";
 
 export class PostgresGatewayStore implements GatewayStore {
   readonly #database: ReturnType<typeof createDatabase>;
@@ -250,6 +251,14 @@ export class PostgresGatewayStore implements GatewayStore {
       .where(eq(schema.devices.id, deviceId))
       .returning({ carId: schema.devices.carId });
     if (!device?.carId) return null;
+
+    const carUpdate = batteryCarUpdate(health);
+    if (Object.hasOwn(carUpdate, "batteryPercent")) {
+      await this.#database.db
+        .update(schema.cars)
+        .set({ ...carUpdate, updatedAt: now })
+        .where(eq(schema.cars.id, device.carId));
+    }
 
     const [car] = await this.#database.db
       .select({ adminBlocked: schema.cars.adminBlocked })
