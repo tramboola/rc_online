@@ -23,6 +23,7 @@ import { formatSessionTime, SessionCountdown } from "./session-countdown";
 import { normalizeSteeringTrim, saveSteeringTrim } from "./steering-trim";
 import { MobileDriveControls } from "./mobile-drive-controls";
 import { MobileLandscapeNotice } from "./mobile-landscape-notice";
+import { RideFullscreenToggle } from "./ride-fullscreen-toggle";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const TRIM_SAVE_DELAY_MS = 300;
@@ -49,6 +50,7 @@ export function RealRideScreen() {
   const searchParams = useSearchParams();
   const carId = searchParams.get("car") ?? fallbackCarId;
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const rideSurfaceRef = useRef<HTMLDivElement | null>(null);
   const videoAttemptRef = useRef<RideConnectionAttempt | null>(null);
   const attemptRef = useRef<RideConnectionAttempt | null>(null);
   const loopRef = useRef<BrowserControlLoop | null>(null);
@@ -256,7 +258,7 @@ export function RealRideScreen() {
   }
 
   return (
-    <div className="ride-page real-ride-page">
+    <div className="ride-page real-ride-page" ref={rideSurfaceRef}>
       <MobileLandscapeNotice detail="Hold it horizontally to use tilt steering and touch controls." />
       <video
         aria-label="Live onboard camera from RC Mania One"
@@ -271,6 +273,7 @@ export function RealRideScreen() {
       <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · NO AUDIO</b></div>
       <RideSessionClock remainingSeconds={remainingSeconds} />
       <button className="mobile-end-session" onClick={() => setEndConfirmationOpen(true)} type="button"><Flag size={16} /> END SESSION</button>
+      <RideFullscreenToggle target={rideSurfaceRef} />
       {endConfirmationOpen ? (
         <div className="mobile-end-confirm" role="dialog" aria-modal="true" aria-labelledby="mobile-end-confirm-title">
           <section>

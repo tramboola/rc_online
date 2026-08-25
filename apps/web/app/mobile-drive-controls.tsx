@@ -106,10 +106,6 @@ export function MobileDriveControls({
     publish(steeringRef.current, throttleRef.current, pressed);
   }
 
-  const outputPercent = throttle > 0
-    ? Math.round(throttle * (nitro ? 100 : 63))
-    : Math.round(Math.abs(throttle) * 100);
-
   return (
     <section className="mobile-drive-controls" aria-label="Phone driving controls">
       <div className="mobile-steering-meter">
@@ -133,7 +129,6 @@ export function MobileDriveControls({
           onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) updateThrottle(event); }}
           onPointerUp={releaseThrottle}
         ><i style={{ top: `${throttleAxisToTrackPercent(throttle)}%` }} /></div>
-        <strong>{outputPercent}%</strong>
         <span>REVERSE</span>
       </div>
       <button

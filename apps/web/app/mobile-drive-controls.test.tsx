@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MobileDriveControls } from "./mobile-drive-controls";
@@ -28,6 +28,7 @@ describe("MobileDriveControls readiness feedback", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -54,5 +55,17 @@ describe("MobileDriveControls readiness feedback", () => {
 
     expect(onTiltActivity).toHaveBeenCalledTimes(1);
     expect(onTouchActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps throttle output visual without showing a numeric percentage", () => {
+    render(
+      <MobileDriveControls
+        disabled={false}
+        onInput={vi.fn()}
+      />,
+    );
+
+    const track = screen.getByLabelText("Proportional throttle and reverse");
+    expect(track.parentElement?.textContent).not.toContain("%");
   });
 });
