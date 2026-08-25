@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import * as realRideScreen from "./real-ride-screen";
+import {
+  EMPTY_BATTERY_TELEMETRY,
+  batteryTelemetryReducer,
+  getBatteryPresentation,
+} from "./real-ride-screen";
 
 const source = readFileSync(new URL("./real-ride-screen.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
@@ -45,25 +49,32 @@ describe("real ride keyboard UI", () => {
     expect(styles).toMatch(/\.real-steering-trim \{[^}]*background: transparent;[^}]*border: 0;[^}]*filter: none;/s);
   });
 
-  it("formats unknown and reported battery percentages for the driver", () => {
-    const formatter = Reflect.get(realRideScreen, "formatBatteryPercent");
-
-    expect(formatter).toBeTypeOf("function");
-    if (typeof formatter !== "function") return;
-
-    expect(formatter(null)).toBe("—");
-    expect(formatter(94)).toBe("94%");
+  it.each([
+    [null, { label: "—", tone: "unknown" }],
+    [19, { label: "19%", tone: "warning" }],
+    [20, { label: "20%", tone: "ok" }],
+    [94, { label: "94%", tone: "ok" }],
+  ] as const)("presents battery percentage %s with the honest driver status", (batteryPercent, expected) => {
+    expect(getBatteryPresentation(batteryPercent)).toEqual(expected);
   });
 
-  it("shows live battery telemetry and reserves its warning state for readings below 20 percent", () => {
-    expect(source).toMatch(/const \[batteryTelemetry, setBatteryTelemetry\] = useState<RideBatteryTelemetry>\(\{\s*batteryVoltage: null,\s*batteryPercent: null,\s*}\);/s);
-    expect(source).toContain("onTelemetry: setBatteryTelemetry,");
-    expect(source).toContain("batteryPercent !== null && batteryPercent < 20");
-    expect(source).toContain('className={`real-ride-battery ${isBatteryLow ? "battery-warning" : ""}`}');
-    expect(source).toContain("formatBatteryPercent(batteryPercent)");
-    expect(styles).toMatch(/\.real-ride-status strong\.ok \{[^}]*color: var\(--lime\);/s);
-    expect(styles).toMatch(/\.real-ride-battery\.battery-warning strong\.warning \{[^}]*color: var\(--red\);/s);
+  it("updates live telemetry and clears it for the next connection attempt", () => {
+    const liveTelemetry = { batteryVoltage: 7.4, batteryPercent: 94 };
+    const updated = batteryTelemetryReducer(EMPTY_BATTERY_TELEMETRY, {
+      type: "TELEMETRY",
+      telemetry: liveTelemetry,
+    });
+    const reset = batteryTelemetryReducer(updated, { type: "RESET" });
+
+    expect(updated).toEqual(liveTelemetry);
+    expect(getBatteryPresentation(EMPTY_BATTERY_TELEMETRY.batteryPercent)).toEqual({ label: "—", tone: "unknown" });
+    expect(reset).toEqual(EMPTY_BATTERY_TELEMETRY);
+    expect(getBatteryPresentation(reset.batteryPercent)).toEqual({ label: "—", tone: "unknown" });
+  });
+
+  it("keeps connection and battery status visible on mobile without a new camera panel", () => {
     expect(styles).toMatch(/\.real-ride-status p:first-child,\s*\.real-ride-status \.real-ride-battery \{[^}]*display: grid;/s);
+    expect(styles).toMatch(/\.real-ride-status \{[^}]*background: transparent;[^}]*border: 0;[^}]*box-shadow: none;/s);
   });
 
   it("provides a separate hold-to-use mobile nitro control", () => {
