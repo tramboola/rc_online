@@ -20,12 +20,17 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
-function createStore() {
+function createStore({ deferNextHeartbeat = false }: { deferNextHeartbeat?: boolean } = {}) {
   let enrolled = false;
   let credentialHash = "";
   const heartbeats: unknown[] = [];
   const claimedUpdates: string[] = [];
   const updateStatuses: unknown[] = [];
+  let resolveDeferredHeartbeatStarted: (() => void) | null = null;
+  const deferredHeartbeatStarted = new Promise<void>((resolve) => {
+    resolveDeferredHeartbeatStarted = resolve;
+  });
+  let releaseDeferredHeartbeat: (() => void) | null = null;
   let pendingOffer: {
     updateId: string;
     version: string;
@@ -57,6 +62,13 @@ function createStore() {
       return true;
     },
     recordHeartbeat: async (_deviceId: string, health: unknown) => {
+      if (deferNextHeartbeat) {
+        deferNextHeartbeat = false;
+        resolveDeferredHeartbeatStarted?.();
+        await new Promise<void>((resolve) => {
+          releaseDeferredHeartbeat = resolve;
+        });
+      }
       heartbeats.push(health);
       return { carId: "a98ddba0-65f2-453d-b45a-c7d094a45b24", adminBlocked: false };
     },
@@ -71,6 +83,12 @@ function createStore() {
     heartbeats,
     claimedUpdates,
     updateStatuses,
+    waitForDeferredHeartbeat: () => deferredHeartbeatStarted,
+    releaseDeferredHeartbeat() {
+      if (!releaseDeferredHeartbeat) throw new Error("No heartbeat persistence is waiting");
+      releaseDeferredHeartbeat();
+      releaseDeferredHeartbeat = null;
+    },
     setPendingOffer(offer: NonNullable<typeof pendingOffer>) { pendingOffer = offer; }
   };
 }
@@ -119,6 +137,23 @@ function nextMessageOfType(socket: WebSocket, type: string): Promise<unknown> {
       socket.off("message", onMessage);
       resolve(message);
     };
+    socket.on("message", onMessage);
+  });
+}
+
+function expectNoMessageOfType(socket: WebSocket, type: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onMessage = (data: WebSocket.RawData) => {
+      const message = JSON.parse(data.toString());
+      if (message.type !== type) return;
+      clearTimeout(timeout);
+      socket.off("message", onMessage);
+      reject(new Error(`Received ${type} before heartbeat persistence completed`));
+    };
+    const timeout = setTimeout(() => {
+      socket.off("message", onMessage);
+      resolve();
+    }, 50);
     socket.on("message", onMessage);
   });
 }
@@ -233,8 +268,9 @@ describe("gateway enrollment and device socket", () => {
     socket.close();
   });
 
-  it("sends a device heartbeat's battery telemetry only to its authenticated browser", async () => {
-    const { store, heartbeats } = createStore();
+  it("sends persisted heartbeat telemetry only to its authenticated browser", async () => {
+    const fixture = createStore({ deferNextHeartbeat: true });
+    const { store, heartbeats } = fixture;
     const { server, baseUrl } = await listen(store);
     const enrollment = await server.inject({
       method: "POST",
@@ -297,6 +333,11 @@ describe("gateway enrollment and device socket", () => {
         }
       }));
 
+      await fixture.waitForDeferredHeartbeat();
+      expect(heartbeats).toHaveLength(0);
+      await expectNoMessageOfType(browser, "device.telemetry");
+      fixture.releaseDeferredHeartbeat();
+
       expect(await telemetry).toEqual({
         v: 1,
         type: "device.telemetry",
@@ -305,6 +346,29 @@ describe("gateway enrollment and device socket", () => {
         batteryPercent: 94
       });
       expect(heartbeats).toHaveLength(1);
+
+      const normalizedTelemetry = nextMessageOfType(browser, "device.telemetry");
+      device.send(JSON.stringify({
+        v: 1,
+        type: "device.heartbeat",
+        health: {
+          cameraReady: true,
+          gpioReady: true,
+          watchdogReady: true,
+          width: 1280,
+          height: 720,
+          fps: 60,
+          cpuTemperatureC: 44,
+          wifiSignalDbm: -50
+        }
+      }));
+      expect(await normalizedTelemetry).toEqual({
+        v: 1,
+        type: "device.telemetry",
+        sessionId: "47b691ed-0b69-4bdb-8040-6740560596c2",
+        batteryVoltage: null,
+        batteryPercent: null
+      });
     } finally {
       device.terminate();
       browser?.terminate();

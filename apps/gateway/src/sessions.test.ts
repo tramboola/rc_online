@@ -56,12 +56,18 @@ describe("SessionRegistry", () => {
     const activeBrowser = peer();
     const otherBrowser = peer();
     const otherCarId = "605594be-e4d5-468c-a2c1-20f3db29f4d7";
+    const otherSession = {
+      ...session,
+      sessionId: "838b5dd2-36ad-43e2-829f-f037e75207ba",
+      carId: otherCarId
+    };
 
     registry.attachDevice(session.carId, "device-1", activeDevice.value);
     registry.attachDevice(otherCarId, "device-2", otherDevice.value);
 
-    expect(registry.sendDeviceTelemetry(otherCarId, 8.279, 94)).toBe(false);
+    expect(registry.sendDeviceTelemetry("4dc7688e-c7be-4a65-b734-d07d2a81665a", 8.279, 94)).toBe(false);
     expect(registry.attachBrowser(session, activeBrowser.value)).toBe(true);
+    expect(registry.attachBrowser(otherSession, otherBrowser.value)).toBe(true);
     expect(registry.sendDeviceTelemetry(session.carId, 8.279, 94)).toBe(true);
     expect(activeBrowser.messages.filter((message) => message.type === "device.telemetry")).toEqual([{
       v: 1,
@@ -70,7 +76,7 @@ describe("SessionRegistry", () => {
       batteryVoltage: 8.279,
       batteryPercent: 94
     }]);
-    expect(otherBrowser.messages).toEqual([]);
+    expect(otherBrowser.messages.filter((message) => message.type === "device.telemetry")).toEqual([]);
   });
 
   it("rejects a second browser and a session whose car has no connected device", () => {
