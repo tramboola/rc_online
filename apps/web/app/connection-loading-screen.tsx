@@ -7,7 +7,7 @@ import {
   TerminalWindow,
 } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { OperationalStatus } from "./operational-status";
 
@@ -64,6 +64,39 @@ export type ConnectionLoadingOverlayProps = {
   status: ConnectionLoadingStatus;
 };
 
+export function ConnectionBackground() {
+  const [loaded, setLoaded] = useState(false);
+  const fullImageRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const image = fullImageRef.current;
+    if (image?.complete && image.naturalWidth > 0) setLoaded(true);
+  }, []);
+
+  return (
+    <>
+      <img
+        alt=""
+        aria-hidden="true"
+        className="connection-background-preview"
+        decoding="async"
+        src="/assets/loading-background-preview.webp?v=320q35-1"
+      />
+      <img
+        alt=""
+        aria-hidden="true"
+        className="connection-background"
+        data-loaded={loaded}
+        decoding="async"
+        fetchPriority="high"
+        onLoad={() => setLoaded(true)}
+        ref={fullImageRef}
+        src="/assets/loading-background.webp?v=1280q65-1"
+      />
+    </>
+  );
+}
+
 export function ConnectionLoadingOverlay({
   activeStep,
   entries,
@@ -84,13 +117,7 @@ export function ConnectionLoadingOverlay({
 
   return (
     <main className={`connection-loading-page status-${status}`}>
-      <img
-        alt=""
-        aria-hidden="true"
-        className="connection-background"
-        fetchPriority="high"
-        src="/assets/loading-background.webp"
-      />
+      <ConnectionBackground />
       <section className="connection-loading-shell" aria-labelledby="connection-title">
         <img
           alt="RC Mania"

@@ -1450,9 +1450,9 @@ p { color: #a9afb3; }
 .connection-loading-overlay .connection-loading-page {
   min-height: 100%;
 }
-.connection-background {
+.connection-background,
+.connection-background-preview {
   position: absolute;
-  z-index: -2;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -1460,6 +1460,17 @@ p { color: #a9afb3; }
   object-fit: cover;
   object-position: center;
 }
+.connection-background-preview {
+  z-index: -2;
+  filter: blur(5px);
+  transform: scale(1.015);
+}
+.connection-background {
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.connection-background[data-loaded="true"] { opacity: 1; }
 .connection-loading-shell {
   width: min(1030px, calc(100vw - 48px));
   min-height: 100svh;
@@ -1535,15 +1546,51 @@ p { color: #a9afb3; }
   box-shadow: 0 0 16px rgba(255, 48, 56, .66);
 }
 .system-log-panel {
+  --frame-color: #849096;
+  --frame-width: 1px;
+  --cut-size: 16px;
+  --corner-stroke-size: calc(var(--cut-size) - 1px);
+  position: relative;
   width: 100%;
   min-height: 435px;
-  border: 1px solid #849096;
+  border: 1px solid var(--frame-color);
   border-inline-width: 3px;
-  border-inline-color: #849096;
   background: rgba(2, 8, 11, .9);
   clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px);
   box-shadow: 0 20px 55px rgba(0, 0, 0, .68), inset 0 0 42px rgba(20, 39, 47, .16);
   overflow: hidden;
+}
+.system-log-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) top left / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(45deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) top right / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(135deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) bottom right / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat,
+    linear-gradient(45deg,
+      transparent calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% - var(--frame-width)),
+      var(--frame-color) calc(50% + var(--frame-width)),
+      transparent calc(50% + var(--frame-width))
+    ) bottom left / var(--corner-stroke-size) var(--corner-stroke-size) no-repeat;
 }
 .system-log-header {
   min-height: 47px;

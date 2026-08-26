@@ -335,21 +335,7 @@ export function RealRideScreen() {
         </p>
         {error ? <p className="real-ride-error">{error}</p> : null}
       </section>
-      <section className="real-keyboard-panel" aria-label="Live keyboard controls">
-        <div className="real-control-readout">
-          STEER {steeringLabel(control.steering)} · THROTTLE {throttleLabel(control)}
-        </div>
-        <div className="real-keyboard-layout">
-          <div className="real-wasd" aria-label="WASD and arrow keys">
-            <KeyCap active={isDriveKeyActive(pressedKeys, "W")} className="key-w" label="W" sublabel="/↑" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "A")} className="key-a" label="A" sublabel="/←" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "S")} className="key-s" label="S" sublabel="/↓" />
-            <KeyCap active={isDriveKeyActive(pressedKeys, "D")} className="key-d" label="D" sublabel="/→" />
-          </div>
-          <KeyCap active={isDriveKeyActive(pressedKeys, "NITRO")} className="key-nitro" label="N" sublabel="NITRO" />
-        </div>
-        <p>WASD / ARROWS TO DRIVE · N NITRO</p>
-      </section>
+      <RideKeyboardPanel control={control} pressedKeys={pressedKeys} />
       {rideSession?.controlProtocolVersion === 5 ? (
         <MobileDriveControls
           disabled={!armed}
@@ -466,8 +452,34 @@ function steeringLabel(steering: -1 | 0 | 1): string {
   return steering < 0 ? "LEFT" : steering > 0 ? "RIGHT" : "CENTER";
 }
 
-function throttleLabel(control: KeyboardControlIntent): string {
-  if (control.throttle < 0) return "REVERSE 63%";
-  if (control.throttle > 0) return control.nitro ? "NITRO 100%" : "FORWARD 63%";
+export function formatThrottleLabel(control: KeyboardControlIntent): string {
+  if (control.throttle < 0) return "REVERSE";
+  if (control.throttle > 0) return control.nitro ? "NITRO" : "FORWARD";
   return "NEUTRAL";
+}
+
+export function RideKeyboardPanel({
+  control,
+  pressedKeys,
+}: {
+  readonly control: KeyboardControlIntent;
+  readonly pressedKeys: ReadonlySet<string>;
+}) {
+  return (
+    <section className="real-keyboard-panel" aria-label="Live keyboard controls">
+      <div className="real-control-readout">
+        STEER {steeringLabel(control.steering)} · THROTTLE {formatThrottleLabel(control)}
+      </div>
+      <div className="real-keyboard-layout">
+        <div className="real-wasd" aria-label="WASD and arrow keys">
+          <KeyCap active={isDriveKeyActive(pressedKeys, "W")} className="key-w" label="W" sublabel="/↑" />
+          <KeyCap active={isDriveKeyActive(pressedKeys, "A")} className="key-a" label="A" sublabel="/←" />
+          <KeyCap active={isDriveKeyActive(pressedKeys, "S")} className="key-s" label="S" sublabel="/↓" />
+          <KeyCap active={isDriveKeyActive(pressedKeys, "D")} className="key-d" label="D" sublabel="/→" />
+        </div>
+        <KeyCap active={isDriveKeyActive(pressedKeys, "NITRO")} className="key-nitro" label="N" sublabel="NITRO" />
+      </div>
+      <p>WASD / ARROWS TO DRIVE · N NITRO</p>
+    </section>
+  );
 }

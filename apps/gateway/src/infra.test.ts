@@ -132,6 +132,14 @@ describe("production gateway infrastructure", () => {
     expect(nginx).toContain("autoindex off");
   });
 
+  it("caches versioned loading backgrounds without revalidating every visit", async () => {
+    const nginx = await readFile(nginxUrl, "utf8");
+
+    expect(nginx).toContain("location ~ ^/assets/loading-background(?:-preview)?\\.webp$");
+    expect(nginx).toContain("proxy_hide_header Cache-Control;");
+    expect(nginx).toContain('add_header Cache-Control "public, max-age=31536000, immutable" always;');
+  });
+
   it("runs isolated pinned Coturn with TLS, bounded resources, and file-mounted secrets", async () => {
     const compose = await readFile(turnComposeUrl, "utf8");
     const config = await readFile(turnConfigUrl, "utf8");

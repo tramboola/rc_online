@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_BATTERY_TELEMETRY,
   batteryTelemetryReducer,
+  formatThrottleLabel,
   getBatteryPresentation,
 } from "./real-ride-screen";
 
@@ -40,6 +41,18 @@ describe("real ride keyboard UI", () => {
 
   it("renders the keyboard overlay without a surrounding dark frame", () => {
     expect(styles).toMatch(/\.real-keyboard-panel \{[^}]*border: 0;[^}]*background: transparent;[^}]*box-shadow: none;/s);
+  });
+
+  it("describes throttle direction without exposing implementation percentages", () => {
+    expect(formatThrottleLabel({ steering: 0, throttle: 0, nitro: false })).toBe("NEUTRAL");
+    expect(formatThrottleLabel({ steering: 0, throttle: 1, nitro: false })).toBe("FORWARD");
+    expect(formatThrottleLabel({ steering: 0, throttle: -1, nitro: false })).toBe("REVERSE");
+    expect(formatThrottleLabel({ steering: 0, throttle: 1, nitro: true })).toBe("NITRO");
+  });
+
+  it("completes every clipped corner of the connection log frame", () => {
+    expect(styles).toMatch(/\.system-log-panel \{[^}]*--frame-color: #849096;[^}]*--frame-width: 1px;[^}]*--cut-size: 16px;/s);
+    expect(styles).toMatch(/\.system-log-panel::before \{[^}]*top left[^}]*top right[^}]*bottom right[^}]*bottom left/s);
   });
 
   it("keeps connection and steering trim controls readable without opaque camera blockers", () => {
