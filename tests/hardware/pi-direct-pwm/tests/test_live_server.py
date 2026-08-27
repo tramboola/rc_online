@@ -47,14 +47,14 @@ class MailboxRuntimeTests(unittest.TestCase):
         self.assertEqual(reverse.throttle, -1)
         self.assertFalse(hasattr(reverse, "brake"))
 
-    def test_runtime_applies_limited_reverse_then_watchdog_neutral(self) -> None:
+    def test_runtime_applies_direct_reverse_then_watchdog_neutral(self) -> None:
         now = [2.0]
         mailbox = CommandMailbox()
         output = FakePulseOutput()
         runtime = LiveRuntime(mailbox, output, clock=lambda: now[0])
         mailbox.publish("browser-a", 1, True, 0, -1, now=now[0])
         state = runtime.tick()
-        self.assertEqual(state.throttle_us, 1375)
+        self.assertEqual(state.throttle_us, 1250)
         now[0] += 0.201
         state = runtime.tick()
         self.assertEqual((state.throttle_us, state.armed), (1500, False))

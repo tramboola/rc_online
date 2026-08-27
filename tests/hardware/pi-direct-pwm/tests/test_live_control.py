@@ -26,22 +26,13 @@ class LiveControlTests(unittest.TestCase):
         self.assertEqual(normal.throttle_us, 1658)
         self.assertEqual(nitro.throttle_us, 1750)
 
-    def test_reverse_is_limited_to_fifty_percent_and_release_is_immediately_neutral(self) -> None:
+    def test_reverse_is_direct_and_release_is_immediately_neutral(self) -> None:
         reverse = self.control.step(self.frame(2.0, throttle=-1), now=2.0)
         neutral = self.control.step(self.frame(2.01, throttle=0), now=2.01)
         reverse_again = self.control.step(self.frame(2.02, throttle=-1), now=2.02)
-        self.assertEqual(reverse.throttle_us, 1375)
+        self.assertEqual(reverse.throttle_us, 1250)
         self.assertEqual(neutral.throttle_us, 1500)
-        self.assertEqual(reverse_again.throttle_us, 1375)
-
-    def test_reverse_limit_uses_the_calibrated_reverse_span(self) -> None:
-        control = LiveControl(LiveConfig(
-            throttle_reverse_us=1200,
-            throttle_neutral_us=1500,
-            throttle_forward_us=1800,
-        ))
-        reverse = control.step(self.frame(2.1, throttle=-1), now=2.1)
-        self.assertEqual(reverse.throttle_us, 1350)
+        self.assertEqual(reverse_again.throttle_us, 1250)
 
     def test_opposing_or_missing_command_is_neutral(self) -> None:
         self.assertEqual(
