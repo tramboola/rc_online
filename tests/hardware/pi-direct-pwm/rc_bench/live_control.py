@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 
 NORMAL_DRIVE_PERCENT = 63
+REVERSE_DRIVE_PERCENT = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +70,7 @@ class LiveControl:
         if frame.throttle > 0:
             throttle_us = self._config.throttle_forward_us if frame.nitro else self._scaled_forward_us()
         elif frame.throttle < 0:
-            throttle_us = self._config.throttle_reverse_us
+            throttle_us = self._scaled_reverse_us()
         else:
             throttle_us = self._config.throttle_neutral_us
         return OutputState(steering_us, throttle_us, True, False)
@@ -89,6 +90,10 @@ class LiveControl:
     def _scaled_forward_us(self) -> int:
         delta = self._config.throttle_forward_us - self._config.throttle_neutral_us
         return self._config.throttle_neutral_us + (delta * NORMAL_DRIVE_PERCENT + 50) // 100
+
+    def _scaled_reverse_us(self) -> int:
+        delta = self._config.throttle_neutral_us - self._config.throttle_reverse_us
+        return self._config.throttle_neutral_us - (delta * REVERSE_DRIVE_PERCENT + 50) // 100
 
     def _neutral(self, *, stale: bool) -> OutputState:
         return OutputState(
