@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 
 NORMAL_DRIVE_PERCENT = 63
-REVERSE_DRIVE_PERCENT = 30
+REVERSE_DRIVE_PERCENT = 50
 
 
 @dataclass(frozen=True, slots=True)

@@ -54,7 +54,7 @@ class MailboxRuntimeTests(unittest.TestCase):
         runtime = LiveRuntime(mailbox, output, clock=lambda: now[0])
         mailbox.publish("browser-a", 1, True, 0, -1, now=now[0])
         state = runtime.tick()
-        self.assertEqual(state.throttle_us, 1425)
+        self.assertEqual(state.throttle_us, 1375)
         now[0] += 0.201
         state = runtime.tick()
         self.assertEqual((state.throttle_us, state.armed), (1500, False))
