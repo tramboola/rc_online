@@ -26,6 +26,8 @@ function createStore({ deferNextHeartbeat = false }: { deferNextHeartbeat?: bool
   const heartbeats: unknown[] = [];
   const claimedUpdates: string[] = [];
   const updateStatuses: unknown[] = [];
+  const activatedSessions: string[] = [];
+  const endedSessions: string[] = [];
   let resolveDeferredHeartbeatStarted: (() => void) | null = null;
   const deferredHeartbeatStarted = new Promise<void>((resolve) => {
     resolveDeferredHeartbeatStarted = resolve;
@@ -73,7 +75,12 @@ function createStore({ deferNextHeartbeat = false }: { deferNextHeartbeat?: bool
       return { carId: "a98ddba0-65f2-453d-b45a-c7d094a45b24", adminBlocked: false };
     },
     authorizeDriveSession: async () => ({ expiresAt: new Date("2026-08-25T19:00:00Z") }),
-    endDriveSession: async () => undefined,
+    markDriveSessionActive: async (sessionId: string) => {
+      activatedSessions.push(sessionId);
+      return true;
+    },
+    endDriveSession: async (sessionId: string) => { endedSessions.push(sessionId); },
+    expireDriveSessions: async () => 0,
     setPresenceState: async () => undefined,
     markDeviceOffline: async () => undefined,
     expireStaleDevices: async () => 0
@@ -81,6 +88,8 @@ function createStore({ deferNextHeartbeat = false }: { deferNextHeartbeat?: bool
   return {
     store,
     heartbeats,
+    activatedSessions,
+    endedSessions,
     claimedUpdates,
     updateStatuses,
     waitForDeferredHeartbeat: () => deferredHeartbeatStarted,
@@ -372,6 +381,92 @@ describe("gateway enrollment and device socket", () => {
     } finally {
       device.terminate();
       browser?.terminate();
+    }
+  });
+
+  it("marks the drive active only after the authenticated browser confirms WebRTC", async () => {
+    const fixture = createStore();
+    const { server, baseUrl } = await listen(fixture.store);
+    const enrollment = await server.inject({
+      method: "POST",
+      url: "/v1/enroll",
+      payload: {
+        enrollmentCode: "enr_this-code-is-long-enough-for-a-test",
+        serialNumber: "10000000abc12345",
+        agentVersion: "0.1.0",
+        capabilities: {},
+      },
+    });
+    const credentials = enrollment.json();
+    const device = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket");
+    let browser: WebSocket | null = null;
+    const sessionId = "47b691ed-0b69-4bdb-8040-6740560596c2";
+    try {
+      await openSocket(device);
+      const deviceAccepted = nextMessage(device);
+      device.send(JSON.stringify({
+        v: 1,
+        type: "device.authenticate",
+        deviceId: credentials.deviceId,
+        secret: credentials.deviceSecret,
+        agentVersion: "0.1.0",
+      }));
+      await deviceAccepted;
+
+      browser = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket");
+      await openSocket(browser);
+      const sessionStarted = nextMessageOfType(browser, "session.start");
+      browser.send(JSON.stringify({
+        v: 1,
+        type: "browser.authenticate",
+        ticket: signBrowserTicket({
+          aud: "rcmania-gateway",
+          sub: "79c2b116-d739-413d-99fb-da59f577f88b",
+          role: "admin",
+          carId: credentials.carId,
+          sessionId,
+          iat: Math.floor(Date.now() / 1_000) - 1,
+          exp: Math.floor(Date.now() / 1_000) + 60,
+        }, "test-browser-secret-with-enough-entropy"),
+      }));
+      await sessionStarted;
+      expect(fixture.activatedSessions).toEqual([]);
+
+      browser.send(JSON.stringify({ v: 1, type: "session.connected", sessionId }));
+      await vi.waitFor(() => expect(fixture.activatedSessions).toEqual([sessionId]));
+
+      browser.send(JSON.stringify({ v: 1, type: "session.end", sessionId, reason: "user ended ride" }));
+      await vi.waitFor(() => expect(fixture.endedSessions).toEqual([sessionId]));
+    } finally {
+      device.terminate();
+      browser?.terminate();
+    }
+  });
+
+  it("releases an authorized drive when its car device is no longer attached", async () => {
+    const fixture = createStore();
+    const { baseUrl } = await listen(fixture.store);
+    const browser = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket");
+    const sessionId = "47b691ed-0b69-4bdb-8040-6740560596c2";
+    try {
+      await openSocket(browser);
+      browser.send(JSON.stringify({
+        v: 1,
+        type: "browser.authenticate",
+        ticket: signBrowserTicket({
+          aud: "rcmania-gateway",
+          sub: "79c2b116-d739-413d-99fb-da59f577f88b",
+          role: "admin",
+          carId: "a98ddba0-65f2-453d-b45a-c7d094a45b24",
+          sessionId,
+          iat: Math.floor(Date.now() / 1_000) - 1,
+          exp: Math.floor(Date.now() / 1_000) + 60,
+        }, "test-browser-secret-with-enough-entropy"),
+      }));
+      expect(await waitForClose(browser)).toBe(4409);
+      await vi.waitFor(() => expect(fixture.endedSessions).toEqual([sessionId]));
+    } finally {
+      browser.terminate();
     }
   });
 

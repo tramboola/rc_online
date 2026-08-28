@@ -89,6 +89,8 @@ export interface GatewayStore {
   markDeviceOffline(deviceId: string, now: Date): Promise<void>;
   expireStaleDevices(cutoff: Date, now: Date): Promise<number>;
   authorizeDriveSession(input: AuthorizeDriveSessionInput): Promise<{ expiresAt: Date } | null>;
+  markDriveSessionActive(sessionId: string, now: Date): Promise<boolean>;
   endDriveSession(sessionId: string, reason: string, now: Date): Promise<void>;
+  expireDriveSessions(now: Date): Promise<number>;
   provisionCar(input: ProvisionCarInput): Promise<{ siteId: string; carId: string }>;
 }

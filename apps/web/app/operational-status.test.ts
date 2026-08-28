@@ -10,7 +10,8 @@ const now = new Date("2026-08-13T12:00:00Z");
 describe("loadOperationalStatus", () => {
   test("treats an empty production fleet as a valid zero-car state", async () => {
     const store: OperationalStatusStore = {
-      async listAvailableCars() {
+      async listAvailableCars(at) {
+        expect(at).toEqual(now);
         return [];
       },
       async countActiveQueue(at) {
@@ -28,7 +29,8 @@ describe("loadOperationalStatus", () => {
 
   test("returns real available car fields without inventing presentation data", async () => {
     const store: OperationalStatusStore = {
-      async listAvailableCars() {
+      async listAvailableCars(at) {
+        expect(at).toEqual(now);
         return [{
           id: "car-1",
           slug: "night-runner",

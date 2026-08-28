@@ -178,6 +178,24 @@ describe("RideSessionClient", () => {
     ]);
   });
 
+  it("confirms an active drive exactly once after WebRTC connects", async () => {
+    const { client, socket, peer } = harness();
+    client.connect();
+    socket.readyState = 1;
+    socket.onopen?.();
+
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+    peer.onconnectionstatechange?.();
+
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalledWith(JSON.stringify({
+      v: 1,
+      type: "session.connected",
+      sessionId: session.sessionId,
+    })));
+    expect(socket.send.mock.calls.filter(([payload]) => String(payload).includes('"session.connected"'))).toHaveLength(1);
+  });
+
   it("reports TURN when the selected candidate pair contains a relay", async () => {
     const { client, peer } = harness("relay");
     const states: string[] = [];

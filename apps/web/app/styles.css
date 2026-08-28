@@ -1107,7 +1107,15 @@ p { color: #a9afb3; }
 .car-choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .car-choice { min-width: 0; border: 1px solid #48535a; background: #091116; color: white; text-align: left; padding: 13px; cursor: pointer; position: relative; }
 .car-choice.selected { border: 2px solid var(--cyan); box-shadow: 0 0 18px rgba(53, 214, 244, .2); }
-.car-choice img { width: 100%; aspect-ratio: 1.45; object-fit: cover; }
+.car-choice img {
+  width: 100%;
+  height: 176px;
+  object-fit: contain;
+  object-position: center;
+  padding: 6px 4px 0;
+  background: transparent;
+  filter: drop-shadow(0 12px 10px rgba(0, 0, 0, .42));
+}
 .car-choice small { display: block; color: var(--cyan); margin-top: 10px; }
 .car-choice strong { display: block; font: 500 26px var(--font-display); }
 .car-choice span { display: inline-flex; gap: 6px; color: var(--lime); align-items: center; margin: 15px 18px 0 0; font-weight: 700; font-size: 14px; }

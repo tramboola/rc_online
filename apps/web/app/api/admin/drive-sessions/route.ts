@@ -35,7 +35,10 @@ function getPublicRequestOrigin(request: Request): string {
   return new URL(request.url).origin;
 }
 
-export function createDriveSessionPost(dependencies: DriveSessionPostDependencies) {
+export function createDriveSessionPost(
+  dependencies: DriveSessionPostDependencies,
+  options: { requireAdmin: boolean } = { requireAdmin: true },
+) {
   return async function post(request: Request): Promise<Response> {
     const origin = request.headers.get("origin");
     if (origin && origin !== getPublicRequestOrigin(request)) {
@@ -43,7 +46,9 @@ export function createDriveSessionPost(dependencies: DriveSessionPostDependencie
     }
     const user = await dependencies.getUser();
     if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
-    if (user.role !== "admin") return Response.json({ error: "Administrator access required" }, { status: 403 });
+    if (options.requireAdmin && user.role !== "admin") {
+      return Response.json({ error: "Administrator access required" }, { status: 403 });
+    }
 
     let parsed: ReturnType<typeof requestSchema.safeParse>;
     try {
@@ -58,6 +63,7 @@ export function createDriveSessionPost(dependencies: DriveSessionPostDependencie
     if (!session) return Response.json({ error: "Car unavailable" }, { status: 409 });
     const ticket = createDriveSessionTicket({
       userId: user.id,
+      role: user.role,
       carId: parsed.data.carId,
       sessionId: session.sessionId,
       now,
@@ -76,7 +82,10 @@ export function createDriveSessionPost(dependencies: DriveSessionPostDependencie
   };
 }
 
-export async function POST(request: Request): Promise<Response> {
+export async function createProductionDriveSessionResponse(
+  request: Request,
+  options: { requireAdmin: boolean },
+): Promise<Response> {
   const databaseUrl = process.env.DATABASE_URL;
   const ticketSecret = process.env.GATEWAY_SESSION_SECRET;
   const publicGatewayUrl = process.env.GATEWAY_PUBLIC_URL;
@@ -97,5 +106,9 @@ export async function POST(request: Request): Promise<Response> {
     publicGatewayUrl,
     iceTransportPolicy: readIceTransportPolicy(),
     createIceServers: (subject, now) => createPublicIceServers(subject, now)
-  })(request);
+  }, options)(request);
+}
+
+export async function POST(request: Request): Promise<Response> {
+  return createProductionDriveSessionResponse(request, { requireAdmin: true });
 }

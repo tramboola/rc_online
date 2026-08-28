@@ -14,6 +14,14 @@ const digest = "a".repeat(64);
 const signature = "b".repeat(86);
 
 describe("device gateway contracts", () => {
+  it("accepts a browser confirmation when the WebRTC peer is actually connected", () => {
+    expect(GatewayClientMessageSchema.safeParse({
+      v: 1,
+      type: "session.connected",
+      sessionId,
+    }).success).toBe(true);
+  });
+
   it("accepts a bounded 720p60 device health report", () => {
     expect(DeviceHealthSchema.parse({
       cameraReady: true,

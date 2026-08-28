@@ -122,4 +122,44 @@ describe("SessionRegistry", () => {
       reason: "browser disconnected"
     });
   });
+
+  it("expires a browser that never confirms the WebRTC connection", () => {
+    const registry = new SessionRegistry();
+    const device = peer();
+    const browser = peer();
+    const attachedAt = new Date("2026-08-13T10:00:00Z");
+    registry.attachDevice(session.carId, "device-1", device.value);
+    registry.attachBrowser(session, browser.value, attachedAt);
+
+    expect(registry.sweep(new Date("2026-08-13T10:00:19Z"))).toEqual([]);
+    expect(registry.sweep(new Date("2026-08-13T10:00:21Z"))).toEqual([session.sessionId]);
+    expect(device.messages).toContainEqual({
+      v: 1,
+      type: "session.end",
+      sessionId: session.sessionId,
+      reason: "connection timed out",
+    });
+  });
+
+  it("keeps a connected WebRTC session until its drive deadline", () => {
+    const registry = new SessionRegistry();
+    const device = peer();
+    const attachedAt = new Date("2026-08-13T10:00:00Z");
+    registry.attachDevice(session.carId, "device-1", device.value);
+    registry.attachBrowser(session, peer().value, attachedAt);
+
+    expect(registry.markConnected(session.sessionId, new Date("2026-08-13T10:00:10Z"))).toBe(true);
+    expect(registry.sweep(new Date("2026-08-13T10:00:21Z"))).toEqual([]);
+    expect(registry.hasSession(session.sessionId)).toBe(true);
+  });
+
+  it("rejects a late WebRTC connection confirmation", () => {
+    const registry = new SessionRegistry();
+    const attachedAt = new Date("2026-08-13T10:00:00Z");
+    registry.attachDevice(session.carId, "device-1", peer().value);
+    registry.attachBrowser(session, peer().value, attachedAt);
+
+    expect(registry.markConnected(session.sessionId, new Date("2026-08-13T10:00:21Z"))).toBe(false);
+    expect(registry.sweep(new Date("2026-08-13T10:00:21Z"))).toEqual([session.sessionId]);
+  });
 });

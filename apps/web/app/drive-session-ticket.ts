@@ -5,6 +5,7 @@ import { createSessionIceServers, signBrowserTicket } from "@rc/device-auth";
 
 export type DriveSessionTicketInput = {
   userId: string;
+  role: "user" | "admin";
   carId: string;
   sessionId: string;
   now: Date;
@@ -23,7 +24,7 @@ export function createDriveSessionTicket(input: DriveSessionTicketInput): string
   return signBrowserTicket({
     aud: "rcmania-gateway",
     sub: input.userId,
-    role: "admin",
+    role: input.role,
     carId: input.carId,
     sessionId: input.sessionId,
     iat,

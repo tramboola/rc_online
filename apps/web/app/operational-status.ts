@@ -18,7 +18,7 @@ export type OperationalStatus =
     };
 
 export interface OperationalStatusStore {
-  listAvailableCars(): Promise<AvailableCar[]>;
+  listAvailableCars(at: Date): Promise<AvailableCar[]>;
   countActiveQueue(at: Date): Promise<number>;
 }
 
@@ -28,7 +28,7 @@ export async function loadOperationalStatus(
 ): Promise<OperationalStatus> {
   try {
     const [cars, queueCount] = await Promise.all([
-      store.listAvailableCars(),
+      store.listAvailableCars(at),
       store.countActiveQueue(at),
     ]);
     return { state: "ready", cars, queueCount };

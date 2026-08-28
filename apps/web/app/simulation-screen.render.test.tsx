@@ -82,10 +82,47 @@ describe("driving setup screens", () => {
     },
   );
 
+  it("uses the real camera connection flow for an authenticated production driver", () => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen authenticated mockMode={false} screen="ride" />,
+    );
+
+    expect(markup).toContain("CONNECTING TO CAR");
+    expect(markup).not.toContain("PERSONAL BEST");
+  });
+
   it("renders a queue offer without an acceptance countdown", () => {
     const markup = renderToStaticMarkup(
       <SimulationScreen
         adminAccess
+        liveQueueSnapshot={{
+          entryId: "queue-entry-1",
+          position: 1,
+          count: 1,
+          availableCarCount: 4,
+          status: "ready",
+          cars: [{
+            id: "40000000-0000-4000-8000-000000000001",
+            name: "RC Mania One",
+            slug: "rc-mania-one",
+            batteryPercent: 0,
+          }, {
+            id: "40000000-0000-4000-8000-000000000002",
+            name: "RC Mania Two",
+            slug: "rc-mania-two",
+            batteryPercent: 19,
+          }, {
+            id: "40000000-0000-4000-8000-000000000003",
+            name: "RC Mania Three",
+            slug: "rc-mania-three",
+            batteryPercent: 20,
+          }, {
+            id: "40000000-0000-4000-8000-000000000004",
+            name: "RC Mania Four",
+            slug: "rc-mania-four",
+            batteryPercent: null,
+          }],
+        }}
         mockMode
         operationalStatus={{
           state: "ready",
@@ -120,6 +157,8 @@ describe("driving setup screens", () => {
     expect(markup).toContain("0%");
     expect(markup).toContain("19%");
     expect(markup).toContain("20%");
+    expect(markup).toContain('src="/assets/car-rc-mania-one.webp"');
+    expect(markup).toContain('alt="RC MANIA ONE RC car"');
     expect(markup).toContain("—");
     expect(markup.match(/battery-status battery-warning/g)).toHaveLength(2);
     expect(markup.match(/battery-status battery-ok/g)).toHaveLength(1);
@@ -135,6 +174,14 @@ describe("driving setup screens", () => {
     const markup = renderToStaticMarkup(
       <SimulationScreen
         adminAccess
+        liveQueueSnapshot={{
+          entryId: "queue-entry-1",
+          position: 1,
+          count: 1,
+          availableCarCount: 0,
+          status: "waiting",
+          cars: [],
+        }}
         mockMode
         operationalStatus={{
           state: "ready",
@@ -148,6 +195,28 @@ describe("driving setup screens", () => {
     expect(markup).toContain("WAITING FOR AVAILABILITY");
     expect(markup).toContain("NO CAR IS READY YET");
     expect(markup).toContain("Stay in the queue. You can connect as soon as a car comes online.");
+    expect(markup).not.toContain("YOUR CAR IS READY");
+  });
+
+  it("shows an authoritative queue position and withholds cars from later users", () => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen
+        adminAccess
+        liveQueueSnapshot={{
+          entryId: "queue-entry-2",
+          position: 2,
+          count: 3,
+          availableCarCount: 1,
+          status: "waiting",
+          cars: [],
+        }}
+        mockMode
+        screen="queue"
+      />,
+    );
+
+    expect(markup).toContain("YOU ARE #2");
+    expect(markup).toContain("WAITING FOR YOUR TURN");
     expect(markup).not.toContain("YOUR CAR IS READY");
   });
 

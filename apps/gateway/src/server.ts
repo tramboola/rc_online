@@ -140,13 +140,20 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
               carId: ticket.carId,
               now: new Date()
             });
-            if (!authorized || !sessions.attachBrowser({
+            if (!authorized) {
+              send(socket, { v: 1, type: "auth.rejected", reason: "drive session unavailable" });
+              socket.close(4409, "drive session unavailable");
+              return;
+            }
+            const attached = sessions.attachBrowser({
               sessionId: ticket.sessionId,
               userId: ticket.sub,
               carId: ticket.carId,
               expiresAt: authorized.expiresAt,
               iceServers: createGatewayIceServers(config, ticket.sessionId, new Date())
-            }, peer)) {
+            }, peer);
+            if (!attached) {
+              await store.endDriveSession(ticket.sessionId, "car device unavailable", new Date());
               send(socket, { v: 1, type: "auth.rejected", reason: "drive session unavailable" });
               socket.close(4409, "drive session unavailable");
               return;
@@ -186,11 +193,30 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
           if (!sessions.relayFromDevice(authenticatedDevice.carId, message)) {
             throw new Error("Message does not match the active device session");
           }
+          if (message.type === "session.end") {
+            await store.endDriveSession(message.sessionId, message.reason, new Date());
+          }
           return;
         }
         if (authenticatedSessionId && isRelayMessage(message)) {
           if (!sessions.relayFromBrowser(authenticatedSessionId, message)) {
             throw new Error("Message does not match the active browser session");
+          }
+          if (message.type === "session.end") {
+            await store.endDriveSession(message.sessionId, message.reason, new Date());
+          }
+          return;
+        }
+        if (authenticatedSessionId && message.type === "session.connected") {
+          const now = new Date();
+          const databaseMarked = message.sessionId === authenticatedSessionId
+            && await store.markDriveSessionActive(authenticatedSessionId, now);
+          const registryMarked = databaseMarked && sessions.markConnected(authenticatedSessionId, now);
+          if (!registryMarked) {
+            if (databaseMarked) {
+              await store.endDriveSession(authenticatedSessionId, "connection timed out", now);
+            }
+            throw new Error("Drive session could not become active");
           }
           return;
         }
@@ -240,6 +266,7 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
 
   const sweepTimer = setInterval(() => {
     void presence.sweep().catch((error: unknown) => app.log.error({ err: error }, "presence sweep failed"));
+    void store.expireDriveSessions(new Date()).catch((error: unknown) => app.log.error({ err: error }, "database session expiry failed"));
     for (const sessionId of sessions.sweep()) {
       void store.endDriveSession(sessionId, "session expired", new Date()).catch((error: unknown) => app.log.error({ err: error }, "session expiry failed"));
     }

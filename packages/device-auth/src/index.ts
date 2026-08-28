@@ -7,7 +7,7 @@ import {
 export type BrowserTicketPayload = {
   aud: "rcmania-gateway";
   sub: string;
-  role: "admin";
+  role: "user" | "admin";
   carId: string;
   sessionId: string;
   iat: number;
@@ -172,7 +172,7 @@ function validateBrowserTicketPayload(value: unknown): asserts value is BrowserT
     !ticketFields.every((field) => Object.hasOwn(payload, field)) ||
     typeof payload.aud !== "string" ||
     typeof payload.sub !== "string" ||
-    payload.role !== "admin" ||
+    (payload.role !== "user" && payload.role !== "admin") ||
     typeof payload.carId !== "string" ||
     typeof payload.sessionId !== "string" ||
     !Number.isInteger(payload.iat) ||

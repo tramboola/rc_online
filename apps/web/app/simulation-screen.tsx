@@ -53,6 +53,7 @@ import {
   getViewerBadgeText,
 } from "./home-presentation";
 import type { OperationalStatus } from "./operational-status";
+import type { LiveQueueSnapshot } from "./live-queue-store";
 import {
   howItWorksRequirements,
   howItWorksSteps,
@@ -84,8 +85,6 @@ export type ScreenName =
 type IconType = ComponentType<{ size?: number; weight?: "regular" | "bold" | "fill" }>;
 
 const rideId = "30000000-0000-4000-8000-000000000003";
-const blueCarId = "40000000-0000-4000-8000-000000000001";
-const redCarId = "40000000-0000-4000-8000-000000000002";
 
 type QueueCarPresentation = {
   id: string;
@@ -109,38 +108,21 @@ export function getQueueBatteryPresentation(batteryPercent: number | null): {
   };
 }
 
-const simulationQueueCars: QueueCarPresentation[] = [
-  {
-    id: blueCarId,
-    number: "CAR 01",
-    name: "NIGHT RUNNER",
-    src: "/assets/car-blue.webp",
-    batteryPercent: 86,
-    connection: "EXCELLENT",
-  },
-  {
-    id: redCarId,
-    number: "CAR 02",
-    name: "RED COMET",
-    src: "/assets/car-red.webp",
-    batteryPercent: 74,
-    connection: "GOOD",
-  },
-];
-
 function getQueueCars(
-  operationalStatus: OperationalStatus | undefined,
+  _operationalStatus: OperationalStatus | undefined,
+  liveQueueSnapshot?: LiveQueueSnapshot | undefined,
 ): QueueCarPresentation[] {
-  if (!operationalStatus) return simulationQueueCars;
-  if (operationalStatus.state === "unavailable") return [];
-  return operationalStatus.cars.map((car, index) => ({
-    id: car.id,
-    number: `CAR ${String(index + 1).padStart(2, "0")}`,
-    name: car.name.toUpperCase(),
-    src: null,
-    batteryPercent: car.batteryPercent,
-    connection: "AVAILABLE",
-  }));
+  if (liveQueueSnapshot) {
+    return liveQueueSnapshot.cars.map((car, index) => ({
+      id: car.id,
+      number: `CAR ${String(index + 1).padStart(2, "0")}`,
+      name: car.name.toUpperCase(),
+      src: car.slug === "rc-mania-one" ? "/assets/car-rc-mania-one.webp" : null,
+      batteryPercent: car.batteryPercent,
+      connection: "AVAILABLE",
+    }));
+  }
+  return [];
 }
 
 function Header({ active }: { active: ScreenName }) {
@@ -775,32 +757,47 @@ function PreflightKey({
 }
 
 function QueueScreen({
+  initialQueueSnapshot,
   operationalStatus,
 }: {
+  initialQueueSnapshot?: LiveQueueSnapshot | undefined;
   operationalStatus?: OperationalStatus | undefined;
 }) {
   const router = useRouter();
-  const queueCars = getQueueCars(operationalStatus);
+  const [queueSnapshot, setQueueSnapshot] = useState(initialQueueSnapshot);
+  const queueCars = getQueueCars(operationalStatus, queueSnapshot);
   const hasAvailableCars = queueCars.length > 0;
   const [selectedCar, setSelectedCar] = useState(queueCars[0]?.id ?? "");
   const fleetUnavailable = operationalStatus?.state === "unavailable";
-  const [status, setStatus] = useState("Joining live queue…");
+  const [status, setStatus] = useState(initialQueueSnapshot ? "Live queue active" : "Joining live queue…");
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    async function refresh(method: "GET" | "POST") {
       try {
-        await apiRequest("/v1/queue", { method: "POST", body: "{}" });
-        await apiRequest("/v1/simulation/offers", { method: "POST", body: "{}" });
-        if (!cancelled) setStatus("Your car is ready");
+        const response = await fetch("/api/queue", { method });
+        if (!response.ok) throw new Error("Live queue request failed");
+        const snapshot = await response.json() as LiveQueueSnapshot;
+        if (!cancelled) {
+          setQueueSnapshot(snapshot);
+          setStatus(snapshot.status === "ready" ? "Live offer ready" : "Live queue active");
+        }
       } catch {
-        if (!cancelled) setStatus("Simulation offer ready");
+        if (!cancelled) setStatus("Queue connection interrupted");
       }
-    })();
+    }
+    void refresh("POST");
+    const interval = window.setInterval(() => void refresh("GET"), 2_000);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (queueCars.some((car) => car.id === selectedCar)) return;
+    setSelectedCar(queueCars[0]?.id ?? "");
+  }, [queueCars, selectedCar]);
 
   function accept() {
     if (!selectedCar) return;
@@ -808,51 +805,64 @@ function QueueScreen({
     router.push(getRideUrl(selectedCar));
   }
 
+  async function leaveQueue() {
+    try {
+      await fetch("/api/queue", { method: "DELETE" });
+    } finally {
+      router.push("/");
+    }
+  }
+
+  const position = queueSnapshot?.position ?? 1;
+  const queueCount = queueSnapshot?.count ?? operationalStatus?.queueCount ?? 1;
+  const availableCarCount = queueSnapshot?.availableCarCount ?? queueCars.length;
+  const carsServingEarlierDrivers = !hasAvailableCars && availableCarCount > 0;
+
   return (
     <div className="page queue-page">
       <Header active="queue" />
       <main className="queue-main">
         <section className="queue-left">
-          <div className="title-row"><h1>LIVE QUEUE</h1><IconLabel icon={UsersThree} title={operationalStatus ? queueCars.length : "2"} subtitle="CARS ONLINE" tone="lime" /></div>
+          <div className="title-row"><h1>LIVE QUEUE</h1><IconLabel icon={UsersThree} title={availableCarCount} subtitle="CARS AVAILABLE" tone="lime" /></div>
           <article className="data-panel queue-position">
             <div className="queue-position-heading">
-              <div><h2>YOU ARE #1</h2><p>NEXT TO DRIVE</p></div>
-              <small><Clock size={21} /> JOINED 00:45 AGO</small>
+              <div><h2>YOU ARE #{position}</h2><p>{position === 1 ? "NEXT TO DRIVE" : `${position - 1} AHEAD OF YOU`}</p></div>
+              <small><Clock size={21} /> LIVE NOW</small>
             </div>
             <div className="queue-line">
-              {[1, 2, 3, 4, 5].map((position) => (
-                <span className={position === 1 ? "you" : ""} key={position}>
-                  <b>P{position}</b>
+              {[1, 2, 3, 4, 5].map((slot) => (
+                <span className={slot === position ? "you" : ""} key={slot}>
+                  <b>P{slot}</b>
                   <img src="/assets/queue-car-top.webp" alt="" />
-                  {position === 1 ? <small>YOU</small> : null}
+                  {slot === position ? <small>YOU</small> : null}
                 </span>
               ))}
             </div>
             <div className="safe-note"><ShieldCheck size={25} /> WAITING DOES NOT USE YOUR BALANCE</div>
             <div className="queue-progress" aria-label="Queue progress">
               {[
-                ["✓", "JOINED", "00:45"],
-                ["2", "IN POSITION", "NOW"],
-                ["3", "NEXT UP", ""],
-                ["4", "ON DECK", ""],
-                ["5", "WAITING", ""],
+                ["✓", "JOINED", "LIVE"],
+                [String(position), "POSITION", `OF ${queueCount}`],
+                [String(availableCarCount), "CARS", "AVAILABLE"],
+                [queueSnapshot?.status === "ready" ? "✓" : "…", "STATUS", queueSnapshot?.status === "ready" ? "READY" : "WAITING"],
               ].map(([marker, label, detail], index) => (
-                <span className={index < 2 ? "active" : ""} key={label}>
+                <span className={index < 2 || queueSnapshot?.status === "ready" ? "active" : ""} key={label}>
                   <b>{marker}</b><em>{label}</em><small>{detail}</small>
                 </span>
               ))}
             </div>
           </article>
           <article className="data-panel queue-closed">
-            <Stop size={38} />
-            <span><strong>QUEUE CLOSED (PREVIEW)</strong><small>The queue is currently closed. You&apos;ll be notified when it reopens.</small></span>
-            <ActionButton tone="ghost" disabled>NOTIFY ME</ActionButton>
+            <UsersThree size={38} />
+            <span><strong>LIVE QUEUE ACTIVE</strong><small>Your position refreshes automatically while this page stays open.</small></span>
           </article>
         </section>
         <section className="offer-panel">
           <div className="offer-heading">
             {hasAvailableCars ? (
               <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car when you&apos;re ready.</span></div>
+            ) : carsServingEarlierDrivers ? (
+              <div><p className="eyebrow">QUEUE POSITION #{position}</p><h2>WAITING FOR YOUR TURN</h2><span>Available cars are serving drivers ahead of you. Keep this page open.</span></div>
             ) : (
               <div><p className="eyebrow">WAITING FOR AVAILABILITY</p><h2>NO CAR IS READY YET</h2><span>Stay in the queue. You can connect as soon as a car comes online.</span></div>
             )}
@@ -886,7 +896,7 @@ function QueueScreen({
           </div>
           <div className="offer-actions">
             <ActionButton disabled={!selectedCar} onClick={accept}>ACCEPT & CONNECT</ActionButton>
-            <ActionButton tone="ghost" onClick={() => router.push("/")}>LEAVE QUEUE</ActionButton>
+            <ActionButton tone="ghost" onClick={() => void leaveQueue()}>LEAVE QUEUE</ActionButton>
           </div>
           <p className="fine-print"><ShieldCheck size={17} /> First come, first served. Memberships do not receive priority.</p>
         </section>
@@ -1127,12 +1137,14 @@ function OperatorScreen() {
 export function SimulationScreen({
   adminAccess = false,
   authenticated = false,
+  liveQueueSnapshot,
   mockMode = false,
   operationalStatus,
   screen,
 }: {
   adminAccess?: boolean;
   authenticated?: boolean;
+  liveQueueSnapshot?: LiveQueueSnapshot | undefined;
   mockMode?: boolean;
   operationalStatus?: OperationalStatus | undefined;
   screen: ScreenName;
@@ -1141,7 +1153,7 @@ export function SimulationScreen({
   if (screen === "how-it-works") return <HowItWorksScreen />;
   if (screen === "leaderboard") return <LeaderboardScreen mockMode={mockMode} />;
   if (screen === "preflight") return <PreflightScreen />;
-  if (screen === "queue") return <QueueScreen operationalStatus={operationalStatus} />;
+  if (screen === "queue") return <QueueScreen initialQueueSnapshot={liveQueueSnapshot} operationalStatus={operationalStatus} />;
   if (screen === "loading") {
     return (
       <ConnectionLoadingScreen
@@ -1151,7 +1163,7 @@ export function SimulationScreen({
       />
     );
   }
-  if (screen === "ride") return mockMode && adminAccess ? <RealRideScreen /> : <RideScreen mockMode={mockMode} />;
+  if (screen === "ride") return authenticated || adminAccess ? <RealRideScreen /> : <RideScreen mockMode={mockMode} />;
   if (screen === "results") return <ResultsScreen />;
   if (screen === "operator") return <OperatorScreen />;
   return (

@@ -36,6 +36,28 @@ describe("administrator drive session endpoint", () => {
     ))).status).toBe(403);
   });
 
+  it("allows a signed-in FIFO user through the public drive-session policy", async () => {
+    const post = createDriveSessionPost({
+      getUser: async () => ({ id: userId, role: "user" }),
+      createSession: async () => ({
+        sessionId,
+        expiresAt: new Date("2026-08-13T10:05:00Z"),
+        steeringTrimPercent: 0,
+        controlProtocolVersion: 5,
+      }),
+      now: () => new Date("2026-08-13T10:00:00Z"),
+      ticketSecret: secret,
+      publicGatewayUrl: "wss://rcmania.live/gateway/v1/socket",
+      iceTransportPolicy: "all",
+      createIceServers: () => [],
+    }, { requireAdmin: false });
+
+    const response = await post(request("https://rcmania.live", "https://rcmania.live/api/drive-sessions"));
+
+    expect(response.status).toBe(201);
+    expect(verifyBrowserTicket((await response.json()).ticket, secret, 1_786_615_230).role).toBe("user");
+  });
+
   it("returns a scoped short-lived ticket for a fresh available car", async () => {
     const post = createDriveSessionPost({
       getUser: async () => ({ id: userId, role: "admin" }),

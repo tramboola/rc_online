@@ -167,7 +167,7 @@ describe("RideConnectionAttempt", () => {
   });
 
   it("clears live battery telemetry when an active client disconnects", async () => {
-    const { attempt, callbacks, client } = harness();
+    const { attempt, callbacks, client, loop, snapshots } = harness();
     await attempt.start();
     client.onState("DIRECT");
     attempt.markVideoLoadedData();
@@ -182,6 +182,13 @@ describe("RideConnectionAttempt", () => {
     expect(callbacks.onTelemetry).toHaveBeenNthCalledWith(2, {
       batteryVoltage: null,
       batteryPercent: null,
+    });
+    expect(loop.disarm).toHaveBeenCalledWith("connection failed");
+    expect(loop.stop).toHaveBeenCalled();
+    expect(client.close).toHaveBeenCalledWith("connection failed");
+    expect(snapshots.at(-1)).toMatchObject({
+      status: "failed",
+      errorMessage: "Camera connection was interrupted",
     });
   });
 

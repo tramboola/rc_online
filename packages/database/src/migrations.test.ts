@@ -136,6 +136,21 @@ describe("versioned SQL migrations", () => {
     expect(users.emailVerifiedAt.name).toBe("email_verified_at");
   });
 
+  it("links a drive session to exactly one live queue entry", async () => {
+    const sql = await readFile(
+      path.resolve(here, "../migrations/0008_live_queue.sql"),
+      "utf8",
+    );
+
+    expect(sql).toMatch(/alter table drive_sessions[\s\S]+queue_entry_id uuid/i);
+    expect(sql).toMatch(/references queue_entries\(id\)/i);
+    expect(sql).toMatch(/drive_sessions_queue_entry_uidx/i);
+    expect(sql).toMatch(/queue_entries_one_live_user_uidx/i);
+    expect(sql).toMatch(/row_number\(\) over \(partition by user_id/i);
+    expect(sql).toMatch(/drop index if exists queue_entries_one_active_per_user_uidx/i);
+    expect(sql).toMatch(/update queue_entries[\s\S]+status = 'expired'[\s\S]+status = 'accepted'/i);
+  });
+
   it("backfills a nickname for every active user without case-insensitive collisions", async () => {
     const sql = await readFile(
       path.resolve(here, "../migrations/0007_account_profiles.sql"),

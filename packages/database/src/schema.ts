@@ -355,19 +355,6 @@ export const deviceCredentials = pgTable("device_credentials", {
   ...auditColumns,
 });
 
-export const driveSessions = pgTable("drive_sessions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").notNull().references(() => users.id),
-  carId: uuid("car_id").notNull().references(() => cars.id),
-  status: text("status").notNull().default("created"),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  startedAt: timestamp("started_at", { withTimezone: true }),
-  endedAt: timestamp("ended_at", { withTimezone: true }),
-  ...auditColumns,
-}, (table) => [
-  index("drive_sessions_expiry_idx").on(table.expiresAt),
-]);
-
 export const queueEntries = pgTable("queue_entries", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id),
@@ -378,6 +365,26 @@ export const queueEntries = pgTable("queue_entries", {
   ...auditColumns,
 }, (table) => [
   index("queue_fifo_idx").on(table.status, table.joinedAt),
+  uniqueIndex("queue_entries_one_live_user_uidx")
+    .on(table.userId)
+    .where(sql`${table.status} in ('waiting', 'offered')`),
+]);
+
+export const driveSessions = pgTable("drive_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  carId: uuid("car_id").notNull().references(() => cars.id),
+  queueEntryId: uuid("queue_entry_id").references(() => queueEntries.id),
+  status: text("status").notNull().default("created"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  ...auditColumns,
+}, (table) => [
+  index("drive_sessions_expiry_idx").on(table.expiresAt),
+  uniqueIndex("drive_sessions_queue_entry_uidx")
+    .on(table.queueEntryId)
+    .where(sql`${table.queueEntryId} is not null`),
 ]);
 
 export const rides = pgTable("rides", {

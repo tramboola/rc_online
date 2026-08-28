@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import { createDatabase, schema, type DeviceUpdateStatus } from "@rc/database";
 import type { DeviceCapabilities, DeviceHealth } from "@rc/contracts";
-import { and, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, lte, notExists, or, sql } from "drizzle-orm";
 
 import type {
   AuthenticatedDevice,
@@ -15,6 +15,23 @@ import type {
   UpdateProgressStatus
 } from "./store.js";
 import { batteryCarUpdate } from "./battery-health.js";
+
+const DRIVE_CONNECTION_TIMEOUT_MS = 20_000;
+const CONNECTING_DRIVE_SESSION_STATUSES = ["created", "negotiating"] as const;
+
+export function shouldExpireDriveSession(
+  session: {
+    status: "created" | "negotiating" | "active";
+    expiresAt: Date;
+    updatedAt: Date;
+  },
+  now: Date,
+): boolean {
+  if (session.expiresAt.getTime() <= now.getTime()) return true;
+  return CONNECTING_DRIVE_SESSION_STATUSES.includes(
+    session.status as (typeof CONNECTING_DRIVE_SESSION_STATUSES)[number],
+  ) && session.updatedAt.getTime() <= now.getTime() - DRIVE_CONNECTION_TIMEOUT_MS;
+}
 
 export class PostgresGatewayStore implements GatewayStore {
   readonly #database: ReturnType<typeof createDatabase>;
@@ -284,7 +301,17 @@ export class PostgresGatewayStore implements GatewayStore {
     const carState = car?.adminBlocked ? "ADMIN_BLOCKED" : state;
     await this.#database.db.update(schema.cars)
       .set({ state: carState, updatedAt: now })
-      .where(eq(schema.cars.id, device.carId));
+      .where(and(
+        eq(schema.cars.id, device.carId),
+        notExists(
+          this.#database.db.select({ id: schema.driveSessions.id })
+            .from(schema.driveSessions)
+            .where(and(
+              eq(schema.driveSessions.carId, device.carId),
+              inArray(schema.driveSessions.status, ["created", "negotiating", "active"]),
+            )),
+        ),
+      ));
   }
 
   async markDeviceOffline(deviceId: string, now: Date): Promise<void> {
@@ -316,27 +343,130 @@ export class PostgresGatewayStore implements GatewayStore {
   }
 
   async authorizeDriveSession(input: AuthorizeDriveSessionInput): Promise<{ expiresAt: Date } | null> {
-    const [session] = await this.#database.db
-      .update(schema.driveSessions)
-      .set({ status: "negotiating", startedAt: input.now, updatedAt: input.now })
-      .where(and(
-        eq(schema.driveSessions.id, input.sessionId),
-        eq(schema.driveSessions.userId, input.userId),
-        eq(schema.driveSessions.carId, input.carId),
-        eq(schema.driveSessions.status, "created"),
-        gt(schema.driveSessions.expiresAt, input.now)
-      ))
-      .returning({ expiresAt: schema.driveSessions.expiresAt });
-    return session ?? null;
+    return this.#database.db.transaction(async (tx) => {
+      const [session] = await tx
+        .update(schema.driveSessions)
+        .set({ status: "negotiating", startedAt: input.now, updatedAt: input.now })
+        .where(and(
+          eq(schema.driveSessions.id, input.sessionId),
+          eq(schema.driveSessions.userId, input.userId),
+          eq(schema.driveSessions.carId, input.carId),
+          eq(schema.driveSessions.status, "created"),
+          gt(schema.driveSessions.expiresAt, input.now)
+        ))
+        .returning({ carId: schema.driveSessions.carId, expiresAt: schema.driveSessions.expiresAt });
+      if (!session) return null;
+      await tx.update(schema.cars)
+        .set({ state: "CONNECTING", updatedAt: input.now })
+        .where(eq(schema.cars.id, session.carId));
+      return { expiresAt: session.expiresAt };
+    });
+  }
+
+  async markDriveSessionActive(sessionId: string, now: Date): Promise<boolean> {
+    const connectionCutoff = new Date(now.getTime() - DRIVE_CONNECTION_TIMEOUT_MS);
+    return this.#database.db.transaction(async (tx) => {
+      const [session] = await tx.update(schema.driveSessions)
+        .set({ status: "active", updatedAt: now })
+        .where(and(
+          eq(schema.driveSessions.id, sessionId),
+          eq(schema.driveSessions.status, "negotiating"),
+          gt(schema.driveSessions.updatedAt, connectionCutoff),
+          gt(schema.driveSessions.expiresAt, now)
+        ))
+        .returning({ carId: schema.driveSessions.carId });
+      if (!session) return false;
+      await tx.update(schema.cars)
+        .set({ state: "ACTIVE", updatedAt: now })
+        .where(eq(schema.cars.id, session.carId));
+      return true;
+    });
   }
 
   async endDriveSession(sessionId: string, _reason: string, now: Date): Promise<void> {
-    await this.#database.db.update(schema.driveSessions)
-      .set({ status: "ended", endedAt: now, updatedAt: now })
-      .where(and(
-        eq(schema.driveSessions.id, sessionId),
-        inArray(schema.driveSessions.status, ["created", "negotiating", "active"])
-      ));
+    await this.#database.db.transaction(async (tx) => {
+      const [session] = await tx.update(schema.driveSessions)
+        .set({ status: "ended", endedAt: now, updatedAt: now })
+        .where(and(
+          eq(schema.driveSessions.id, sessionId),
+          inArray(schema.driveSessions.status, ["created", "negotiating", "active"])
+        ))
+        .returning({
+          carId: schema.driveSessions.carId,
+          queueEntryId: schema.driveSessions.queueEntryId,
+        });
+      if (!session) return;
+      if (session.queueEntryId) {
+        await tx.update(schema.queueEntries)
+          .set({ status: "left", expiresAt: now, updatedAt: now })
+          .where(eq(schema.queueEntries.id, session.queueEntryId));
+      }
+      const freshnessCutoff = new Date(now.getTime() - 15_000);
+      await tx.update(schema.cars)
+        .set({
+          state: sql`case
+            when ${schema.cars.adminBlocked} then 'ADMIN_BLOCKED'
+            else coalesce((
+              select ${schema.devices.state}
+              from ${schema.devices}
+              where ${schema.devices.carId} = ${schema.cars.id}
+                and ${schema.devices.lastSeenAt} > ${freshnessCutoff}
+              order by ${schema.devices.lastSeenAt} desc nulls last
+              limit 1
+            ), 'OFFLINE')
+          end`,
+          updatedAt: now,
+        })
+        .where(eq(schema.cars.id, session.carId));
+    });
+  }
+
+  async expireDriveSessions(now: Date): Promise<number> {
+    const connectionCutoff = new Date(now.getTime() - DRIVE_CONNECTION_TIMEOUT_MS);
+    return this.#database.db.transaction(async (tx) => {
+      const expired = await tx.update(schema.driveSessions)
+        .set({ status: "ended", endedAt: now, updatedAt: now })
+        .where(and(
+          inArray(schema.driveSessions.status, ["created", "negotiating", "active"]),
+          or(
+            lte(schema.driveSessions.expiresAt, now),
+            and(
+              inArray(schema.driveSessions.status, [...CONNECTING_DRIVE_SESSION_STATUSES]),
+              lte(schema.driveSessions.updatedAt, connectionCutoff),
+            ),
+          ),
+        ))
+        .returning({
+          carId: schema.driveSessions.carId,
+          queueEntryId: schema.driveSessions.queueEntryId,
+        });
+
+      const freshnessCutoff = new Date(now.getTime() - 15_000);
+      for (const session of expired) {
+        if (session.queueEntryId) {
+          await tx.update(schema.queueEntries)
+            .set({ status: "left", expiresAt: now, updatedAt: now })
+            .where(eq(schema.queueEntries.id, session.queueEntryId));
+        }
+        await tx.update(schema.cars)
+          .set({
+            state: sql`case
+              when ${schema.cars.adminBlocked} then 'ADMIN_BLOCKED'
+              else coalesce((
+                select ${schema.devices.state}
+                from ${schema.devices}
+                where ${schema.devices.carId} = ${schema.cars.id}
+                  and ${schema.devices.lastSeenAt} > ${freshnessCutoff}
+                order by ${schema.devices.lastSeenAt} desc nulls last
+                limit 1
+              ), 'OFFLINE')
+            end`,
+            updatedAt: now,
+          })
+          .where(eq(schema.cars.id, session.carId));
+      }
+      return expired.length;
+    });
   }
 
   async provisionCar(input: ProvisionCarInput): Promise<{ siteId: string; carId: string }> {

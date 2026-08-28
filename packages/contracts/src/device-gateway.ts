@@ -83,6 +83,11 @@ export const GatewayClientMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("browser.authenticate"),
     ticket: z.string().min(32).max(4096),
   }).strict(),
+  z.object({
+    v: z.literal(1),
+    type: z.literal("session.connected"),
+    sessionId: uuid,
+  }).strict(),
   signalOfferSchema,
   signalAnswerSchema,
   signalIceSchema,

@@ -1,6 +1,6 @@
 import type { BrowserControlLoop } from "./control-loop";
 import {
-  createAdminDriveSession,
+  createDriveSession,
   RideSessionClient,
   type RideBatteryTelemetry,
   type RideConnectionState,
@@ -67,7 +67,7 @@ const defaultDependencies: RideConnectionAttemptDependencies = {
   createLoop: (sessionId) => {
     throw new Error(`Control loop factory is required for session ${sessionId}`);
   },
-  createSession: createAdminDriveSession,
+  createSession: createDriveSession,
   now: () => new Date(),
   setTimeout: (callback, milliseconds) => window.setTimeout(callback, milliseconds),
 };
@@ -123,7 +123,7 @@ export class RideConnectionAttempt {
           this.#tryReady();
         } else if (state === "DISCONNECTED") {
           this.#clearBatteryTelemetry();
-          if (!this.#ready) this.fail("Camera connection was interrupted");
+          this.fail("Camera connection was interrupted");
         }
       };
       client.onStream = (stream) => {
@@ -157,8 +157,9 @@ export class RideConnectionAttempt {
   }
 
   public fail(message: string): void {
-    if (!this.#active || this.#ready) return;
+    if (!this.#active) return;
     this.#active = false;
+    this.#ready = false;
     this.#cancelTimeout();
     this.#teardown("connection failed");
     this.#append("ERROR", message, "danger", "failed", message);

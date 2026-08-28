@@ -19,7 +19,14 @@ export type BrowserSession = {
 };
 
 type DeviceConnection = { deviceId: string; peer: GatewayPeer };
-type ActiveSession = BrowserSession & { browser: GatewayPeer; device: GatewayPeer };
+type ActiveSession = BrowserSession & {
+  browser: GatewayPeer;
+  device: GatewayPeer;
+  attachedAt: Date;
+  connectedAt: Date | null;
+};
+
+const CONNECTION_TIMEOUT_MS = 20_000;
 
 export class SessionRegistry {
   readonly #devicesByCar = new Map<string, DeviceConnection>();
@@ -41,12 +48,18 @@ export class SessionRegistry {
     return sessionId ?? null;
   }
 
-  attachBrowser(session: BrowserSession, browser: GatewayPeer): boolean {
+  attachBrowser(session: BrowserSession, browser: GatewayPeer, now = new Date()): boolean {
     if (this.#sessions.has(session.sessionId) || this.#sessionsByCar.has(session.carId)) return false;
     const device = this.#devicesByCar.get(session.carId);
     if (!device) return false;
 
-    const active: ActiveSession = { ...session, browser, device: device.peer };
+    const active: ActiveSession = {
+      ...session,
+      browser,
+      device: device.peer,
+      attachedAt: now,
+      connectedAt: null,
+    };
     this.#sessions.set(session.sessionId, active);
     this.#sessionsByCar.set(session.carId, session.sessionId);
     const start: GatewayServerMessage = {
@@ -99,12 +112,22 @@ export class SessionRegistry {
     return this.#sessionsByCar.has(carId);
   }
 
+  markConnected(sessionId: string, now = new Date()): boolean {
+    const session = this.#sessions.get(sessionId);
+    if (!session || session.attachedAt.getTime() + CONNECTION_TIMEOUT_MS <= now.getTime()) return false;
+    session.connectedAt ??= now;
+    return true;
+  }
+
   sweep(now = new Date()): string[] {
     const expired: string[] = [];
     for (const [sessionId, session] of this.#sessions) {
-      if (session.expiresAt.getTime() <= now.getTime()) {
+      const driveExpired = session.expiresAt.getTime() <= now.getTime();
+      const connectionExpired = session.connectedAt === null
+        && session.attachedAt.getTime() + CONNECTION_TIMEOUT_MS <= now.getTime();
+      if (driveExpired || connectionExpired) {
         expired.push(sessionId);
-        this.end(sessionId, "session expired", true);
+        this.end(sessionId, connectionExpired ? "connection timed out" : "session expired", true);
       }
     }
     return expired;

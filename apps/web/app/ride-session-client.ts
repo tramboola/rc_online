@@ -47,6 +47,7 @@ export class RideSessionClient {
   #fast: RTCDataChannel | null = null;
   #reliable: RTCDataChannel | null = null;
   #closed = false;
+  #connectedReported = false;
 
   onStream: (stream: MediaStream) => void = () => undefined;
   onState: (state: RideConnectionState) => void = () => undefined;
@@ -100,6 +101,10 @@ export class RideSessionClient {
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === "connected") {
+        if (!this.#connectedReported) {
+          this.#connectedReported = true;
+          this.#send({ v: 1, type: "session.connected", sessionId: this.#session.sessionId });
+        }
         void this.#reportConnectedRoute(peer);
       }
       if (["failed", "closed", "disconnected"].includes(peer.connectionState)) this.onState("DISCONNECTED");
@@ -225,8 +230,8 @@ export async function detectConnectionRoute(
   }
 }
 
-export async function createAdminDriveSession(carId: string): Promise<StoredDriveSession> {
-  const response = await fetch("/api/admin/drive-sessions", {
+export async function createDriveSession(carId: string): Promise<StoredDriveSession> {
+  const response = await fetch("/api/drive-sessions", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ carId })
