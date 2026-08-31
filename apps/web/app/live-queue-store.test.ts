@@ -7,10 +7,11 @@ const car = {
   slug: "rc-mania-one",
   name: "RC Mania One",
   batteryPercent: 74,
+  availability: "available" as const,
 };
 
 describe("queueSnapshotFromState", () => {
-  it("offers the available car only to the first waiting user", () => {
+  it("shows the fleet but offers an available car only to the first waiting user", () => {
     const entries = [
       { id: "first", userId: "user-a" },
       { id: "second", userId: "user-b" },
@@ -30,7 +31,7 @@ describe("queueSnapshotFromState", () => {
       count: 2,
       availableCarCount: 1,
       status: "waiting",
-      cars: [],
+      cars: [car],
     });
   });
 
@@ -44,5 +45,29 @@ describe("queueSnapshotFromState", () => {
 
     expect(queueSnapshotFromState("user-b", entries, [car, secondCar]).status).toBe("ready");
     expect(queueSnapshotFromState("user-c", entries, [car, secondCar]).status).toBe("waiting");
+  });
+
+  it("keeps occupied cars visible without counting them as available", () => {
+    const occupiedCar = {
+      ...car,
+      id: "98d789d2-c0a8-44ef-98fd-d51564e4909e",
+      slug: "occupied",
+      availability: "in_use" as const,
+    };
+    const entries = [
+      { id: "first", userId: "user-a" },
+      { id: "second", userId: "user-b" },
+    ];
+
+    expect(queueSnapshotFromState("user-a", entries, [car, occupiedCar])).toMatchObject({
+      availableCarCount: 1,
+      status: "ready",
+      cars: [car, occupiedCar],
+    });
+    expect(queueSnapshotFromState("user-b", entries, [car, occupiedCar])).toMatchObject({
+      availableCarCount: 1,
+      status: "waiting",
+      cars: [car, occupiedCar],
+    });
   });
 });

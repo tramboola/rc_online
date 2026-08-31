@@ -33,6 +33,20 @@ export function shouldExpireDriveSession(
   ) && session.updatedAt.getTime() <= now.getTime() - DRIVE_CONNECTION_TIMEOUT_MS;
 }
 
+export function freshDeviceStateSql(freshnessCutoff: Date) {
+  return sql`case
+    when ${schema.cars.adminBlocked} then 'ADMIN_BLOCKED'
+    else coalesce((
+      select ${schema.devices.state}
+      from ${schema.devices}
+      where ${schema.devices.carId} = ${schema.cars.id}
+        and ${schema.devices.lastSeenAt} > ${freshnessCutoff.toISOString()}
+      order by ${schema.devices.lastSeenAt} desc nulls last
+      limit 1
+    ), 'OFFLINE')
+  end`;
+}
+
 export class PostgresGatewayStore implements GatewayStore {
   readonly #database: ReturnType<typeof createDatabase>;
 
@@ -404,17 +418,7 @@ export class PostgresGatewayStore implements GatewayStore {
       const freshnessCutoff = new Date(now.getTime() - 15_000);
       await tx.update(schema.cars)
         .set({
-          state: sql`case
-            when ${schema.cars.adminBlocked} then 'ADMIN_BLOCKED'
-            else coalesce((
-              select ${schema.devices.state}
-              from ${schema.devices}
-              where ${schema.devices.carId} = ${schema.cars.id}
-                and ${schema.devices.lastSeenAt} > ${freshnessCutoff}
-              order by ${schema.devices.lastSeenAt} desc nulls last
-              limit 1
-            ), 'OFFLINE')
-          end`,
+          state: freshDeviceStateSql(freshnessCutoff),
           updatedAt: now,
         })
         .where(eq(schema.cars.id, session.carId));
@@ -450,17 +454,7 @@ export class PostgresGatewayStore implements GatewayStore {
         }
         await tx.update(schema.cars)
           .set({
-            state: sql`case
-              when ${schema.cars.adminBlocked} then 'ADMIN_BLOCKED'
-              else coalesce((
-                select ${schema.devices.state}
-                from ${schema.devices}
-                where ${schema.devices.carId} = ${schema.cars.id}
-                  and ${schema.devices.lastSeenAt} > ${freshnessCutoff}
-                order by ${schema.devices.lastSeenAt} desc nulls last
-                limit 1
-              ), 'OFFLINE')
-            end`,
+            state: freshDeviceStateSql(freshnessCutoff),
             updatedAt: now,
           })
           .where(eq(schema.cars.id, session.carId));

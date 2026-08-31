@@ -93,6 +93,7 @@ type QueueCarPresentation = {
   src: string | null;
   batteryPercent: number | null;
   connection: string;
+  availability: "available" | "in_use";
 };
 
 type QueueBatteryTone = "ok" | "unavailable" | "warning";
@@ -119,7 +120,8 @@ function getQueueCars(
       name: car.name.toUpperCase(),
       src: car.slug === "rc-mania-one" ? "/assets/car-rc-mania-one.webp" : null,
       batteryPercent: car.batteryPercent,
-      connection: "AVAILABLE",
+      connection: car.availability === "available" ? "AVAILABLE" : "IN USE",
+      availability: car.availability,
     }));
   }
   return [];
@@ -766,8 +768,13 @@ function QueueScreen({
   const router = useRouter();
   const [queueSnapshot, setQueueSnapshot] = useState(initialQueueSnapshot);
   const queueCars = getQueueCars(operationalStatus, queueSnapshot);
-  const hasAvailableCars = queueCars.length > 0;
-  const [selectedCar, setSelectedCar] = useState(queueCars[0]?.id ?? "");
+  const canChooseCar = queueSnapshot?.status === "ready";
+  const selectableCars = queueCars.filter((car) => car.availability === "available");
+  const hasAvailableCars = selectableCars.length > 0;
+  const offerReady = canChooseCar && hasAvailableCars;
+  const [selectedCar, setSelectedCar] = useState(
+    canChooseCar ? selectableCars[0]?.id ?? "" : "",
+  );
   const fleetUnavailable = operationalStatus?.state === "unavailable";
   const [status, setStatus] = useState(initialQueueSnapshot ? "Live queue active" : "Joining live queue…");
 
@@ -795,12 +802,12 @@ function QueueScreen({
   }, []);
 
   useEffect(() => {
-    if (queueCars.some((car) => car.id === selectedCar)) return;
-    setSelectedCar(queueCars[0]?.id ?? "");
-  }, [queueCars, selectedCar]);
+    if (canChooseCar && selectableCars.some((car) => car.id === selectedCar)) return;
+    setSelectedCar(canChooseCar ? selectableCars[0]?.id ?? "" : "");
+  }, [canChooseCar, selectableCars, selectedCar]);
 
   function accept() {
-    if (!selectedCar) return;
+    if (!canChooseCar || !selectableCars.some((car) => car.id === selectedCar)) return;
     setStatus("Connecting…");
     router.push(getRideUrl(selectedCar));
   }
@@ -816,7 +823,8 @@ function QueueScreen({
   const position = queueSnapshot?.position ?? 1;
   const queueCount = queueSnapshot?.count ?? operationalStatus?.queueCount ?? 1;
   const availableCarCount = queueSnapshot?.availableCarCount ?? queueCars.length;
-  const carsServingEarlierDrivers = !hasAvailableCars && availableCarCount > 0;
+  const carsServingEarlierDrivers = !canChooseCar && availableCarCount > 0;
+  const allCarsInUse = queueCars.length > 0 && availableCarCount === 0;
 
   return (
     <div className="page queue-page">
@@ -859,8 +867,10 @@ function QueueScreen({
         </section>
         <section className="offer-panel">
           <div className="offer-heading">
-            {hasAvailableCars ? (
+            {offerReady ? (
               <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car when you&apos;re ready.</span></div>
+            ) : allCarsInUse ? (
+              <div><p className="eyebrow">CARS CURRENTLY ON TRACK</p><h2>ALL CARS ARE IN USE</h2><span>They will become available as soon as the current drives end.</span></div>
             ) : carsServingEarlierDrivers ? (
               <div><p className="eyebrow">QUEUE POSITION #{position}</p><h2>WAITING FOR YOUR TURN</h2><span>Available cars are serving drivers ahead of you. Keep this page open.</span></div>
             ) : (
@@ -869,20 +879,22 @@ function QueueScreen({
           </div>
           <h3>SELECT YOUR CAR</h3>
           <div className="car-choice-grid">
-            {queueCars.map(({ id, number, name, src, batteryPercent, connection }) => {
+            {queueCars.map(({ id, number, name, src, batteryPercent, connection, availability }) => {
               const battery = getQueueBatteryPresentation(batteryPercent);
+              const selectable = canChooseCar && availability === "available";
               return (
                 <button
-                  aria-pressed={selectedCar === id}
-                  className={`car-choice ${selectedCar === id ? "selected" : ""}`}
+                  aria-pressed={selectable && selectedCar === id}
+                  className={`car-choice ${availability === "in_use" ? "in-use" : ""} ${selectable && selectedCar === id ? "selected" : ""}`.trim()}
+                  disabled={!selectable}
                   key={id}
-                  onClick={() => setSelectedCar(id)}
+                  onClick={() => selectable && setSelectedCar(id)}
                   type="button"
                 >
-                  {selectedCar === id ? <CheckCircle className="choice-check" size={32} weight="fill" /> : null}
+                  {selectable && selectedCar === id ? <CheckCircle className="choice-check" size={32} weight="fill" /> : null}
                   {src ? <img src={src} alt={`${name} RC car`} /> : <CarProfile aria-hidden="true" size={72} />}
                   <small>{number}</small><strong>{name}</strong>
-                  <span className={`battery-status battery-${battery.tone}`}><BatteryHigh size={28} /> {battery.label}</span><span><WifiHigh size={28} /> {connection}</span>
+                  <span className={`battery-status battery-${battery.tone}`}><BatteryHigh size={28} /> {battery.label}</span><span className={`connection-status connection-${availability}`}><WifiHigh size={28} /> {connection}</span>
                 </button>
               );
             })}

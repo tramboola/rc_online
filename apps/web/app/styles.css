@@ -1107,6 +1107,14 @@ p { color: #a9afb3; }
 .car-choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .car-choice { min-width: 0; border: 1px solid #48535a; background: #091116; color: white; text-align: left; padding: 13px; cursor: pointer; position: relative; }
 .car-choice.selected { border: 2px solid var(--cyan); box-shadow: 0 0 18px rgba(53, 214, 244, .2); }
+.car-choice.in-use {
+  border-color: color-mix(in srgb, var(--amber) 72%, #48535a);
+  background: rgba(38, 29, 8, .72);
+  cursor: not-allowed;
+}
+.car-choice.in-use strong,
+.car-choice .connection-in_use { color: var(--amber); }
+.car-choice.in-use img { opacity: .72; }
 .car-choice img {
   width: 100%;
   height: 176px;
@@ -1743,6 +1751,8 @@ p { color: #a9afb3; }
   .car-choice:hover { border-color: #78848a; transform: translateY(-1px); }
   .car-choice:hover img { transform: scale(1.012); }
   .car-choice.selected:hover { border-color: var(--cyan); }
+  .car-choice.in-use:hover { border-color: var(--amber); transform: none; }
+  .car-choice.in-use:hover img { transform: none; }
 
   .ride-telemetry button:hover {
     border-color: var(--cyan);

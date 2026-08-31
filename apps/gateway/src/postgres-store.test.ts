@@ -1,8 +1,12 @@
 import { readFile } from "node:fs/promises";
 
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { shouldExpireDriveSession } from "./postgres-store.js";
+import * as postgresStore from "./postgres-store.js";
+
+const { shouldExpireDriveSession } = postgresStore;
 
 describe("shouldExpireDriveSession", () => {
   const now = new Date("2026-08-28T18:00:00.000Z");
@@ -32,6 +36,20 @@ describe("shouldExpireDriveSession", () => {
       expiresAt: now,
       updatedAt: new Date("2026-08-28T17:59:59.000Z"),
     }, now)).toBe(true);
+  });
+
+  it("builds the car release query with a driver-safe timestamp", () => {
+    const freshDeviceStateSql = (
+      postgresStore as typeof postgresStore & {
+        freshDeviceStateSql?: (value: Date) => SQL;
+      }
+    ).freshDeviceStateSql;
+
+    expect(freshDeviceStateSql).toBeTypeOf("function");
+    const query = new PgDialect().sqlToQuery(
+      freshDeviceStateSql!(new Date("2026-08-31T11:55:25.000Z")),
+    );
+    expect(query.params).toEqual(["2026-08-31T11:55:25.000Z"]);
   });
 
   it("claims stale rows with a conditional update instead of a select-then-end race", async () => {

@@ -106,21 +106,25 @@ describe("driving setup screens", () => {
             name: "RC Mania One",
             slug: "rc-mania-one",
             batteryPercent: 0,
+            availability: "available",
           }, {
             id: "40000000-0000-4000-8000-000000000002",
             name: "RC Mania Two",
             slug: "rc-mania-two",
             batteryPercent: 19,
+            availability: "available",
           }, {
             id: "40000000-0000-4000-8000-000000000003",
             name: "RC Mania Three",
             slug: "rc-mania-three",
             batteryPercent: 20,
+            availability: "available",
           }, {
             id: "40000000-0000-4000-8000-000000000004",
             name: "RC Mania Four",
             slug: "rc-mania-four",
             batteryPercent: null,
+            availability: "available",
           }],
         }}
         mockMode
@@ -208,7 +212,13 @@ describe("driving setup screens", () => {
           count: 3,
           availableCarCount: 1,
           status: "waiting",
-          cars: [],
+          cars: [{
+            id: "40000000-0000-4000-8000-000000000001",
+            name: "RC Mania One",
+            slug: "rc-mania-one",
+            batteryPercent: 73,
+            availability: "available",
+          }],
         }}
         mockMode
         screen="queue"
@@ -218,6 +228,39 @@ describe("driving setup screens", () => {
     expect(markup).toContain("YOU ARE #2");
     expect(markup).toContain("WAITING FOR YOUR TURN");
     expect(markup).not.toContain("YOUR CAR IS READY");
+    expect(markup).toContain("disabled");
+  });
+
+  it("renders an occupied car as a disabled yellow choice", () => {
+    const occupiedCar = {
+      id: "40000000-0000-4000-8000-000000000001",
+      name: "RC Mania One",
+      slug: "rc-mania-one",
+      batteryPercent: 73,
+      availability: "in_use" as const,
+    };
+    const markup = renderToStaticMarkup(
+      <SimulationScreen
+        adminAccess
+        liveQueueSnapshot={{
+          entryId: "queue-entry-1",
+          position: 1,
+          count: 1,
+          availableCarCount: 0,
+          status: "waiting",
+          cars: [occupiedCar],
+        }}
+        mockMode
+        operationalStatus={{ state: "ready", cars: [], queueCount: 0 }}
+        screen="queue"
+      />,
+    );
+
+    expect(markup).toContain("ALL CARS ARE IN USE");
+    expect(markup).toContain('class="car-choice in-use"');
+    expect(markup).toContain("IN USE");
+    expect(markup).toContain("disabled");
+    expect(markup).not.toContain("NO CARS AVAILABLE");
   });
 
   it("keeps queue offer actions inside narrow portrait panels", () => {

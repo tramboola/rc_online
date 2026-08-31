@@ -1,5 +1,5 @@
 import { cars, createDatabase, devices, driveSessions, queueEntries } from "@rc/database";
-import { and, asc, eq, gt, inArray, lte, notExists } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte } from "drizzle-orm";
 
 import type { AvailableCar } from "./operational-status";
 
@@ -9,7 +9,11 @@ export type LiveQueueSnapshot = {
   count: number;
   availableCarCount: number;
   status: "waiting" | "ready" | "driving";
-  cars: AvailableCar[];
+  cars: QueueCar[];
+};
+
+export type QueueCar = AvailableCar & {
+  availability: "available" | "in_use";
 };
 
 export interface LiveQueueStore {
@@ -39,11 +43,12 @@ const DEVICE_FRESHNESS_MS = 15_000;
 export function queueSnapshotFromState(
   userId: string,
   entries: QueuePositionRow[],
-  availableCars: AvailableCar[],
+  cars: QueueCar[],
 ): LiveQueueSnapshot {
   const index = entries.findIndex((entry) => entry.userId === userId);
   if (index < 0) throw new Error("Live queue entry is missing");
   const position = index + 1;
+  const availableCars = cars.filter((car) => car.availability === "available");
   const ready = availableCars.length > 0 && position <= availableCars.length;
   return {
     entryId: entries[index]!.id,
@@ -51,7 +56,7 @@ export function queueSnapshotFromState(
     count: entries.length,
     availableCarCount: availableCars.length,
     status: ready ? "ready" : "waiting",
-    cars: ready ? availableCars : [],
+    cars,
   };
 }
 
@@ -112,8 +117,8 @@ export function createPostgresLiveQueueStore(databaseUrl: string): LiveQueueStor
         .where(eq(queueEntries.id, entry.id));
 
       const entries = await listActiveEntries(tx, now);
-      const availableCars = await listAvailableCars(tx, now);
-      return queueSnapshotFromState(userId, entries, availableCars);
+      const cars = await listQueueCars(tx, now);
+      return queueSnapshotFromState(userId, entries, cars);
     });
   }
 
@@ -143,27 +148,33 @@ async function listActiveEntries(tx: QueueTransaction, now: Date): Promise<Queue
     .orderBy(asc(queueEntries.joinedAt), asc(queueEntries.id));
 }
 
-async function listAvailableCars(tx: QueueTransaction, now: Date): Promise<AvailableCar[]> {
+async function listQueueCars(tx: QueueTransaction, now: Date): Promise<QueueCar[]> {
   const freshnessCutoff = new Date(now.getTime() - DEVICE_FRESHNESS_MS);
-  return tx.selectDistinct({
+  const rows = await tx.selectDistinct({
     id: cars.id,
     slug: cars.slug,
     name: cars.name,
     batteryPercent: cars.batteryPercent,
+    carState: cars.state,
+    driveSessionId: driveSessions.id,
   }).from(cars)
     .innerJoin(devices, eq(devices.carId, cars.id))
+    .leftJoin(driveSessions, and(
+      eq(driveSessions.carId, cars.id),
+      inArray(driveSessions.status, [...ACTIVE_DRIVE_SESSION_STATUSES]),
+      gt(driveSessions.expiresAt, now),
+    ))
     .where(and(
-      eq(cars.state, "AVAILABLE"),
       eq(cars.adminBlocked, false),
       eq(devices.state, "AVAILABLE"),
       gt(devices.lastSeenAt, freshnessCutoff),
-      notExists(
-        tx.select({ id: driveSessions.id }).from(driveSessions).where(and(
-          eq(driveSessions.carId, cars.id),
-          inArray(driveSessions.status, [...ACTIVE_DRIVE_SESSION_STATUSES]),
-          gt(driveSessions.expiresAt, now),
-        )),
-      ),
     ))
     .orderBy(asc(cars.name), asc(cars.id));
+
+  return rows.map(({ carState, driveSessionId, ...car }) => ({
+    ...car,
+    availability: carState === "AVAILABLE" && driveSessionId === null
+      ? "available"
+      : "in_use",
+  }));
 }
