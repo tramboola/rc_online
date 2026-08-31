@@ -1625,7 +1625,7 @@ p { color: #a9afb3; }
   letter-spacing: 2.2px;
 }
 .system-log-header > strong svg { color: var(--red); }
-.connection-status {
+.system-log-header .connection-status {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1633,9 +1633,9 @@ p { color: #a9afb3; }
   font: 500 14px/1 var(--font-display);
   letter-spacing: 1.5px;
 }
-.connection-status b { color: var(--red); font-weight: 600; }
-.status-connected .connection-status b { color: #9dff38; }
-.connection-status svg { color: var(--red); }
+.system-log-header .connection-status b { color: var(--red); font-weight: 600; }
+.status-connected .system-log-header .connection-status b { color: #9dff38; }
+.system-log-header .connection-status svg { color: var(--red); }
 .system-log-lines {
   min-height: 373px;
   padding: 12px 34px 23px;
@@ -1896,7 +1896,7 @@ p { color: #a9afb3; }
     gap: 11px;
   }
   .system-log-header > strong { font-size: 13px; }
-  .connection-status { align-self: flex-end; font-size: 12px; }
+  .system-log-header .connection-status { align-self: flex-end; font-size: 12px; }
   .system-log-lines {
     min-height: 0;
     padding: 13px 13px 18px;
