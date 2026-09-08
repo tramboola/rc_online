@@ -64,7 +64,10 @@ describe("RideSessionClient", () => {
     vi.useRealTimers();
   });
 
-  it("reports decoded video measurements and requests a lower profile only on the dedicated supported channel", async () => {
+  it.each([
+    { cause: "network impairment", fps: 29, rtt: 0.4, lost: 10, jitter: 0.07, target: "720p30" },
+    { cause: "low FPS with healthy network", fps: 5, rtt: 0.08, lost: 0, jitter: 0.012, target: "540p30" },
+  ])("reports decoded video measurements and requests a lower profile on the quality channel for $cause", async ({ fps, rtt, lost, jitter, target }) => {
     vi.useFakeTimers();
     const { client, peer, fast, reliable } = harness();
     const onVideoStats = vi.fn();
@@ -72,14 +75,14 @@ describe("RideSessionClient", () => {
     let seconds = 0;
     peer.getStats.mockImplementation(async () => new Map([
       ["transport", { id: "transport", type: "transport", selectedCandidatePairId: "pair" }],
-      ["pair", { id: "pair", type: "candidate-pair", state: "succeeded", currentRoundTripTime: 0.4 }],
-      ["video", { id: "video", type: "inbound-rtp", kind: "video", timestamp: ++seconds * 1000, frameWidth: 1280, frameHeight: 720, framesDecoded: seconds * 29, packetsReceived: seconds * 100, packetsLost: seconds * 10, jitter: 0.07 }],
+      ["pair", { id: "pair", type: "candidate-pair", state: "succeeded", currentRoundTripTime: rtt }],
+      ["video", { id: "video", type: "inbound-rtp", kind: "video", timestamp: ++seconds * 1000, frameWidth: 1280, frameHeight: 720, framesDecoded: seconds * fps, packetsReceived: seconds * 100, packetsLost: seconds * lost, jitter }],
     ]) as never);
     client.connect();
     peer.connectionState = "connected";
     peer.onconnectionstatechange?.();
     await vi.advanceTimersByTimeAsync(6000);
-    expect(onVideoStats).toHaveBeenLastCalledWith(expect.objectContaining({ width: 1280, height: 720, fps: 29 }));
+    expect(onVideoStats).toHaveBeenLastCalledWith(expect.objectContaining({ width: 1280, height: 720, fps }));
     expect(fast.send).not.toHaveBeenCalled();
     expect(reliable.send).not.toHaveBeenCalled();
 
@@ -90,7 +93,7 @@ describe("RideSessionClient", () => {
     expect(quality.send).not.toHaveBeenCalled();
     quality.onmessage?.({ data: JSON.stringify({ v: 1, type: "video.capabilities", sessionId: session.sessionId, profiles: ["720p60", "720p30", "540p30", "360p30"], profile: "720p60" }) });
     await vi.advanceTimersByTimeAsync(12000);
-    expect(quality.send).toHaveBeenCalledWith(JSON.stringify({ v: 1, type: "video.profile.request", sessionId: session.sessionId, profile: "720p30" }));
+    expect(quality.send).toHaveBeenCalledWith(JSON.stringify({ v: 1, type: "video.profile.request", sessionId: session.sessionId, profile: target }));
     expect(reliable.send).not.toHaveBeenCalled();
     client.close();
     const callCount = peer.getStats.mock.calls.length;

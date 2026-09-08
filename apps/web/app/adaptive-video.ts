@@ -24,6 +24,10 @@ type VideoSample = {
 };
 
 const PROFILE_ORDER: readonly VideoProfile[] = ["720p60", "720p30", "540p30", "360p30"];
+const PROFILE_HEIGHT: Record<VideoProfile, number> = {
+  "720p60": 720, "720p30": 720, "540p30": 540, "360p30": 360,
+};
+const MIN_HEALTHY_FPS = 21;
 const MAX_SAMPLE_GAP_MS = 3_000;
 
 function nonNegative(value: unknown): number | null {
@@ -184,6 +188,7 @@ export class AdaptiveVideoPolicy {
   private lastSampleAt: number | null = null;
   private lastChangeAt: number | null = null;
   private badSamples = 0;
+  private lowFpsSamples = 0;
   private goodSince: number | null = null;
   private pending: { profile: VideoProfile; requestedAt: number } | null = null;
   private unacknowledgedRequests = 0;
@@ -196,6 +201,7 @@ export class AdaptiveVideoPolicy {
 
   private clearEvidence(): void {
     this.badSamples = 0;
+    this.lowFpsSamples = 0;
     this.goodSince = null;
   }
 
@@ -223,10 +229,12 @@ export class AdaptiveVideoPolicy {
     const loss = nonNegative(stats.lossRatio);
     const buffer = nonNegative(stats.jitterBufferMs);
     const fps = nonNegative(stats.fps);
-    const impaired = stats.stalled || (rtt !== null && rtt > 250)
+    const lowFps = fps !== null && fps < MIN_HEALTHY_FPS;
+    this.lowFpsSamples = lowFps ? this.lowFpsSamples + 1 : 0;
+    const impaired = lowFps || stats.stalled || (rtt !== null && rtt > 250)
       || (jitter !== null && jitter > 50) || (loss !== null && loss <= 1 && loss > 0.05)
       || (buffer !== null && buffer > 150);
-    const healthy = !impaired && fps !== null && fps > 0
+    const healthy = !impaired && fps !== null && fps >= MIN_HEALTHY_FPS
       && rtt !== null && rtt < 160 && jitter !== null && jitter < 25
       && loss !== null && loss < 0.01
       && (stats.jitterBufferMs === null || (buffer !== null && buffer < 80));
@@ -240,7 +248,13 @@ export class AdaptiveVideoPolicy {
     }
     const currentIndex = this.profiles.indexOf(this.current);
     let next: VideoProfile | undefined;
-    if (this.badSamples >= 3) next = this.profiles[currentIndex + 1];
+    if (this.lowFpsSamples >= 3) {
+      // Sustained low FPS needs fewer pixels, not just a lower target frame rate.
+      // Skip 720p30 from 720p60, but never request a profile the Pi did not offer.
+      next = this.profiles.slice(currentIndex + 1)
+        .find((profile) => PROFILE_HEIGHT[profile] < PROFILE_HEIGHT[this.current])
+        ?? this.profiles[currentIndex + 1];
+    } else if (this.badSamples >= 3) next = this.profiles[currentIndex + 1];
     else if (this.goodSince !== null && nowMs - this.goodSince >= 6_000) {
       next = this.profiles[currentIndex - 1];
     }

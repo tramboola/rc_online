@@ -302,13 +302,108 @@ describe("AdaptiveVideoPolicy", () => {
     },
   );
 
-  it("allows recovery without optional jitter-buffer stats and does not punish low FPS alone", () => {
+  it("allows recovery without optional jitter-buffer stats when FPS is sufficient", () => {
     const policy = new AdaptiveVideoPolicy(profiles, "360p30");
-    const stats = { ...good, fps: 12, jitterBufferMs: null };
+    const stats = { ...good, fps: 29, jitterBufferMs: null };
     for (let now = 0; now < 9_000; now += 1_000) {
       expect(policy.observe(stats, now)).toBeNull();
     }
     expect(policy.observe(stats, 9_000)).toBe("540p30");
+  });
+
+  it.each([
+    { current: "720p60", fps: 5, want: "540p30" },
+    { current: "720p30", fps: 20, want: "540p30" },
+    { current: "720p60", fps: 20.999, want: "540p30" },
+    { current: "720p60", fps: 0, want: "540p30" },
+    { current: "540p30", fps: 5, want: "360p30" },
+  ] as const)("reduces resolution from $current after three samples at $fps FPS", ({ current, fps, want }) => {
+    const policy = new AdaptiveVideoPolicy(profiles, current);
+    const stats = { ...good, fps };
+    warm(policy);
+    expect(policy.observe(stats, 3_000)).toBeNull();
+    expect(policy.observe(stats, 4_000)).toBeNull();
+    expect(policy.observe(stats, 5_000)).toBe(want);
+  });
+
+  it.each([21, 21.001, null, Number.NaN, -1])("does not downgrade solely for FPS %s", (fps) => {
+    const policy = new AdaptiveVideoPolicy(profiles, "720p60");
+    for (let now = 0; now <= 20_000; now += 1_000) {
+      expect(policy.observe({ ...good, fps }, now)).toBeNull();
+    }
+  });
+
+  it("resets the low-FPS streak after a recovered or unknown sample", () => {
+    const policy = new AdaptiveVideoPolicy(profiles, "720p60");
+    const low = { ...good, fps: 5 };
+    warm(policy);
+    expect(policy.observe(low, 3_000)).toBeNull();
+    expect(policy.observe({ ...good, fps: 21 }, 4_000)).toBeNull();
+    expect(policy.observe(low, 5_000)).toBeNull();
+    expect(policy.observe({ ...good, fps: null }, 6_000)).toBeNull();
+    expect(policy.observe(low, 7_000)).toBeNull();
+    expect(policy.observe(low, 8_000)).toBeNull();
+    expect(policy.observe(low, 9_000)).toBe("540p30");
+  });
+
+  it.each([
+    { cause: "one low-FPS spike", samples: [bad, { ...bad, fps: 5 }, bad] },
+    { cause: "two low FPS samples then network impairment", samples: [{ ...good, fps: 5 }, { ...good, fps: 5 }, bad] },
+    { cause: "two network samples then low FPS", samples: [bad, bad, { ...good, fps: 5 }] },
+  ])("uses the ordinary profile step for three mixed bad samples: $cause", ({ samples }) => {
+    const policy = new AdaptiveVideoPolicy(profiles, "720p60");
+    warm(policy);
+    expect(policy.observe(samples[0]!, 3_000)).toBeNull();
+    expect(policy.observe(samples[1]!, 4_000)).toBeNull();
+    expect(policy.observe(samples[2]!, 5_000)).toBe("720p30");
+  });
+
+  it.each([0, 5, 20.999])("neither goes below 360p nor upgrades while FPS stays at %s", (fps) => {
+    const policy = new AdaptiveVideoPolicy(profiles, "360p30");
+    for (let now = 0; now <= 30_000; now += 1_000) {
+      expect(policy.observe({ ...good, fps }, now)).toBeNull();
+    }
+  });
+
+  it("requires six fresh good seconds after a low-FPS sample before upgrading", () => {
+    const policy = new AdaptiveVideoPolicy(profiles, "360p30");
+    warm(policy);
+    for (let now = 3_000; now < 8_000; now += 1_000) {
+      expect(policy.observe(good, now)).toBeNull();
+    }
+    expect(policy.observe({ ...good, fps: 20 }, 8_000)).toBeNull();
+    for (let now = 9_000; now < 15_000; now += 1_000) {
+      expect(policy.observe({ ...good, fps: 21 }, now)).toBeNull();
+    }
+    expect(policy.observe({ ...good, fps: 21 }, 15_000)).toBe("540p30");
+  });
+
+  it.each([
+    { supported: ["720p60", "720p30", "360p30"], want: "360p30" },
+    { supported: ["720p60", "720p30"], want: "720p30" },
+    { supported: ["720p60"], want: null },
+  ] as const)("uses the next supported resolution, or a lower FPS profile if none exists: $supported", ({ supported, want }) => {
+    const policy = new AdaptiveVideoPolicy(supported, "720p60");
+    const stats = { ...good, fps: 5 };
+    warm(policy);
+    expect(policy.observe(stats, 3_000)).toBeNull();
+    expect(policy.observe(stats, 4_000)).toBeNull();
+    expect(policy.observe(stats, 5_000)).toBe(want);
+  });
+
+  it("waits for ACK and the existing cooldown after a direct resolution downgrade", () => {
+    const policy = new AdaptiveVideoPolicy(profiles, "720p60");
+    const stats = { ...good, fps: 5 };
+    warm(policy);
+    policy.observe(stats, 3_000);
+    policy.observe(stats, 4_000);
+    expect(policy.observe(stats, 5_000)).toBe("540p30");
+    expect(policy.observe(stats, 6_000)).toBeNull();
+    policy.acknowledge("540p30", 6_000);
+    for (let now = 7_000; now <= 15_000; now += 1_000) {
+      expect(policy.observe(stats, now)).toBeNull();
+    }
+    expect(policy.observe(stats, 16_000)).toBe("360p30");
   });
 
   it("resets good history across a background gap", () => {

@@ -24,17 +24,34 @@ not restart the camera or the peer connection.
 
 The browser samples inbound-video statistics approximately once per second,
 without overlapping requests. After a 3-second warmup, three consecutive impaired
-observations request one lower profile. An impaired observation has any of:
+observations request a downgrade. An impaired observation has any of:
 
+- measured decoded FPS strictly below 21 (including zero);
 - selected connection RTT above 250 ms;
 - packet-arrival jitter above 50 ms;
 - interval packet loss above 5%;
 - interval average jitter-buffer residence above 150 ms;
 - decoded-frame counter not advancing during a fresh sample interval.
 
+Three consecutive samples below 21 FPS skip to the next supported **lower
+resolution**, independently of the target frame rate:
+
+| Current profile | Low-FPS downgrade |
+| --- | --- |
+| 720p60 or 720p30 (1280 × 720) | 540p30 (960 × 540) |
+| 540p30 (960 × 540) | 360p30 (640 × 360) |
+| 360p30 (640 × 360) | Stay at the minimum; do not upgrade while FPS is low |
+
+Exactly 21 FPS does not trigger this rule. A recovered or unknown FPS sample
+breaks the low-FPS streak; one isolated dip cannot bypass 720p30. Three impaired
+samples with mixed causes (for example, two low-FPS samples followed by network
+impairment) still follow the original one-profile ladder, including 720p60 to
+720p30. If the Pi does not advertise 540p30, use the next supported lower
+resolution; if none is available, a lower-FPS profile is the fallback.
+
 After each acknowledged change, the controller waits 8 seconds before gathering
 new evidence. It moves one profile upward only after at least 6 seconds of good
-observations: positive measured FPS, RTT below 160 ms, jitter below 25 ms, loss
+observations: measured FPS at least 21, RTT below 160 ms, jitter below 25 ms, loss
 below 1%, and buffer delay below 80 ms when available. Missing statistics are
 unknown, never evidence of a healthy connection. Long gaps and counter/stream
 resets discard outdated evidence. Lost-packet counters may be signed; recovered
@@ -99,3 +116,7 @@ To enable on the service later, deploy the Pi Agent and the web release from the
 matching `codex/adaptive-video-360p` branches. No gateway restart is needed for this
 feature. Each side can be rolled back independently; adaptation is available only
 when both sides support it.
+
+The below-21-FPS rule is a browser-only policy change. A Pi that already supports
+these adaptive profiles does not require an update for the new threshold or for
+skipping directly from 720p60 to 540p30.
