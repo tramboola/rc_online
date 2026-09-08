@@ -6,6 +6,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { ConnectionLoadingOverlay } from "./connection-loading-screen";
 import { BrowserControlLoop } from "./control-loop";
+import { KeyboardDriveModel } from "./keyboard-drive-model";
 import {
   controlIntentFromPressedKeys,
   controlKeyForCode,
@@ -89,6 +90,7 @@ export function RealRideScreen() {
   const trimSaveRevisionRef = useRef(0);
   const armedRef = useRef(false);
   const pressedRef = useRef<ReadonlySet<string>>(new Set());
+  const keyboardModelRef = useRef<KeyboardDriveModel | null>(null);
   const [state, setState] = useState<RideConnectionState>("CONNECTING");
   const [armed, setArmed] = useState(false);
   const [pressedKeys, setPressedKeys] = useState<ReadonlySet<string>>(new Set());
@@ -109,6 +111,12 @@ export function RealRideScreen() {
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const battery = getBatteryPresentation(batteryTelemetry.batteryPercent);
   const applyMobileInput = useCallback((input: { steering: number; throttle: number; nitro: boolean }) => {
+    keyboardModelRef.current?.reset();
+    if (pressedRef.current.size > 0) {
+      pressedRef.current = new Set();
+      setPressedKeys(pressedRef.current);
+      setControl(NEUTRAL_CONTROL);
+    }
     loopRef.current?.setInput(input);
   }, []);
 
@@ -131,6 +139,12 @@ export function RealRideScreen() {
       const loop = new BrowserControlLoop(sessionId, (isArmed) => {
         armedRef.current = isArmed;
         setArmed(isArmed);
+        if (!isArmed) {
+          keyboardModelRef.current?.reset();
+          pressedRef.current = new Set();
+          setPressedKeys(pressedRef.current);
+          setControl(NEUTRAL_CONTROL);
+        }
       }, sessionRef.current?.controlProtocolVersion ?? 3);
       loop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);
       return loop;
@@ -196,6 +210,7 @@ export function RealRideScreen() {
     const countdown = new SessionCountdown({
       onTick: setRemainingSeconds,
       onExpire: () => {
+        keyboardModelRef.current?.reset();
         const neutral = new Set<string>();
         pressedRef.current = neutral;
         setPressedKeys(neutral);
@@ -218,15 +233,24 @@ export function RealRideScreen() {
   useEffect(() => {
     if (!readyLoop) return;
     const loop = readyLoop;
+    const model = new KeyboardDriveModel();
+    keyboardModelRef.current = model;
+    const proportional = sessionRef.current?.controlProtocolVersion === 5;
 
     const applyPressedKeys = (nextPressed: ReadonlySet<string>) => {
       pressedRef.current = nextPressed;
       setPressedKeys(nextPressed);
       const nextControl = controlIntentFromPressedKeys(nextPressed);
       setControl(nextControl);
-      loop.setInput(nextControl);
+      if (proportional) {
+        loop.setInput(model.update(nextPressed, performance.now()));
+        if (nextPressed.size > 0) loop.setInputProvider(() => model.sample(performance.now()));
+      } else {
+        loop.setInput(nextControl);
+      }
     };
     const neutralize = (reason: string) => {
+      model.reset();
       applyPressedKeys(new Set());
       loop.disarm(reason);
     };
@@ -240,6 +264,9 @@ export function RealRideScreen() {
       const key = controlKeyForCode(event.code);
       if (!key) return;
       event.preventDefault();
+      // A lost-focus hold must not re-arm the car through OS repeat events.
+      if (pressed && (event.repeat || pressedRef.current.has(event.code))) return;
+      if (!pressed && !pressedRef.current.has(event.code)) return;
       if (pressed && !armedRef.current) loop.arm();
       applyPressedKeys(updatePressedKeys(pressedRef.current, event.code, pressed));
     };
@@ -256,7 +283,9 @@ export function RealRideScreen() {
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       document.removeEventListener("visibilitychange", onVisibility);
+      model.reset();
       applyPressedKeys(new Set());
+      if (keyboardModelRef.current === model) keyboardModelRef.current = null;
     };
   }, [readyLoop]);
 

@@ -34,6 +34,7 @@ export class BrowserControlLoop {
   #steeringTrimPercent = 0;
   #armRequested = false;
   #armed = false;
+  #inputProvider: (() => ControlInput) | null = null;
 
   public constructor(
     sessionId: string,
@@ -57,6 +58,16 @@ export class BrowserControlLoop {
   }
 
   public setInput(input: ControlInput): void {
+    // Direct input (including phone controls) takes ownership from timed input.
+    this.#inputProvider = null;
+    this.applyInput(input);
+  }
+
+  public setInputProvider(provider: (() => ControlInput) | null): void {
+    this.#inputProvider = provider;
+  }
+
+  private applyInput(input: ControlInput): void {
     this.#steering = normalizedAxis(input.steering ?? this.#steering);
     this.#throttle = normalizedAxis(input.throttle ?? this.#throttle);
     this.#nitro = input.nitro ?? this.#nitro;
@@ -83,6 +94,7 @@ export class BrowserControlLoop {
   }
 
   public neutral(reason: string): void {
+    this.#inputProvider = null;
     this.#steering = 0;
     this.#throttle = 0;
     this.#nitro = false;
@@ -117,6 +129,8 @@ export class BrowserControlLoop {
   }
 
   private sendLatest(): void {
+    // Sample immediately before encoding, using the existing 50 Hz send clock.
+    if (this.#armed && this.#inputProvider) this.applyInput(this.#inputProvider());
     const proportional = this.#protocolVersion === 5;
     const base: DriveCommandBase = {
       type: "control.intent",
