@@ -1,4 +1,7 @@
 import { GatewayServerMessageSchema, type IceServer } from "@rc/contracts";
+import { AdaptiveVideoPolicy, VideoStatsSampler, type VideoProfile, type VideoStreamStats } from "./adaptive-video";
+
+const videoProfiles: readonly VideoProfile[] = ["720p60", "720p30", "540p30", "360p30"];
 
 export type StoredDriveSession = {
   sessionId: string;
@@ -48,12 +51,21 @@ export class RideSessionClient {
   #reliable: RTCDataChannel | null = null;
   #closed = false;
   #connectedReported = false;
+  #videoQuality: RTCDataChannel | null = null;
+  #videoPolicy: AdaptiveVideoPolicy | null = null;
+  #supportedProfiles: readonly VideoProfile[] = [];
+  #requestedProfile: VideoProfile | null = null;
+  #videoSampler = new VideoStatsSampler();
+  #statsTimer: ReturnType<typeof setTimeout> | null = null;
+  #statsGeneration = 0;
+  #statsRunning = false;
 
   onStream: (stream: MediaStream) => void = () => undefined;
   onState: (state: RideConnectionState) => void = () => undefined;
   onError: (message: string) => void = () => undefined;
   onProgress: (event: RideConnectionProgress) => void = () => undefined;
   onTelemetry: (telemetry: RideBatteryTelemetry) => void = () => undefined;
+  onVideoStats: (stats: VideoStreamStats | null) => void = () => undefined;
 
   constructor(session: StoredDriveSession, dependencies: RideSessionClientDependencies = defaultDependencies) {
     this.#session = session;
@@ -81,6 +93,9 @@ export class RideSessionClient {
     peer.addTransceiver("video", { direction: "recvonly" });
     this.#fast = peer.createDataChannel("control-fast", { ordered: false, maxRetransmits: 0 });
     this.#reliable = peer.createDataChannel("control-reliable", { ordered: true });
+    // Only upgraded agents create this channel. Older agents keep their existing
+    // control protocol and can still provide receive-side video measurements.
+    peer.ondatachannel = (event) => this.#bindVideoQuality(event.channel);
     peer.ontrack = (event) => {
       const stream = event.streams[0];
       if (stream) {
@@ -106,8 +121,12 @@ export class RideSessionClient {
           this.#send({ v: 1, type: "session.connected", sessionId: this.#session.sessionId });
         }
         void this.#reportConnectedRoute(peer);
+        this.#startVideoStats(peer);
       }
-      if (["failed", "closed", "disconnected"].includes(peer.connectionState)) this.onState("DISCONNECTED");
+      if (["failed", "closed", "disconnected"].includes(peer.connectionState)) {
+        this.#stopVideoStats();
+        this.onState("DISCONNECTED");
+      }
     };
 
     const socket = this.#dependencies.createSocket(this.#session.gatewayUrl);
@@ -136,11 +155,94 @@ export class RideSessionClient {
     if (this.#closed) return;
     this.#send({ v: 1, type: "session.end", sessionId: this.#session.sessionId, reason });
     this.#closed = true;
+    this.#stopVideoStats();
+    if (this.#videoQuality) {
+      this.#videoQuality.onmessage = null;
+      this.#videoQuality.onclose = null;
+      this.#videoQuality.close();
+      this.#videoQuality = null;
+    }
     this.#fast?.close();
     this.#reliable?.close();
     this.#peer?.close();
     this.#socket?.close();
     this.onState("DISCONNECTED");
+  }
+
+  #bindVideoQuality(channel: RTCDataChannel): void {
+    if (this.#closed || channel.label !== "video-quality" || this.#videoQuality) return;
+    this.#videoQuality = channel;
+    channel.onclose = () => {
+      if (this.#videoQuality !== channel) return;
+      this.#videoQuality = null;
+      this.#videoPolicy = null;
+      this.#supportedProfiles = [];
+      this.#requestedProfile = null;
+    };
+    channel.onmessage = (event) => {
+      if (this.#closed || channel !== this.#videoQuality || typeof event.data !== "string" || event.data.length > 2048) return;
+      try {
+        const message = JSON.parse(event.data);
+        if (!message || message.v !== 1 || message.sessionId !== this.#session.sessionId) return;
+        if (message.type === "video.capabilities" && !this.#videoPolicy) {
+          if (Object.keys(message).sort().join() !== "profile,profiles,sessionId,type,v") return;
+          if (!Array.isArray(message.profiles) || message.profiles.length < 1 || message.profiles.length > 4) return;
+          const profiles = videoProfiles.filter((profile) => message.profiles.includes(profile));
+          if (profiles.length !== message.profiles.length || !profiles.includes(message.profile)) return;
+          this.#supportedProfiles = profiles;
+          this.#videoPolicy = new AdaptiveVideoPolicy(profiles, message.profile);
+        } else if (message.type === "video.profile.applied") {
+          if (Object.keys(message).sort().join() !== "profile,sessionId,type,v") return;
+          if (message.profile !== this.#requestedProfile || !this.#supportedProfiles.includes(message.profile)) return;
+          this.#videoPolicy?.acknowledge(message.profile, performance.now());
+          this.#requestedProfile = null;
+        }
+      } catch {
+        // Optional video negotiation must never interrupt the driving session.
+      }
+    };
+  }
+
+  #startVideoStats(peer: RTCPeerConnection): void {
+    if (this.#closed || this.#statsRunning) return;
+    this.#statsRunning = true;
+    const generation = ++this.#statsGeneration;
+    const current = () => !this.#closed && generation === this.#statsGeneration && peer.connectionState === "connected";
+    const sample = async () => {
+      try {
+        const report = await peer.getStats();
+        if (!current()) return;
+        const stats = this.#videoSampler.sample(report);
+        this.onVideoStats(stats);
+        const quality = this.#videoQuality;
+        const visible = typeof document === "undefined" || document.visibilityState === "visible";
+        if (visible && quality?.readyState === "open" && quality.bufferedAmount < 2048) {
+          const profile = this.#videoPolicy?.observe(stats, performance.now());
+          if (profile) {
+            this.#requestedProfile = profile;
+            quality.send(JSON.stringify({ v: 1, type: "video.profile.request", sessionId: this.#session.sessionId, profile }));
+          }
+        }
+      } catch {
+        if (current()) {
+          this.#videoSampler = new VideoStatsSampler();
+          this.onVideoStats(null);
+        }
+      } finally {
+        // Schedule after completion, so slow getStats never accumulates requests.
+        if (current()) this.#statsTimer = setTimeout(() => void sample(), 1000);
+      }
+    };
+    this.#statsTimer = setTimeout(() => void sample(), 1000);
+  }
+
+  #stopVideoStats(): void {
+    this.#statsGeneration += 1;
+    this.#statsRunning = false;
+    if (this.#statsTimer !== null) clearTimeout(this.#statsTimer);
+    this.#statsTimer = null;
+    this.#videoSampler = new VideoStatsSampler();
+    this.onVideoStats(null);
   }
 
   async #handleMessage(raw: string): Promise<void> {

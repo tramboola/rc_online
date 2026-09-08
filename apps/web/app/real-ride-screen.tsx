@@ -1,6 +1,6 @@
 "use client";
 
-import { BatteryHigh, Flag, GameController, ShieldCheck, WifiHigh } from "@phosphor-icons/react";
+import { BatteryHigh, Flag, GameController, WifiHigh } from "@phosphor-icons/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
@@ -24,6 +24,7 @@ import { normalizeSteeringTrim, saveSteeringTrim } from "./steering-trim";
 import { MobileDriveControls } from "./mobile-drive-controls";
 import { MobileLandscapeNotice } from "./mobile-landscape-notice";
 import { RideFullscreenToggle } from "./ride-fullscreen-toggle";
+import { formatVideoStreamStats } from "./adaptive-video";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const TRIM_SAVE_DELAY_MS = 300;
@@ -96,7 +97,7 @@ export function RealRideScreen() {
     batteryTelemetryReducer,
     EMPTY_BATTERY_TELEMETRY,
   );
-  const [videoMode, setVideoMode] = useState("WAITING FOR VIDEO");
+  const [videoMode, setVideoMode] = useState("VIDEO · —");
   const [control, setControl] = useState<KeyboardControlIntent>(NEUTRAL_CONTROL);
   const [connection, setConnection] = useState<RideConnectionSnapshot>(initialConnectionSnapshot);
   const [attemptKey, setAttemptKey] = useState(0);
@@ -115,6 +116,7 @@ export function RealRideScreen() {
     setConnection(initialConnectionSnapshot());
     setState("CONNECTING");
     setError(null);
+    setVideoMode("VIDEO · —");
     dispatchBatteryTelemetry({ type: "RESET" });
     setReadyLoop(null);
     setRideSession(null);
@@ -156,10 +158,15 @@ export function RealRideScreen() {
             attempt.fail("Browser could not start the camera video");
           });
         }
-        const settings = stream.getVideoTracks()[0]?.getSettings();
-        setVideoMode(settings?.width && settings.height
-          ? `${settings.width}×${settings.height}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} FPS` : ""}`
-          : "LIVE VIDEO");
+      },
+      onVideoStats: (stats) => {
+        // Prefer decoded RTP measurements; Safari may expose dimensions only on
+        // the video element. Track settings are not the measured receive FPS.
+        setVideoMode(formatVideoStreamStats({
+          width: stats ? stats.width ?? (videoRef.current?.videoWidth || null) : null,
+          height: stats ? stats.height ?? (videoRef.current?.videoHeight || null) : null,
+          fps: stats?.fps ?? null,
+        }));
       },
       onTelemetry: (telemetry) => dispatchBatteryTelemetry({ type: "TELEMETRY", telemetry }),
       onReady: (loop, route) => {
@@ -326,13 +333,13 @@ export function RealRideScreen() {
       <section className="real-ride-status" aria-live="polite">
         <p><WifiHigh size={23} /> CONNECTION <strong className={["DIRECT", "TURN", "CONNECTED"].includes(state) ? "ok" : ""}>{state}</strong></p>
         <p><GameController size={23} /> CONTROLS <strong className={armed ? "ok" : ""}>{armed ? "KEYBOARD ACTIVE" : "SAFE / NEUTRAL"}</strong></p>
-        <p><ShieldCheck size={23} /> VIDEO <strong>{videoMode}</strong></p>
         <p className={`real-ride-battery ${battery.tone === "warning" ? "battery-warning" : ""}`}>
           <BatteryHigh size={23} /> BATTERY
           <strong className={battery.tone === "unknown" ? "" : battery.tone}>
             {battery.label}
           </strong>
         </p>
+        <p className="real-video-mode" aria-label="Received video format" aria-live="off">{videoMode}</p>
         {error ? <p className="real-ride-error">{error}</p> : null}
       </section>
       <RideKeyboardPanel control={control} pressedKeys={pressedKeys} />

@@ -1,4 +1,5 @@
 import type { BrowserControlLoop } from "./control-loop";
+import type { VideoStreamStats } from "./adaptive-video";
 import {
   createDriveSession,
   RideSessionClient,
@@ -20,7 +21,7 @@ export type RideControlLoop = Pick<
 type RideSessionClientLike = Pick<
   RideSessionClient,
   "channels" | "close" | "connect" | "onError" | "onProgress" | "onState" | "onStream" | "onTelemetry"
->;
+> & Partial<Pick<RideSessionClient, "onVideoStats">>;
 
 export type RideConnectionSnapshot = {
   activeStep: number;
@@ -34,6 +35,7 @@ export type RideConnectionAttemptCallbacks = {
   onSession: (session: StoredDriveSession) => void;
   onStream: (stream: MediaStream) => void;
   onTelemetry: (telemetry: RideBatteryTelemetry) => void;
+  onVideoStats?: (stats: VideoStreamStats | null) => void;
   onReady: (loop: RideControlLoop, route: Exclude<RideConnectionState, "CONNECTING" | "DISCONNECTED">) => void;
 };
 
@@ -134,6 +136,9 @@ export class RideConnectionAttempt {
         this.#hasBatteryTelemetry = telemetry.batteryVoltage !== null || telemetry.batteryPercent !== null;
         this.#callbacks.onTelemetry(telemetry);
       };
+      client.onVideoStats = (stats) => {
+        if (this.#active) this.#callbacks.onVideoStats?.(stats);
+      };
       client.onError = (message) => {
         this.#clearBatteryTelemetry();
         this.fail(message);
@@ -223,6 +228,7 @@ export class RideConnectionAttempt {
     this.#loop = null;
     this.#client = null;
     this.#clearBatteryTelemetry();
+    this.#callbacks.onVideoStats?.(null);
     loop?.disarm(reason);
     loop?.stop();
     client?.close(reason);

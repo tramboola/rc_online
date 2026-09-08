@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RideSessionClient, type StoredDriveSession } from "./ride-session-client";
 
@@ -12,6 +12,8 @@ const session: StoredDriveSession = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   iceTransportPolicy: "all"
 };
+
+const clients: RideSessionClient[] = [];
 
 function harness(candidateType: "host" | "relay" | null = "host") {
   const socket = {
@@ -32,6 +34,7 @@ function harness(candidateType: "host" | "relay" | null = "host") {
     onicecandidate: null as null | ((event: { candidate: null | { candidate: string; sdpMid: string | null; sdpMLineIndex: number | null } }) => void),
     ontrack: null as null | ((event: { streams: MediaStream[] }) => void),
     onconnectionstatechange: null as null | (() => void),
+    ondatachannel: null as null | ((event: { channel: RTCDataChannel }) => void),
     addTransceiver: vi.fn(),
     createDataChannel: vi.fn((name: string) => name === "control-fast" ? fast : reliable),
     createOffer: vi.fn(async () => ({ type: "offer", sdp: "v=0 offer" })),
@@ -51,10 +54,69 @@ function harness(candidateType: "host" | "relay" | null = "host") {
     createSocket: () => socket as unknown as WebSocket,
     createPeer
   });
+  clients.push(client);
   return { client, socket, peer, fast, reliable, createPeer };
 }
 
 describe("RideSessionClient", () => {
+  afterEach(() => {
+    clients.splice(0).forEach((client) => client.close());
+    vi.useRealTimers();
+  });
+
+  it("reports decoded video measurements and requests a lower profile only on the dedicated supported channel", async () => {
+    vi.useFakeTimers();
+    const { client, peer, fast, reliable } = harness();
+    const onVideoStats = vi.fn();
+    client.onVideoStats = onVideoStats;
+    let seconds = 0;
+    peer.getStats.mockImplementation(async () => new Map([
+      ["transport", { id: "transport", type: "transport", selectedCandidatePairId: "pair" }],
+      ["pair", { id: "pair", type: "candidate-pair", state: "succeeded", currentRoundTripTime: 0.4 }],
+      ["video", { id: "video", type: "inbound-rtp", kind: "video", timestamp: ++seconds * 1000, frameWidth: 1280, frameHeight: 720, framesDecoded: seconds * 29, packetsReceived: seconds * 100, packetsLost: seconds * 10, jitter: 0.07 }],
+    ]) as never);
+    client.connect();
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(onVideoStats).toHaveBeenLastCalledWith(expect.objectContaining({ width: 1280, height: 720, fps: 29 }));
+    expect(fast.send).not.toHaveBeenCalled();
+    expect(reliable.send).not.toHaveBeenCalled();
+
+    const quality = { label: "video-quality", readyState: "open", bufferedAmount: 0, send: vi.fn(), close: vi.fn(), onmessage: null as null | ((event: { data: string }) => void), onclose: null as null | (() => void) };
+    peer.ondatachannel?.({ channel: quality as unknown as RTCDataChannel });
+    quality.onmessage?.({ data: JSON.stringify({ v: 1, type: "video.capabilities", sessionId: "wrong-session", profiles: ["720p60", "360p30"], profile: "720p60" }) });
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(quality.send).not.toHaveBeenCalled();
+    quality.onmessage?.({ data: JSON.stringify({ v: 1, type: "video.capabilities", sessionId: session.sessionId, profiles: ["720p60", "720p30", "540p30", "360p30"], profile: "720p60" }) });
+    await vi.advanceTimersByTimeAsync(12000);
+    expect(quality.send).toHaveBeenCalledWith(JSON.stringify({ v: 1, type: "video.profile.request", sessionId: session.sessionId, profile: "720p30" }));
+    expect(reliable.send).not.toHaveBeenCalled();
+    client.close();
+    const callCount = peer.getStats.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(peer.getStats).toHaveBeenCalledTimes(callCount);
+    expect(quality.close).toHaveBeenCalledOnce();
+    expect(onVideoStats).toHaveBeenLastCalledWith(null);
+  });
+
+  it("ignores a late stats response after session closure", async () => {
+    vi.useFakeTimers();
+    const { client, peer } = harness();
+    const onVideoStats = vi.fn();
+    client.onVideoStats = onVideoStats;
+    let complete: ((value: never) => void) | undefined;
+    peer.getStats.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    client.connect();
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+    await vi.advanceTimersByTimeAsync(1000);
+    client.close();
+    onVideoStats.mockClear();
+    complete?.(new Map() as never);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(onVideoStats).not.toHaveBeenCalled();
+  });
   it("authenticates first, creates receive-video offer, and uses safe channel modes", async () => {
     const { client, socket, peer } = harness();
     client.connect();

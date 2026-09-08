@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { RideConnectionAttempt, type RideConnectionAttemptCallbacks } from "./ride-connection-attempt";
 import type { RideBatteryTelemetry, RideConnectionProgress, RideConnectionState, StoredDriveSession } from "./ride-session-client";
+import type { VideoStreamStats } from "./adaptive-video";
 
 type Assert<T extends true> = T;
 type IsRequired<T, Key extends keyof T> = {} extends Pick<T, Key> ? false : true;
@@ -33,6 +34,7 @@ function harness() {
     onState: (_state: RideConnectionState) => undefined,
     onStream: (_stream: MediaStream) => undefined,
     onTelemetry: (_telemetry: RideBatteryTelemetry) => undefined,
+    onVideoStats: (_stats: VideoStreamStats | null) => undefined,
   };
   const loop = {
     arm: vi.fn(),
@@ -54,6 +56,7 @@ function harness() {
     onSnapshot: vi.fn((snapshot: { status: string; errorMessage: string }) => snapshots.push(snapshot)),
     onStream: vi.fn(),
     onTelemetry: vi.fn(),
+    onVideoStats: vi.fn(),
   };
   const attempt = new RideConnectionAttempt("car-01", callbacks, {
     clearTimeout: vi.fn(),
@@ -72,6 +75,18 @@ function harness() {
 }
 
 describe("RideConnectionAttempt", () => {
+  it("forwards video measurements only for the current attempt and clears them on closure", async () => {
+    const { attempt, callbacks, client } = harness();
+    await attempt.start();
+    const stats: VideoStreamStats = { width: 640, height: 360, fps: 28, rttMs: 100, jitterMs: 4, lossRatio: 0, jitterBufferMs: 20, stalled: false };
+    client.onVideoStats(stats);
+    expect(callbacks.onVideoStats).toHaveBeenLastCalledWith(stats);
+    attempt.close();
+    expect(callbacks.onVideoStats).toHaveBeenLastCalledWith(null);
+    callbacks.onVideoStats.mockClear();
+    client.onVideoStats(stats);
+    expect(callbacks.onVideoStats).not.toHaveBeenCalled();
+  });
   it("exposes the server-created session before opening WebRTC", async () => {
     const { attempt, callbacks, client } = harness();
 
