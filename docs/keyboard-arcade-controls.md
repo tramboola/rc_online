@@ -18,26 +18,31 @@ speed controller still determines whether a reverse command brakes or reverses.
 
 ## Steering
 
-On a new effective turn, capture how long forward gas has already been held:
+On a new effective turn, capture how long forward gas has already been held and
+whether Nitro is active (effective forward gas plus N):
 
-`time_to_full_turn_ms = 600 * clamp(forward_hold_ms / 1000, 0, 1)`
+`time_to_full_turn_ms = (nitro_at_turn_start ? 600 : 450) * clamp(forward_hold_ms / 1000, 0, 1)`
 
 Steering then increases linearly from neutral to the requested direction over that
 duration. The duration is fixed for that turn, not recalculated on each frame.
 
-| Forward hold before turning | Neutral to full turn |
-| --- | --- |
-| None | Immediate |
-| 0.1 s | 0.06 s |
-| 0.7 s | 0.42 s |
-| 1 s or more | 0.6 s |
+| Forward hold before turning | Normal gas: neutral to full | Nitro: neutral to full |
+| --- | --- | --- |
+| None | Immediate | Immediate |
+| 0.1 s | 0.045 s | 0.06 s |
+| 0.7 s | 0.315 s | 0.42 s |
+| 1 s or more | 0.45 s | 0.6 s |
 
+- Pressing or releasing N during a held turn changes acceleration on the next
+  control tick, but does not change or restart the captured steering ramp. The
+  next new/opposite turn uses the Nitro state at that moment.
 - Releasing forward gas immediately makes a held turn full-strength. Pressing gas
   again while holding that same turn does not pull steering back toward neutral.
 - Releasing the turn immediately returns steering to neutral.
 - A new/opposite effective turn starts from neutral with a newly captured duration.
 - Contradictory left/right or forward/reverse inputs produce a neutral axis.
-- Normal forward gas and nitro behavior are unchanged.
+- Normal forward throttle and Nitro acceleration outputs are unchanged. N without
+  effective forward gas does not enable Nitro or introduce steering smoothing.
 
 ## Execution and safety
 

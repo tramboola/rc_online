@@ -50,7 +50,7 @@ afterEach(() => {
 
 function setup(version: 3 | 4 | 5 = 5, durationMs = 300_000) {
   const rendered = render(<RealRideScreen />);
-  const frames: Array<{ steering: number; throttle: number; armed: boolean; v: number }> = [];
+  const frames: Array<{ steering: number; throttle: number; nitro: boolean; armed: boolean; v: number }> = [];
   const fast = { readyState: "open", send: (data: string) => frames.push(JSON.parse(data)), addEventListener() {} } as unknown as RTCDataChannel;
   const reliable = { readyState: "open", send() {}, addEventListener() {} } as unknown as RTCDataChannel;
   let loop!: BrowserControlLoop;
@@ -89,30 +89,61 @@ describe("keyboard commands from the real ride screen", () => {
     expect(ride.latest().throttle).toBe(0);
   });
 
-  it("samples the steering ramp each transmitted frame, then goes full on gas release", () => {
+  it.each([
+    { nitro: false, elapsed: 180, steering: -400 },
+    { nitro: true, elapsed: 300, steering: -500 },
+  ])("samples the steering ramp with nitro=$nitro, then goes full on gas release", ({ nitro, elapsed, steering }) => {
     const ride = setup();
     down("KeyW");
+    if (nitro) down("KeyN");
     tick(3000);
     down("KeyA");
-    tick(300);
-    expect(ride.latest()).toMatchObject({ steering: -500, throttle: 1000 });
+    tick(elapsed);
+    expect(ride.latest()).toMatchObject({ steering, throttle: 1000, nitro });
     up("KeyW");
     tick(20);
-    expect(ride.latest()).toMatchObject({ steering: -1000, throttle: 0 });
+    expect(ride.latest()).toMatchObject({ steering: -1000, throttle: 0, nitro: false });
     up("KeyA");
     tick(20);
     expect(ride.latest().steering).toBe(0);
   });
 
-  it("introduces steering smoothing continuously during the first second of gas", () => {
+  it.each([
+    { nitro: false, steering: 635, remaining: 120 },
+    { nitro: true, steering: 476, remaining: 220 },
+  ])("introduces steering smoothing during the first second of gas with nitro=$nitro", ({ nitro, steering, remaining }) => {
     const ride = setup();
     down("ArrowUp");
+    if (nitro) down("KeyN");
     tick(700);
     down("ArrowRight");
     tick(200);
-    expect(ride.latest().steering).toBe(476);
-    tick(220);
+    expect(ride.latest().steering).toBe(steering);
+    tick(remaining);
     expect(ride.latest().steering).toBe(1000);
+  });
+
+  it("transmits Nitro changes immediately but keeps the rate captured at turn start", () => {
+    const ride = setup();
+    down("KeyW");
+    tick(1000);
+    down("KeyD");
+    tick(180);
+    down("KeyN");
+    tick(20);
+    expect(ride.latest()).toMatchObject({ steering: 444, nitro: true });
+    tick(260);
+    expect(ride.latest().steering).toBe(1000);
+
+    up("KeyD");
+    down("KeyA");
+    tick(300);
+    expect(ride.latest()).toMatchObject({ steering: -500, nitro: true });
+    up("KeyN");
+    tick(20);
+    expect(ride.latest()).toMatchObject({ steering: -533, nitro: false });
+    tick(280);
+    expect(ride.latest().steering).toBe(-1000);
   });
 
   it("does not reset reverse boost on OS key repeat or an overlapping alias", () => {

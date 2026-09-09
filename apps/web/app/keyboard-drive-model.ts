@@ -27,9 +27,11 @@ export class KeyboardDriveModel {
 
     if (next.steering !== this.intent.steering) {
       this.turnStartedAt = next.steering === 0 ? null : nowMs;
+      // Capture Nitro at turn start; later N changes keep this ramp continuous.
+      const fullTurnDurationMs = next.nitro ? 600 : 450;
       this.turnDurationMs = this.forwardStartedAt === null
         ? 0
-        : 600 * Math.min(1, Math.max(0, (nowMs - this.forwardStartedAt) / 1_000));
+        : fullTurnDurationMs * Math.min(1, Math.max(0, (nowMs - this.forwardStartedAt) / 1_000));
     } else if (next.throttle !== 1) {
       // Once gas is released, the held turn stays full even if gas returns.
       this.turnDurationMs = 0;
