@@ -1,7 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RC Mania">
   <title>RC Mania</title>
-  <g fill="#ff3b35" fill-rule="evenodd">
-    <path d="M8 7h17c8 0 12 5 11 13-1 7-5 12-10 14l9 23H22l-6-19h-2l-3 19H1L8 7Zm9 10-2 12h7c3 0 5-3 5-7 1-3-1-5-4-5h-6Z"/>
-    <path d="M63 15 54 24c-2-4-5-6-8-5-4 1-7 5-8 12-1 8 1 13 5 14 4 1 7-2 9-6l8 8c-4 7-10 11-18 10-12-2-18-12-16-26C28 16 36 7 48 7c7 0 12 3 15 8Z"/>
+  <rect width="64" height="64" rx="12" fill="#101820"/>
+  <g fill="#c4f000">
+    <rect x="12" y="4" width="40" height="4" rx="1"/>
+    <rect x="12" y="56" width="40" height="4" rx="1"/>
+  </g>
+  <g transform="translate(6.5 5) scale(.85)">
+    <path fill="#ff3b35" fill-rule="evenodd" d="M2 10H15Q27 10 27 23Q27 32 20 35L29 54H19L11 37H10V54H2Z M10 19V29H15Q19 29 19 24Q19 19 15 19Z"/>
+    <path transform="translate(-4 0)" fill="#f4f6f7" d="M62 10V19H48Q46 19 46 22V42Q46 45 48 45H62V54H47Q38 54 38 45V19Q38 10 47 10Z"/>
   </g>
 </svg>
