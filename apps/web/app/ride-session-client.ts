@@ -35,6 +35,7 @@ export type RideBatteryTelemetry = {
 type RideSessionClientDependencies = {
   createSocket(url: string): WebSocket;
   createPeer(configuration: RTCConfiguration): RTCPeerConnection;
+  createStream?(): MediaStream;
 };
 
 const defaultDependencies: RideSessionClientDependencies = {
@@ -47,6 +48,7 @@ export class RideSessionClient {
   readonly #dependencies: RideSessionClientDependencies;
   #socket: WebSocket | null = null;
   #peer: RTCPeerConnection | null = null;
+  #remoteStream: MediaStream | null = null;
   #fast: RTCDataChannel | null = null;
   #reliable: RTCDataChannel | null = null;
   #closed = false;
@@ -90,18 +92,29 @@ export class RideSessionClient {
       iceTransportPolicy: this.#session.iceTransportPolicy ?? "all"
     });
     this.#peer = peer;
+    const stream = this.#dependencies.createStream?.() ?? new MediaStream();
+    this.#remoteStream = stream;
     peer.addTransceiver("video", { direction: "recvonly" });
+    peer.addTransceiver("audio", { direction: "recvonly" });
     this.#fast = peer.createDataChannel("control-fast", { ordered: false, maxRetransmits: 0 });
     this.#reliable = peer.createDataChannel("control-reliable", { ordered: true });
     // Only upgraded agents create this channel. Older agents keep their existing
     // control protocol and can still provide receive-side video measurements.
     peer.ondatachannel = (event) => this.#bindVideoQuality(event.channel);
     peer.ontrack = (event) => {
-      const stream = event.streams[0];
-      if (stream) {
-        this.onProgress("video.track-received");
-        this.onStream(stream);
+      if (this.#closed) return;
+      const track = event.track;
+      if (!stream.getTracks().includes(track)) {
+        stream.addTrack(track);
+        track.addEventListener("ended", () => {
+          stream.removeTrack(track);
+          if (!this.#closed && stream.getVideoTracks().length > 0) this.onStream(stream);
+        });
       }
+      if (track.kind === "video") this.onProgress("video.track-received");
+      // Audio may arrive first or in its own stream. Publish a stable combined
+      // stream only once video exists, so audio alone cannot arm the drive.
+      if (stream.getVideoTracks().length > 0) this.onStream(stream);
     };
     peer.onicecandidate = (event) => {
       if (!event.candidate) return;
@@ -165,6 +178,8 @@ export class RideSessionClient {
     this.#fast?.close();
     this.#reliable?.close();
     this.#peer?.close();
+    this.#remoteStream?.getTracks().forEach((track) => track.stop());
+    this.#remoteStream = null;
     this.#socket?.close();
     this.onState("DISCONNECTED");
   }

@@ -15,6 +15,21 @@ const session: StoredDriveSession = {
 
 const clients: RideSessionClient[] = [];
 
+function mediaTrack(kind: "video" | "audio", id = kind) {
+  return { id, kind, addEventListener: vi.fn(), stop: vi.fn() } as unknown as MediaStreamTrack;
+}
+
+function mediaStream(initialTracks: MediaStreamTrack[] = []) {
+  const tracks = [...initialTracks];
+  return {
+    getTracks: () => [...tracks],
+    getVideoTracks: () => tracks.filter((track) => track.kind === "video"),
+    getAudioTracks: () => tracks.filter((track) => track.kind === "audio"),
+    addTrack: (track: MediaStreamTrack) => { if (!tracks.includes(track)) tracks.push(track); },
+    removeTrack: (track: MediaStreamTrack) => { const index = tracks.indexOf(track); if (index >= 0) tracks.splice(index, 1); },
+  } as unknown as MediaStream;
+}
+
 function harness(candidateType: "host" | "relay" | null = "host") {
   const socket = {
     readyState: 0,
@@ -32,7 +47,7 @@ function harness(candidateType: "host" | "relay" | null = "host") {
     connectionState: "new",
     iceConnectionState: "new",
     onicecandidate: null as null | ((event: { candidate: null | { candidate: string; sdpMid: string | null; sdpMLineIndex: number | null } }) => void),
-    ontrack: null as null | ((event: { streams: MediaStream[] }) => void),
+    ontrack: null as null | ((event: { track: MediaStreamTrack; streams: MediaStream[] }) => void),
     onconnectionstatechange: null as null | (() => void),
     ondatachannel: null as null | ((event: { channel: RTCDataChannel }) => void),
     addTransceiver: vi.fn(),
@@ -52,7 +67,8 @@ function harness(candidateType: "host" | "relay" | null = "host") {
   const createPeer = vi.fn(() => peer as unknown as RTCPeerConnection);
   const client = new RideSessionClient(session, {
     createSocket: () => socket as unknown as WebSocket,
-    createPeer
+    createPeer,
+    createStream: () => mediaStream(),
   });
   clients.push(client);
   return { client, socket, peer, fast, reliable, createPeer };
@@ -120,7 +136,7 @@ describe("RideSessionClient", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(onVideoStats).not.toHaveBeenCalled();
   });
-  it("authenticates first, creates receive-video offer, and uses safe channel modes", async () => {
+  it("authenticates first, requests receive-only audio and video, and uses safe channel modes", async () => {
     const { client, socket, peer } = harness();
     client.connect();
     socket.readyState = 1;
@@ -131,6 +147,7 @@ describe("RideSessionClient", () => {
     await vi.waitFor(() => expect(socket.send).toHaveBeenLastCalledWith(JSON.stringify({ v: 1, type: "signal.offer", sessionId: session.sessionId, sdp: "v=0 offer" })));
 
     expect(peer.addTransceiver).toHaveBeenCalledWith("video", { direction: "recvonly" });
+    expect(peer.addTransceiver).toHaveBeenCalledWith("audio", { direction: "recvonly" });
     expect(peer.createDataChannel).toHaveBeenCalledWith("control-fast", { ordered: false, maxRetransmits: 0 });
     expect(peer.createDataChannel).toHaveBeenCalledWith("control-reliable", { ordered: true });
   });
@@ -144,12 +161,48 @@ describe("RideSessionClient", () => {
     socket.onopen?.();
     socket.onmessage?.({ data: JSON.stringify({ v: 1, type: "signal.answer", sessionId: session.sessionId, sdp: "v=0 answer" }) });
     socket.onmessage?.({ data: JSON.stringify({ v: 1, type: "signal.ice", sessionId: session.sessionId, candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }) });
-    const stream = {} as MediaStream;
-    peer.ontrack?.({ streams: [stream] });
+    const track = mediaTrack("video");
+    peer.ontrack?.({ track, streams: [mediaStream([track])] });
     await vi.waitFor(() => expect(peer.setRemoteDescription).toHaveBeenCalled());
 
     expect(peer.addIceCandidate).toHaveBeenCalledWith({ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 });
-    expect(onStream).toHaveBeenCalledWith(stream);
+    expect(onStream.mock.calls[0]![0].getVideoTracks()).toEqual([track]);
+  });
+
+  it("keeps separately arriving video and streamless audio in one playback stream", () => {
+    const { client, peer } = harness();
+    const onStream = vi.fn();
+    client.onStream = onStream;
+    client.connect();
+    const video = mediaTrack("video");
+    const audio = mediaTrack("audio");
+
+    peer.ontrack?.({ track: video, streams: [mediaStream([video])] });
+    const stream = onStream.mock.calls[0]![0];
+    peer.ontrack?.({ track: audio, streams: [] });
+    peer.ontrack?.({ track: audio, streams: [mediaStream([audio])] });
+
+    expect(onStream).toHaveBeenLastCalledWith(stream);
+    expect(stream.getTracks()).toEqual([video, audio]);
+  });
+
+  it("does not publish audio alone as the camera or mark it ready", () => {
+    const { client, peer } = harness();
+    const onStream = vi.fn();
+    const progress = vi.fn();
+    client.onStream = onStream;
+    client.onProgress = progress;
+    client.connect();
+    const audio = mediaTrack("audio");
+    const video = mediaTrack("video");
+
+    peer.ontrack?.({ track: audio, streams: [] });
+    expect(onStream).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalledWith("video.track-received");
+    peer.ontrack?.({ track: video, streams: [] });
+
+    expect(onStream.mock.calls[0]![0].getTracks()).toEqual([audio, video]);
+    expect(progress).toHaveBeenCalledWith("video.track-received");
   });
 
   it("publishes numeric battery telemetry for its authenticated session", () => {
@@ -230,7 +283,7 @@ describe("RideSessionClient", () => {
     peer.connectionState = "connected";
     peer.onconnectionstatechange?.();
     await vi.waitFor(() => expect(progress).toContain("webrtc.direct"));
-    peer.ontrack?.({ streams: [{} as MediaStream] });
+    peer.ontrack?.({ track: mediaTrack("video"), streams: [] });
 
     expect(progress).toEqual([
       "gateway.connecting",
@@ -309,7 +362,8 @@ describe("RideSessionClient", () => {
     const { socket, peer, createPeer } = harness();
     const client = new RideSessionClient(relaySession, {
       createSocket: () => socket as unknown as WebSocket,
-      createPeer
+      createPeer,
+      createStream: () => mediaStream(),
     });
 
     client.connect();

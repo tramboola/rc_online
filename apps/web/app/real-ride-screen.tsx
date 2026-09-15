@@ -26,6 +26,8 @@ import { MobileDriveControls } from "./mobile-drive-controls";
 import { MobileLandscapeNotice } from "./mobile-landscape-notice";
 import { RideFullscreenToggle } from "./ride-fullscreen-toggle";
 import { formatVideoStreamStats } from "./adaptive-video";
+import { RideAudioControls } from "./ride-audio-controls";
+import { INITIAL_RIDE_AUDIO, RideMediaPlayback } from "./ride-media-playback";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const TRIM_SAVE_DELAY_MS = 300;
@@ -81,6 +83,7 @@ export function RealRideScreen() {
   const searchParams = useSearchParams();
   const carId = searchParams.get("car") ?? fallbackCarId;
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playbackRef = useRef<RideMediaPlayback | null>(null);
   const rideSurfaceRef = useRef<HTMLDivElement | null>(null);
   const videoAttemptRef = useRef<RideConnectionAttempt | null>(null);
   const attemptRef = useRef<RideConnectionAttempt | null>(null);
@@ -100,6 +103,7 @@ export function RealRideScreen() {
     EMPTY_BATTERY_TELEMETRY,
   );
   const [videoMode, setVideoMode] = useState("VIDEO · —");
+  const [audio, setAudio] = useState(INITIAL_RIDE_AUDIO);
   const [control, setControl] = useState<KeyboardControlIntent>(NEUTRAL_CONTROL);
   const [connection, setConnection] = useState<RideConnectionSnapshot>(initialConnectionSnapshot);
   const [attemptKey, setAttemptKey] = useState(0);
@@ -125,6 +129,7 @@ export function RealRideScreen() {
     setState("CONNECTING");
     setError(null);
     setVideoMode("VIDEO · —");
+    setAudio(INITIAL_RIDE_AUDIO);
     dispatchBatteryTelemetry({ type: "RESET" });
     setReadyLoop(null);
     setRideSession(null);
@@ -149,6 +154,7 @@ export function RealRideScreen() {
       loop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);
       return loop;
     });
+    let playback: RideMediaPlayback | null = null;
     const attempt = new RideConnectionAttempt(carId, {
       onSession: (session) => {
         sessionRef.current = session;
@@ -159,19 +165,15 @@ export function RealRideScreen() {
       onSnapshot: (snapshot) => {
         setConnection(snapshot);
         if (snapshot.status === "failed") {
+          playback?.close();
+          setAudio(INITIAL_RIDE_AUDIO);
           setState("DISCONNECTED");
           setError(snapshot.errorMessage);
         }
       },
       onStream: (stream) => {
-        const video = videoRef.current;
-        if (video) {
-          videoAttemptRef.current = attempt;
-          video.srcObject = stream;
-          void video.play().catch(() => {
-            attempt.fail("Browser could not start the camera video");
-          });
-        }
+        videoAttemptRef.current = attempt;
+        void playback?.attach(stream);
       },
       onVideoStats: (stats) => {
         // Prefer decoded RTP measurements; Safari may expose dimensions only on
@@ -193,9 +195,20 @@ export function RealRideScreen() {
       },
     }, dependencies);
     attemptRef.current = attempt;
+    if (videoRef.current) {
+      playback = new RideMediaPlayback(videoRef.current, setAudio, (message) => attempt.fail(message));
+      playbackRef.current = playback;
+    }
+    const resumeSound = () => { void playback?.resumeFromGesture(); };
+    window.addEventListener("pointerdown", resumeSound, true);
+    window.addEventListener("keydown", resumeSound, true);
     void attempt.start();
 
     return () => {
+      window.removeEventListener("pointerdown", resumeSound, true);
+      window.removeEventListener("keydown", resumeSound, true);
+      playback?.close();
+      if (playbackRef.current === playback) playbackRef.current = null;
       attempt.close("ride connection replaced");
       if (videoAttemptRef.current === attempt) videoAttemptRef.current = null;
       if (attemptRef.current === attempt) attemptRef.current = null;
@@ -336,13 +349,24 @@ export function RealRideScreen() {
         aria-label="Live onboard camera from RC Mania One"
         autoPlay
         className="drive-poster"
-        muted
         onLoadedData={() => videoAttemptRef.current?.markVideoLoadedData()}
         playsInline
         ref={videoRef}
       />
       <div className="ride-shade" />
-      <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · NO AUDIO</b></div>
+      <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · LIVE</b></div>
+      <RideAudioControls
+        state={audio}
+        onToggle={() => {
+          const enable = audio.blocked || audio.muted || audio.volume === 0;
+          if (enable && audio.volume === 0) playbackRef.current?.setVolume(1);
+          void playbackRef.current?.setMuted(!enable);
+        }}
+        onVolume={(volume) => {
+          playbackRef.current?.setVolume(volume);
+          if (volume > 0) void playbackRef.current?.setMuted(false);
+        }}
+      />
       <RideSessionClock remainingSeconds={remainingSeconds} />
       <button className="mobile-end-session" onClick={() => setEndConfirmationOpen(true)} type="button"><Flag size={16} /> END SESSION</button>
       <RideFullscreenToggle target={rideSurfaceRef} />
