@@ -118,7 +118,7 @@ function getQueueCars(
       id: car.id,
       number: `CAR ${String(index + 1).padStart(2, "0")}`,
       name: car.name.toUpperCase(),
-      src: car.slug === "rc-mania-one" ? "/assets/car-rc-mania-one.webp" : null,
+      src: ["rc-mania-one", "rcmania-zero2w-02"].includes(car.slug) ? "/assets/car-rc-mania-one.webp" : null,
       batteryPercent: car.batteryPercent,
       connection: car.availability === "available" ? "AVAILABLE" : "IN USE",
       availability: car.availability,
@@ -768,6 +768,7 @@ function QueueScreen({
   const router = useRouter();
   const [queueSnapshot, setQueueSnapshot] = useState(initialQueueSnapshot);
   const queueCars = getQueueCars(operationalStatus, queueSnapshot);
+  const isDriving = queueSnapshot?.status === "driving";
   const canChooseCar = queueSnapshot?.status === "ready";
   const selectableCars = queueCars.filter((car) => car.availability === "available");
   const hasAvailableCars = selectableCars.length > 0;
@@ -834,10 +835,14 @@ function QueueScreen({
           <div className="title-row"><h1>LIVE QUEUE</h1><IconLabel icon={UsersThree} title={availableCarCount} subtitle="CARS AVAILABLE" tone="lime" /></div>
           <article className="data-panel queue-position">
             <div className="queue-position-heading">
-              <div><h2>YOU ARE #{position}</h2><p>{position === 1 ? "NEXT TO DRIVE" : `${position - 1} AHEAD OF YOU`}</p></div>
+              {isDriving ? (
+                <div><h2>SESSION IN PROGRESS</h2><p>YOUR CURRENT SESSION IS STILL ACTIVE</p></div>
+              ) : (
+                <div><h2>YOU ARE #{position}</h2><p>{position === 1 ? "NEXT TO DRIVE" : `${position - 1} AHEAD OF YOU`}</p></div>
+              )}
               <small><Clock size={21} /> LIVE NOW</small>
             </div>
-            <div className="queue-line">
+            {!isDriving ? <div className="queue-line">
               {[1, 2, 3, 4, 5].map((slot) => (
                 <span className={slot === position ? "you" : ""} key={slot}>
                   <b>P{slot}</b>
@@ -845,14 +850,14 @@ function QueueScreen({
                   {slot === position ? <small>YOU</small> : null}
                 </span>
               ))}
-            </div>
-            <div className="safe-note"><ShieldCheck size={25} /> WAITING DOES NOT USE YOUR BALANCE</div>
+            </div> : null}
+            {!isDriving ? <div className="safe-note"><ShieldCheck size={25} /> WAITING DOES NOT USE YOUR BALANCE</div> : null}
             <div className="queue-progress" aria-label="Queue progress">
               {[
-                ["✓", "JOINED", "LIVE"],
-                [String(position), "POSITION", `OF ${queueCount}`],
+                ["✓", isDriving ? "SESSION" : "JOINED", "LIVE"],
+                isDriving ? ["—", "POSITION", "NOT QUEUED"] : [String(position), "POSITION", `OF ${queueCount}`],
                 [String(availableCarCount), "CARS", "AVAILABLE"],
-                [queueSnapshot?.status === "ready" ? "✓" : "…", "STATUS", queueSnapshot?.status === "ready" ? "READY" : "WAITING"],
+                [canChooseCar || isDriving ? "✓" : "…", "STATUS", isDriving ? "DRIVING" : canChooseCar ? "READY" : "WAITING"],
               ].map(([marker, label, detail], index) => (
                 <span className={index < 2 || queueSnapshot?.status === "ready" ? "active" : ""} key={label}>
                   <b>{marker}</b><em>{label}</em><small>{detail}</small>
@@ -862,12 +867,14 @@ function QueueScreen({
           </article>
           <article className="data-panel queue-closed">
             <UsersThree size={38} />
-            <span><strong>LIVE QUEUE ACTIVE</strong><small>Your position refreshes automatically while this page stays open.</small></span>
+            <span><strong>{isDriving ? "LIVE CAR AVAILABILITY" : "LIVE QUEUE ACTIVE"}</strong><small>{isDriving ? "Car availability refreshes automatically while this page stays open." : "Your position refreshes automatically while this page stays open."}</small></span>
           </article>
         </section>
         <section className="offer-panel">
           <div className="offer-heading">
-            {offerReady ? (
+            {isDriving ? (
+              <div><p className="eyebrow">CURRENT DRIVE SESSION</p><h2>SESSION ALREADY ACTIVE</h2><span>You already have an active session. If your connection was interrupted, this page will update when it is released.</span></div>
+            ) : offerReady ? (
               <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car when you&apos;re ready.</span></div>
             ) : allCarsInUse ? (
               <div><p className="eyebrow">CARS CURRENTLY ON TRACK</p><h2>ALL CARS ARE IN USE</h2><span>They will become available as soon as the current drives end.</span></div>
@@ -877,7 +884,7 @@ function QueueScreen({
               <div><p className="eyebrow">WAITING FOR AVAILABILITY</p><h2>NO CAR IS READY YET</h2><span>Stay in the queue. You can connect as soon as a car comes online.</span></div>
             )}
           </div>
-          <h3>SELECT YOUR CAR</h3>
+          <h3>{isDriving ? "LIVE CARS" : "SELECT YOUR CAR"}</h3>
           <div className="car-choice-grid">
             {queueCars.map(({ id, number, name, src, batteryPercent, connection, availability }) => {
               const battery = getQueueBatteryPresentation(batteryPercent);
@@ -907,7 +914,7 @@ function QueueScreen({
             ) : null}
           </div>
           <div className="offer-actions">
-            <ActionButton disabled={!selectedCar} onClick={accept}>ACCEPT & CONNECT</ActionButton>
+            <ActionButton disabled={!canChooseCar || !selectedCar} onClick={accept}>ACCEPT & CONNECT</ActionButton>
             <ActionButton tone="ghost" onClick={() => void leaveQueue()}>LEAVE QUEUE</ActionButton>
           </div>
           <p className="fine-print"><ShieldCheck size={17} /> First come, first served. Memberships do not receive priority.</p>

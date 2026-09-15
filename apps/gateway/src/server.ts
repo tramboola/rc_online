@@ -23,6 +23,7 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
   const presence = new PresenceRegistry(store, config.staleAfterMs);
   const sessions = new SessionRegistry();
   const devices = new Map<string, WebSocket>();
+  const browserPings = new Map<WebSocket, number | null>();
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 1_100_000, perMessageDeflate: false });
   const viewerPresence = new ViewerPresence();
   const viewerSockets = new Set<WebSocket>();
@@ -159,6 +160,7 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
               return;
             }
             authenticatedSessionId = ticket.sessionId;
+            browserPings.set(socket, null);
             clearTimeout(authenticationTimeout);
             send(socket, { v: 1, type: "auth.accepted", peer: "browser" });
             return;
@@ -227,9 +229,13 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
       }
     });
 
+    socket.on("pong", () => {
+      if (browserPings.has(socket)) browserPings.set(socket, null);
+    });
     socket.on("close", async () => {
       if (closed) return;
       closed = true;
+      browserPings.delete(socket);
       clearTimeout(authenticationTimeout);
       if (authenticatedDevice && devices.get(authenticatedDevice.deviceId) === socket) {
         devices.delete(authenticatedDevice.deviceId);
@@ -273,6 +279,28 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
   }, 5_000);
   sweepTimer.unref();
 
+  // Native browser WebSockets answer pings even when no signalling is flowing.
+  // Keep the first unanswered ping's deadline: repeated pings must not extend it.
+  // A lost connection is terminated within 15 seconds (5s to ping + 10s to reply).
+  const browserPingTimer = setInterval(() => {
+    const now = performance.now();
+    for (const [socket, pendingSince] of browserPings) {
+      if (pendingSince !== null && now - pendingSince >= 10_000) {
+        browserPings.delete(socket);
+        socket.terminate();
+        continue;
+      }
+      if (pendingSince === null) browserPings.set(socket, now);
+      try {
+        socket.ping();
+      } catch {
+        browserPings.delete(socket);
+        socket.terminate();
+      }
+    }
+  }, 5_000);
+  browserPingTimer.unref();
+
   const viewerPingTimer = setInterval(() => {
     sweepViewerPings(viewerSockets, viewerAlive);
   }, 45_000);
@@ -283,7 +311,10 @@ export function createGatewayServer(config: GatewayConfig, store: GatewayStore):
     if (connectionsClosing) return;
     connectionsClosing = true;
     clearInterval(sweepTimer);
+    clearInterval(browserPingTimer);
     clearInterval(viewerPingTimer);
+    for (const socket of browserPings.keys()) socket.terminate();
+    browserPings.clear();
     for (const socket of devices.values()) socket.close(1001, "server shutdown");
     for (const socket of viewerSockets) socket.close(1001, "server shutdown");
     sockets.close();

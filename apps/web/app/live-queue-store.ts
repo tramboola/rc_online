@@ -81,13 +81,14 @@ export function createPostgresLiveQueueStore(databaseUrl: string): LiveQueueStor
       )).limit(1);
       if (driving?.queueEntryId) {
         const activeEntries = await listActiveEntries(tx, now);
+        const cars = await listQueueCars(tx, now);
         return {
           entryId: driving.queueEntryId,
           position: 0,
           count: activeEntries.length,
-          availableCarCount: 0,
+          availableCarCount: cars.filter((car) => car.availability === "available").length,
           status: "driving",
-          cars: [],
+          cars,
         };
       }
 

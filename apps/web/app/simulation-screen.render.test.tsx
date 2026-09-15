@@ -20,6 +20,51 @@ vi.mock("next-auth/react", () => ({
 }));
 
 describe("driving setup screens", () => {
+  it.each([0, 1])("explains an existing drive with %s other available cars without offering another session", (availableCarCount) => {
+    const markup = renderToStaticMarkup(
+      <SimulationScreen
+        adminAccess
+        mockMode
+        screen="queue"
+        liveQueueSnapshot={{
+          entryId: "accepted-entry",
+          position: 0,
+          count: 1,
+          availableCarCount,
+          status: "driving",
+          cars: [{
+            id: "second-car",
+            slug: "rcmania-zero2w-02",
+            name: "RCmania Two",
+            batteryPercent: null,
+            availability: "in_use",
+          }, ...(availableCarCount ? [{
+            id: "first-car",
+            slug: "rc-mania-one",
+            name: "RC Mania One",
+            batteryPercent: 73,
+            availability: "available" as const,
+          }] : [])],
+        }}
+      />,
+    );
+
+    expect(markup).toContain("SESSION ALREADY ACTIVE");
+    expect(markup).toContain("You already have an active session.");
+    expect(markup).not.toContain("NO CAR IS READY YET");
+    expect(markup).not.toContain("ALL CARS ARE IN USE");
+    expect(markup).not.toContain("WAITING FOR YOUR TURN");
+    expect(markup).not.toContain("YOUR CAR IS READY");
+    expect(markup).not.toContain("YOU ARE #0");
+    expect(markup).not.toContain("-1 AHEAD OF YOU");
+    expect(markup).toContain(`<b>${availableCarCount}</b><em>CARS</em><small>AVAILABLE</small>`);
+    expect(markup).toContain('alt="RCMANIA TWO RC car"');
+    const carButtons = [...markup.matchAll(/<button\b[^>]*class="car-choice[^>]*>/g)];
+    expect(carButtons).toHaveLength(availableCarCount + 1);
+    for (const [button] of carButtons) expect(button).toContain('disabled=""');
+    expect(markup).toMatch(/<button\b[^>]*disabled=""[^>]*><span>ACCEPT &amp; CONNECT<\/span>/);
+  });
+
   it.each([
     [0, { label: "0%", tone: "warning" }],
     [19, { label: "19%", tone: "warning" }],

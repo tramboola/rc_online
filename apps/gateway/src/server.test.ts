@@ -174,6 +174,51 @@ async function openSocket(socket: WebSocket): Promise<void> {
   });
 }
 
+async function connectedDriver(autoPong = true) {
+  const fixture = createStore();
+  fixture.store.authorizeDriveSession = async () => ({ expiresAt: new Date(Date.now() + 300_000) });
+  const { server, baseUrl } = await listen(fixture.store);
+  const enrollment = await server.inject({
+    method: "POST", url: "/v1/enroll", payload: {
+      enrollmentCode: "enr_this-code-is-long-enough-for-a-test",
+      serialNumber: "10000000abc12345", agentVersion: "0.1.0", capabilities: {}
+    }
+  });
+  const credentials = enrollment.json();
+  // A device does not participate in the browser transport heartbeat.
+  const device = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket", { autoPong: false });
+  await openSocket(device);
+  const deviceAccepted = nextMessageOfType(device, "auth.accepted");
+  device.send(JSON.stringify({
+    v: 1, type: "device.authenticate", deviceId: credentials.deviceId,
+    secret: credentials.deviceSecret, agentVersion: "0.1.0"
+  }));
+  await deviceAccepted;
+  device.send(JSON.stringify({
+    v: 1, type: "device.heartbeat", health: {
+      cameraReady: true, gpioReady: true, watchdogReady: true,
+      width: 1280, height: 720, fps: 60, cpuTemperatureC: 44, wifiSignalDbm: -50
+    }
+  }));
+  await vi.waitFor(() => expect(fixture.heartbeats).toHaveLength(1));
+  const browser = new WebSocket(baseUrl.replace("http", "ws") + "/v1/socket", { autoPong });
+  await openSocket(browser);
+  const accepted = nextMessageOfType(browser, "auth.accepted");
+  const sessionId = "47b691ed-0b69-4bdb-8040-6740560596c2";
+  browser.send(JSON.stringify({
+    v: 1, type: "browser.authenticate",
+    ticket: signBrowserTicket({
+      aud: "rcmania-gateway", sub: "79c2b116-d739-413d-99fb-da59f577f88b", role: "admin",
+      carId: credentials.carId, sessionId,
+      iat: Math.floor(Date.now() / 1_000) - 1, exp: Math.floor(Date.now() / 1_000) + 60
+    }, "test-browser-secret-with-enough-entropy")
+  }));
+  await accepted;
+  browser.send(JSON.stringify({ v: 1, type: "session.connected", sessionId }));
+  await vi.waitFor(() => expect(fixture.activatedSessions).toEqual([sessionId]));
+  return { ...fixture, server, device, browser, sessionId };
+}
+
 function waitForClose(socket: WebSocket): Promise<number> {
   return new Promise((resolve, reject) => {
     socket.once("close", resolve);
@@ -545,6 +590,64 @@ describe("gateway enrollment and device socket", () => {
 
     expect(fixture.updateStatuses).toEqual([{ updateId: "44444444-4444-4444-8444-444444444444", status: "applying", reason: null }]);
     socket.close();
+  });
+});
+
+describe("driver socket heartbeat", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("releases an active drive whose browser stops replying without closing its socket", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setInterval", "clearInterval"] });
+    const fixture = await connectedDriver(false);
+    const deviceMessages: unknown[] = [];
+    fixture.device.on("message", (data) => deviceMessages.push(JSON.parse(data.toString())));
+    try {
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fixture.endedSessions).toEqual([]);
+      expect(fixture.browser.readyState).toBe(WebSocket.OPEN);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.waitFor(() => expect(fixture.endedSessions).toEqual([fixture.sessionId]));
+      await vi.waitFor(() => expect(fixture.browser.readyState).toBe(WebSocket.CLOSED));
+      await vi.waitFor(() => expect(deviceMessages).toContainEqual({
+        v: 1, type: "session.end", sessionId: fixture.sessionId, reason: "browser disconnected"
+      }));
+      expect(fixture.device.readyState).toBe(WebSocket.OPEN);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(fixture.endedSessions).toEqual([fixture.sessionId]);
+    } finally {
+      fixture.browser.terminate();
+      fixture.device.terminate();
+      await fixture.server.close();
+    }
+  });
+
+  it("keeps a replying browser active and removes heartbeat timers and sockets on shutdown", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setInterval", "clearInterval"] });
+    const fixture = await connectedDriver();
+    try {
+      for (let interval = 0; interval < 6; interval += 1) {
+        const ping = new Promise<void>((resolve) => fixture.browser.once("ping", () => resolve()));
+        await vi.advanceTimersByTimeAsync(5_000);
+        await ping;
+        // This relay follows the automatic pong on the same TCP stream, so its
+        // delivery proves the server processed the pong before the next tick.
+        const offer = nextMessageOfType(fixture.device, "signal.offer");
+        fixture.browser.send(JSON.stringify({
+          v: 1, type: "signal.offer", sessionId: fixture.sessionId, sdp: "test-offer"
+        }));
+        await offer;
+        expect(fixture.browser.readyState).toBe(WebSocket.OPEN);
+        expect(fixture.endedSessions).toEqual([]);
+      }
+      expect(fixture.device.readyState).toBe(WebSocket.OPEN);
+      await fixture.server.close();
+      await vi.waitFor(() => expect(fixture.browser.readyState).toBe(WebSocket.CLOSED));
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      fixture.browser.terminate();
+      fixture.device.terminate();
+      await fixture.server.close();
+    }
   });
 });
 
