@@ -10,7 +10,7 @@ export type PlaybackPreferences = { volume: number; muted: boolean };
 export type AudioSaveStatus = "loading" | "saved" | "saving" | "not-saved";
 export const PENDING_AUDIO_PREFERENCES: PlaybackPreferences = { volume: 0, muted: true };
 
-const endpoint = "/api/account/audio-preferences";
+const endpoint = "/api/ride-audio";
 const saveDelayMs = 300;
 const requestTimeoutMs = 4000;
 
@@ -142,6 +142,8 @@ export class RideAudioPreferences {
   }
 
   async #request(init: RequestInit): Promise<{ response: Response; preferences: unknown }> {
+    // Native browser fetch rejects an arbitrary object as its WebIDL receiver.
+    const fetcher = this.fetcher;
     const controller = new AbortController();
     let timer!: ReturnType<typeof setTimeout>;
     const timeout = new Promise<never>((_resolve, reject) => {
@@ -152,7 +154,7 @@ export class RideAudioPreferences {
     });
     try {
       return await Promise.race([
-        this.fetcher(endpoint, { ...init, credentials: "same-origin", signal: controller.signal })
+        fetcher(endpoint, { ...init, credentials: "same-origin", signal: controller.signal })
           .then(async (response) => ({ response, preferences: await response.json() as unknown })),
         timeout,
       ]);

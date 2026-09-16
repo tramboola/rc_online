@@ -15,6 +15,30 @@ describe("account audio preference synchronization", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  it("calls browser fetch without binding it to the preference controller", async () => {
+    const browserFetch: typeof fetch = async function (this: unknown) {
+      if (this !== undefined) throw new TypeError("Illegal invocation");
+      return response(stored);
+    };
+    const preferences = new RideAudioPreferences(() => {}, browserFetch);
+    await preferences.load();
+    expect(preferences.value).toEqual({ volume: 0.25, muted: false });
+    preferences.close();
+  });
+
+  it("uses the first-party ride audio endpoint for both reads and writes", async () => {
+    const requests: string[] = [];
+    const preferences = new RideAudioPreferences(() => {}, async (url, init) => {
+      requests.push(String(url));
+      return response(init?.body ? { volumePercent: 20, muted: false, revision: 3 } : stored);
+    });
+    await preferences.load();
+    preferences.update({ volume: 0.2, muted: false });
+    await vi.advanceTimersByTimeAsync(350);
+    expect(requests).toEqual(["/api/ride-audio", "/api/ride-audio"]);
+    preferences.close();
+  });
+
   it("bounds the entire load including a response body that stalls after headers", async () => {
     let body!: ReadableStreamDefaultController<Uint8Array>;
     const stream = new ReadableStream<Uint8Array>({ start(controller) { body = controller; } });
