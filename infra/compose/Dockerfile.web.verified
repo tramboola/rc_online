@@ -1,0 +1,43 @@
+FROM node:22.20.0-bookworm-slim AS base
+
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+WORKDIR /workspace
+
+FROM base AS dependencies
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/device-auth/package.json packages/device-auth/package.json
+
+RUN pnpm install --filter "@rc/web..." --frozen-lockfile
+
+FROM dependencies AS builder
+
+COPY apps/web apps/web
+COPY packages/contracts packages/contracts
+COPY packages/database packages/database
+COPY packages/device-auth packages/device-auth
+
+COPY infra/compose/compose.vps-web.yaml infra/compose/compose.vps-web.yaml
+RUN pnpm --filter "@rc/web..." build && pnpm --filter @rc/web exec vitest run app/live-queue-store.test.ts app/simulation-screen.render.test.tsx app/queue-status-color.test.tsx app/api/queue/route.test.ts app/queue-offer.test.tsx auth/turn-redundancy.test.ts app/ride-session-client.test.ts app/ride-audio-controls.test.tsx
+
+FROM node:22.20.0-bookworm-slim AS runner
+
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+RUN groupadd --gid 10001 rc && useradd --uid 10001 --gid rc --create-home rc
+
+WORKDIR /app
+COPY --from=builder --chown=rc:rc /workspace/apps/web/.next/standalone/ ./
+
+USER 10001:10001
+EXPOSE 3000
+
+CMD ["node", "apps/web/server.js"]

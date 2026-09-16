@@ -69,6 +69,7 @@ import { RealRideScreen } from "./real-ride-screen";
 import { MobileLandscapeNotice } from "./mobile-landscape-notice";
 import { MobilePreflight } from "./mobile-preflight";
 import { useViewerCount } from "./use-viewer-count";
+import { useLiveQueue } from "./use-live-queue";
 
 export type ScreenName =
   | "home"
@@ -766,50 +767,24 @@ function QueueScreen({
   operationalStatus?: OperationalStatus | undefined;
 }) {
   const router = useRouter();
-  const [queueSnapshot, setQueueSnapshot] = useState(initialQueueSnapshot);
-  const queueCars = getQueueCars(operationalStatus, queueSnapshot);
+  const liveQueue = useLiveQueue(initialQueueSnapshot);
+  const queueSnapshot = liveQueue.snapshot;
   const isDriving = queueSnapshot?.status === "driving";
-  const canChooseCar = queueSnapshot?.status === "ready";
+  const queueCars = getQueueCars(operationalStatus, queueSnapshot);
+  const canChooseCar = liveQueue.canAccept;
   const selectableCars = queueCars.filter((car) => car.availability === "available");
   const hasAvailableCars = selectableCars.length > 0;
-  const offerReady = canChooseCar && hasAvailableCars;
-  const [selectedCar, setSelectedCar] = useState(
-    canChooseCar ? selectableCars[0]?.id ?? "" : "",
-  );
+  const offerReady = queueSnapshot?.status === "ready" && !liveQueue.expired && !liveQueue.error && hasAvailableCars;
+  const [preferredCar, setPreferredCar] = useState("");
+  const selectedCar = canChooseCar
+    ? (selectableCars.some((car) => car.id === preferredCar) ? preferredCar : selectableCars[0]?.id ?? "")
+    : "";
   const fleetUnavailable = operationalStatus?.state === "unavailable";
-  const [status, setStatus] = useState(initialQueueSnapshot ? "Live queue active" : "Joining live queue…");
-
-  useEffect(() => {
-    let cancelled = false;
-    async function refresh(method: "GET" | "POST") {
-      try {
-        const response = await fetch("/api/queue", { method });
-        if (!response.ok) throw new Error("Live queue request failed");
-        const snapshot = await response.json() as LiveQueueSnapshot;
-        if (!cancelled) {
-          setQueueSnapshot(snapshot);
-          setStatus(snapshot.status === "ready" ? "Live offer ready" : "Live queue active");
-        }
-      } catch {
-        if (!cancelled) setStatus("Queue connection interrupted");
-      }
-    }
-    void refresh("POST");
-    const interval = window.setInterval(() => void refresh("GET"), 2_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (canChooseCar && selectableCars.some((car) => car.id === selectedCar)) return;
-    setSelectedCar(canChooseCar ? selectableCars[0]?.id ?? "" : "");
-  }, [canChooseCar, selectableCars, selectedCar]);
+  const [connecting, setConnecting] = useState(false);
 
   function accept() {
-    if (!canChooseCar || !selectableCars.some((car) => car.id === selectedCar)) return;
-    setStatus("Connecting…");
+    if (!liveQueue.isAcceptCurrent() || !selectableCars.some((car) => car.id === selectedCar)) return;
+    setConnecting(true);
     router.push(getRideUrl(selectedCar));
   }
 
@@ -824,7 +799,7 @@ function QueueScreen({
   const position = queueSnapshot?.position ?? 1;
   const queueCount = queueSnapshot?.count ?? operationalStatus?.queueCount ?? 1;
   const availableCarCount = queueSnapshot?.availableCarCount ?? queueCars.length;
-  const carsServingEarlierDrivers = !canChooseCar && availableCarCount > 0;
+  const carsServingEarlierDrivers = queueSnapshot?.status === "waiting" && availableCarCount > 0;
   const allCarsInUse = queueCars.length > 0 && availableCarCount === 0;
 
   return (
@@ -838,28 +813,28 @@ function QueueScreen({
               {isDriving ? (
                 <div><h2>SESSION IN PROGRESS</h2><p>YOUR CURRENT SESSION IS STILL ACTIVE</p></div>
               ) : (
-                <div><h2>YOU ARE #{position}</h2><p>{position === 1 ? "NEXT TO DRIVE" : `${position - 1} AHEAD OF YOU`}</p></div>
+                <div><h2>{liveQueue.expired ? "NOT IN QUEUE" : `YOU ARE #${position}`}</h2><p>{liveQueue.expired ? "REJOIN WHEN YOU ARE READY" : position === 1 ? "NEXT TO DRIVE" : `${Math.max(0, position - 1)} AHEAD OF YOU`}</p></div>
               )}
               <small><Clock size={21} /> LIVE NOW</small>
             </div>
             {!isDriving ? <div className="queue-line">
               {[1, 2, 3, 4, 5].map((slot) => (
-                <span className={slot === position ? "you" : ""} key={slot}>
+                <span className={!liveQueue.expired && slot === position ? "you" : ""} key={slot}>
                   <b>P{slot}</b>
                   <img src="/assets/queue-car-top.webp" alt="" />
-                  {slot === position ? <small>YOU</small> : null}
+                  {!liveQueue.expired && slot === position ? <small>YOU</small> : null}
                 </span>
               ))}
             </div> : null}
             {!isDriving ? <div className="safe-note"><ShieldCheck size={25} /> WAITING DOES NOT USE YOUR BALANCE</div> : null}
             <div className="queue-progress" aria-label="Queue progress">
               {[
-                ["✓", isDriving ? "SESSION" : "JOINED", "LIVE"],
-                isDriving ? ["—", "POSITION", "NOT QUEUED"] : [String(position), "POSITION", `OF ${queueCount}`],
+                [liveQueue.expired ? "—" : "✓", isDriving ? "SESSION" : "JOINED", liveQueue.expired ? "EXPIRED" : "LIVE"],
+                isDriving ? ["—", "POSITION", "NOT QUEUED"] : [liveQueue.expired ? "—" : String(position), "POSITION", `OF ${queueCount}`],
                 [String(availableCarCount), "CARS", "AVAILABLE"],
-                [canChooseCar || isDriving ? "✓" : "…", "STATUS", isDriving ? "DRIVING" : canChooseCar ? "READY" : "WAITING"],
+                [offerReady || isDriving ? "✓" : "…", "STATUS", isDriving ? "DRIVING" : liveQueue.expired ? "EXPIRED" : offerReady ? "READY" : "WAITING"],
               ].map(([marker, label, detail], index) => (
-                <span className={index < 2 || queueSnapshot?.status === "ready" ? "active" : ""} key={label}>
+                <span className={!liveQueue.expired && (index < 2 || offerReady) ? "active" : ""} key={label}>
                   <b>{marker}</b><em>{label}</em><small>{detail}</small>
                 </span>
               ))}
@@ -867,23 +842,31 @@ function QueueScreen({
           </article>
           <article className="data-panel queue-closed">
             <UsersThree size={38} />
-            <span><strong>{isDriving ? "LIVE CAR AVAILABILITY" : "LIVE QUEUE ACTIVE"}</strong><small>{isDriving ? "Car availability refreshes automatically while this page stays open." : "Your position refreshes automatically while this page stays open."}</small></span>
+            <span><strong>{isDriving ? "LIVE CAR AVAILABILITY" : liveQueue.expired ? "YOUR TURN WAS PASSED ON" : "LIVE QUEUE ACTIVE"}</strong><small>{isDriving ? "Car availability refreshes automatically while this page stays open." : liveQueue.expired ? "Rejoin the queue to get another turn." : "When a car is offered, you have 15 seconds to accept."}</small></span>
           </article>
         </section>
         <section className="offer-panel">
           <div className="offer-heading">
             {isDriving ? (
               <div><p className="eyebrow">CURRENT DRIVE SESSION</p><h2>SESSION ALREADY ACTIVE</h2><span>You already have an active session. If your connection was interrupted, this page will update when it is released.</span></div>
+            ) : liveQueue.expired ? (
+              <div><p className="eyebrow">ACCEPTANCE WINDOW ENDED</p><h2>OFFER EXPIRED</h2><span>The car has been offered to the next driver. Rejoin when you are ready.</span></div>
             ) : offerReady ? (
-              <div><p className="eyebrow">{status}</p><h2>YOUR CAR IS READY</h2><span>Choose a car when you&apos;re ready.</span></div>
+              <div><p className="eyebrow">{connecting ? "Connecting…" : "LIVE OFFER READY"}</p><h2>YOUR CAR IS READY</h2><span>Choose a car and accept before the timer ends.</span></div>
+            ) : liveQueue.error ? (
+              <div><p className="eyebrow">RECONNECTING TO QUEUE</p><h2>CHECKING YOUR TURN</h2><span>We will restore your live queue status as soon as the connection returns.</span></div>
             ) : allCarsInUse ? (
               <div><p className="eyebrow">CARS CURRENTLY ON TRACK</p><h2>ALL CARS ARE IN USE</h2><span>They will become available as soon as the current drives end.</span></div>
             ) : carsServingEarlierDrivers ? (
-              <div><p className="eyebrow">QUEUE POSITION #{position}</p><h2>WAITING FOR YOUR TURN</h2><span>Available cars are serving drivers ahead of you. Keep this page open.</span></div>
+              <div><p className="eyebrow">QUEUE POSITION #{position}</p><h2>WAITING FOR YOUR TURN</h2><span>The free car is offered to drivers ahead of you. Each offer lasts 15 seconds. Keep this page open.</span></div>
             ) : (
               <div><p className="eyebrow">WAITING FOR AVAILABILITY</p><h2>NO CAR IS READY YET</h2><span>Stay in the queue. You can connect as soon as a car comes online.</span></div>
             )}
           </div>
+          {offerReady && liveQueue.remainingSeconds !== null ? (
+            <p className="queue-offer-timer" role="timer"><Clock size={22} /> ACCEPT WITHIN <strong>00:{String(liveQueue.remainingSeconds).padStart(2, "0")}</strong></p>
+          ) : null}
+          {liveQueue.error ? <p className="queue-connection-error" role="status">Queue connection interrupted. Reconnecting…</p> : null}
           <h3>{isDriving ? "LIVE CARS" : "SELECT YOUR CAR"}</h3>
           <div className="car-choice-grid">
             {queueCars.map(({ id, number, name, src, batteryPercent, connection, availability }) => {
@@ -895,13 +878,14 @@ function QueueScreen({
                   className={`car-choice ${availability === "in_use" ? "in-use" : ""} ${selectable && selectedCar === id ? "selected" : ""}`.trim()}
                   disabled={!selectable}
                   key={id}
-                  onClick={() => selectable && setSelectedCar(id)}
+                  onClick={() => selectable && setPreferredCar(id)}
                   type="button"
                 >
                   {selectable && selectedCar === id ? <CheckCircle className="choice-check" size={32} weight="fill" /> : null}
                   {src ? <img src={src} alt={`${name} RC car`} /> : <CarProfile aria-hidden="true" size={72} />}
                   <small>{number}</small><strong>{name}</strong>
-                  <span className={`battery-status battery-${battery.tone}`}><BatteryHigh size={28} /> {battery.label}</span><span className={`connection-status connection-${availability}`}><WifiHigh size={28} /> {connection}</span>
+                  <span className={`battery-status battery-${battery.tone}`}><BatteryHigh size={28} /> {battery.label}</span><span className={`connection-status connection-${availability}`}><WifiHigh size={28} /> {availability === "available" && !canChooseCar ? "ONLINE" : connection}</span>
+                  {availability === "available" && carsServingEarlierDrivers ? <span className="car-offer-waiting">OFFERED TO NEXT DRIVER</span> : null}
                 </button>
               );
             })}
@@ -914,7 +898,9 @@ function QueueScreen({
             ) : null}
           </div>
           <div className="offer-actions">
-            <ActionButton disabled={!canChooseCar || !selectedCar} onClick={accept}>ACCEPT & CONNECT</ActionButton>
+            {liveQueue.expired ? (
+              <ActionButton disabled={liveQueue.rejoining} onClick={() => void liveQueue.rejoin()}>{liveQueue.rejoining ? "REJOINING…" : "REJOIN QUEUE"}</ActionButton>
+            ) : <ActionButton disabled={!selectedCar || connecting} onClick={accept}>ACCEPT & CONNECT</ActionButton>}
             <ActionButton tone="ghost" onClick={() => void leaveQueue()}>LEAVE QUEUE</ActionButton>
           </div>
           <p className="fine-print"><ShieldCheck size={17} /> First come, first served. Memberships do not receive priority.</p>

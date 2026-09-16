@@ -31,13 +31,13 @@ export function createQueueHandlers(dependencies: QueueHandlersDependencies) {
     GET: async (_request: Request) => {
       const authenticated = await user();
       if (authenticated instanceof Response) return authenticated;
-      return Response.json(await dependencies.read(authenticated.id, dependencies.now()));
+      return Response.json(await dependencies.read(authenticated.id, dependencies.now()), { headers: { "Cache-Control": "private, no-store" } });
     },
     POST: async (request: Request) => {
       if (!isSameOrigin(request)) return Response.json({ error: "Cross-origin request rejected" }, { status: 403 });
       const authenticated = await user();
       if (authenticated instanceof Response) return authenticated;
-      return Response.json(await dependencies.join(authenticated.id, dependencies.now()));
+      return Response.json(await dependencies.join(authenticated.id, dependencies.now()), { headers: { "Cache-Control": "private, no-store" } });
     },
     DELETE: async (request: Request) => {
       if (!isSameOrigin(request)) return Response.json({ error: "Cross-origin request rejected" }, { status: 403 });

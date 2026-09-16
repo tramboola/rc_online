@@ -86,7 +86,7 @@ services:
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:?Set GOOGLE_OAUTH_CLIENT_SECRET in the private env file}
       GATEWAY_SESSION_SECRET: ${GATEWAY_SESSION_SECRET:?Set GATEWAY_SESSION_SECRET in the private env file}
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-wss://rcmania.live/gateway/v1/socket}
-      GATEWAY_ICE_SERVERS_JSON: ${GATEWAY_ICE_SERVERS_JSON:-[{"urls":"stun:turn.rcmania.live:3478"},{"urls":"turn:turn.rcmania.live:3478?transport=udp"},{"urls":"turn:turn.rcmania.live:3478?transport=tcp"},{"urls":"turns:turn.rcmania.live:443?transport=tcp"}]}
+      GATEWAY_ICE_SERVERS_JSON: ${GATEWAY_ICE_SERVERS_JSON:-[{"urls":"stun:turn2.rcmania.live:3478"},{"urls":"turn:turn2.rcmania.live:3478?transport=udp"},{"urls":"turn:turn2.rcmania.live:3478?transport=tcp"},{"urls":"turns:turn2.rcmania.live:443?transport=tcp"},{"urls":"stun:turn.rcmania.live:3478"},{"urls":"turn:turn.rcmania.live:3478?transport=udp"},{"urls":"turn:turn.rcmania.live:3478?transport=tcp"},{"urls":"turns:turn.rcmania.live:443?transport=tcp"}]}
       TURN_SHARED_SECRET_FILE: /run/secrets/turn_shared_secret
       TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-600}
       WEBRTC_ICE_TRANSPORT_POLICY: ${WEBRTC_ICE_TRANSPORT_POLICY:-all}
@@ -150,7 +150,7 @@ services:
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-wss://rcmania.live/gateway/v1/socket}
       GATEWAY_VIEWER_CAPACITY: ${GATEWAY_VIEWER_CAPACITY:-500}
       GATEWAY_VIEWER_ORIGIN: ${AUTH_URL:?Set AUTH_URL in the private env file}
-      GATEWAY_ICE_SERVERS_JSON: ${GATEWAY_ICE_SERVERS_JSON:-[{"urls":"stun:turn.rcmania.live:3478"},{"urls":"turn:turn.rcmania.live:3478?transport=udp"},{"urls":"turn:turn.rcmania.live:3478?transport=tcp"},{"urls":"turns:turn.rcmania.live:443?transport=tcp"}]}
+      GATEWAY_ICE_SERVERS_JSON: ${GATEWAY_ICE_SERVERS_JSON:-[{"urls":"stun:turn2.rcmania.live:3478"},{"urls":"turn:turn2.rcmania.live:3478?transport=udp"},{"urls":"turn:turn2.rcmania.live:3478?transport=tcp"},{"urls":"turns:turn2.rcmania.live:443?transport=tcp"},{"urls":"stun:turn.rcmania.live:3478"},{"urls":"turn:turn.rcmania.live:3478?transport=udp"},{"urls":"turn:turn.rcmania.live:3478?transport=tcp"},{"urls":"turns:turn.rcmania.live:443?transport=tcp"}]}
       TURN_SHARED_SECRET_FILE: /run/secrets/turn_shared_secret
       TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-600}
     secrets:

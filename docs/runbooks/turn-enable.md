@@ -152,6 +152,33 @@ Immediately restore `WEBRTC_ICE_TRANSPORT_POLICY=all`, recreate only the web ser
 
 ## Monitoring
 
+## Second TURN endpoint (2026-09-15)
+
+`turn2.rcmania.live` (`194.87.134.208`) runs separately from the first TURN.
+Both web and gateway must receive the same URL-only `GATEWAY_ICE_SERVERS_JSON`;
+deploying Coturn alone does not advertise it to browsers or devices.
+
+The VPS Compose defaults include both hosts (UDP 3478, TCP 3478, TLS 443),
+with **turn2 first** while the original host is unreachable. Persist the same
+list in the private deployment configuration so older defaults cannot override
+it. Keep `WEBRTC_ICE_TRANSPORT_POLICY=all` and the existing shared secret.
+
+The current Pi agent receives the list in `session.start`; no firmware update
+is needed to change these endpoints. Its aiortc transport selects only the first
+STUN and TURN endpoint, so merely appending a working server after a dead one
+is insufficient for Pi-side relay allocation. Browser-side multiple-server
+selection must not be described as guaranteed two-server failover on the Pi.
+Reference: https://github.com/aiortc/aiortc/blob/main/src/aiortc/rtcicetransport.py
+
+When deploying a web patch, retain the actual running gateway image separately
+if its tag differs. Recreate only web and gateway with `--no-deps --no-build`;
+do not restart PostgreSQL, Docker, OpenVPN, or the Pis. Back up the private
+environment and record both previous image tags before changing configuration.
+Verify temporary authenticated relay traffic, both live container ICE lists,
+web readiness, gateway readiness, and fresh device heartbeats after the rollout.
+
+## Monitoring commands
+
 ```bash
 docker compose --project-name rcmania-turn --env-file /opt/rcmania-turn/.env --file /opt/rcmania-turn/compose.turn.yaml ps
 docker compose --project-name rcmania-turn --env-file /opt/rcmania-turn/.env --file /opt/rcmania-turn/compose.turn.yaml logs --since=30m turn

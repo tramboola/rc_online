@@ -56,7 +56,7 @@ export default async function ScreenPage({
   }
   if (resolvedScreen === "queue" && databaseUrl && session?.user.id) {
     try {
-      liveQueueSnapshot = await getPostgresLiveQueueStore(databaseUrl).join(
+      liveQueueSnapshot = await getPostgresLiveQueueStore(databaseUrl).read(
         session.user.id,
         new Date(),
       );

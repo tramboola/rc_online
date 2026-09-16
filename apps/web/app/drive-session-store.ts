@@ -1,5 +1,6 @@
 import { cars, createDatabase, devices, driveSessions, queueEntries } from "@rc/database";
-import { and, asc, eq, gt, inArray, lte, notExists } from "drizzle-orm";
+import { and, eq, gt, inArray, or } from "drizzle-orm";
+import { advanceLiveQueue, lockLiveQueue } from "./live-queue-store";
 
 export type CreatedDriveSession = {
   sessionId: string;
@@ -26,24 +27,27 @@ export function controlProtocolVersionFromMetadata(metadata: unknown): 3 | 4 | 5
   return version === 5 ? 5 : version === 4 ? 4 : 3;
 }
 
-export function createPostgresDriveSessionStore(databaseUrl: string): DriveSessionStore {
+export function createPostgresDriveSessionStore(databaseUrl: string, monotonicNow = () => performance.now()): DriveSessionStore {
   const { db } = createDatabase(databaseUrl);
   return {
     async create(userId, carId, now) {
+      const requestedAt = now.getTime();
+      const startedAt = monotonicNow();
+      const currentTime = () => new Date(requestedAt + Math.max(0, monotonicNow() - startedAt));
       return db.transaction(async (tx) => {
+        await lockLiveQueue(tx);
+        now = currentTime();
+        const queue = await advanceLiveQueue(tx, now);
+        const entry = queue.entries.find((entry) => entry.userId === userId);
+        if (entry?.status !== "offered" || entry.expiresAt <= now) return null;
         const freshnessCutoff = new Date(now.getTime() - 15_000);
-        await tx.update(queueEntries)
-          .set({ status: "expired", updatedAt: now })
-          .where(and(
-            inArray(queueEntries.status, ["waiting", "offered"]),
-            lte(queueEntries.expiresAt, now),
-          ));
 
         const [available] = await tx
           .select({
             carId: cars.id,
             steeringTrimPercent: cars.steeringTrimPercent,
             deviceMetadata: devices.metadata,
+            deviceLastSeenAt: devices.lastSeenAt,
           })
           .from(cars)
           .innerJoin(devices, eq(devices.carId, cars.id))
@@ -64,47 +68,23 @@ export function createPostgresDriveSessionStore(databaseUrl: string): DriveSessi
           .where(and(
             inArray(driveSessions.status, ["created", "negotiating", "active"]),
             gt(driveSessions.expiresAt, now),
-            eq(driveSessions.carId, carId)
+            or(eq(driveSessions.carId, carId), eq(driveSessions.userId, userId))
           ))
           .limit(1);
         if (existing) return null;
 
-        const waitingEntries = await tx
-          .select({ id: queueEntries.id, userId: queueEntries.userId })
-          .from(queueEntries)
-          .where(and(
-            inArray(queueEntries.status, ["waiting", "offered"]),
-            gt(queueEntries.expiresAt, now),
-          ))
-          .orderBy(asc(queueEntries.joinedAt), asc(queueEntries.id))
-          .for("update");
-        const queueIndex = waitingEntries.findIndex((entry) => entry.userId === userId);
-        if (queueIndex < 0) return null;
-
-        const availableCars = await tx
-          .selectDistinct({ id: cars.id })
-          .from(cars)
-          .innerJoin(devices, eq(devices.carId, cars.id))
-          .where(and(
-            eq(cars.state, "AVAILABLE"),
-            eq(cars.adminBlocked, false),
-            eq(devices.state, "AVAILABLE"),
-            gt(devices.lastSeenAt, freshnessCutoff),
-            notExists(
-              tx.select({ id: driveSessions.id }).from(driveSessions).where(and(
-                eq(driveSessions.carId, cars.id),
-                inArray(driveSessions.status, ["created", "negotiating", "active"]),
-                gt(driveSessions.expiresAt, now),
-              )),
-            ),
-          ));
-        if (queueIndex >= availableCars.length) return null;
-
+        // Device/car row locks may wait behind a heartbeat or session cleanup.
+        now = currentTime();
+        if (entry.expiresAt <= now) {
+          await advanceLiveQueue(tx, now);
+          return null;
+        }
+        if (!available.deviceLastSeenAt || available.deviceLastSeenAt.getTime() <= now.getTime() - 15_000) return null;
         const expiresAt = driveSessionExpiresAt(now);
         const [session] = await tx.insert(driveSessions).values({
           userId,
           carId,
-          queueEntryId: waitingEntries[queueIndex]!.id,
+          queueEntryId: entry.id,
           status: "created",
           expiresAt,
           createdAt: now,
@@ -113,7 +93,7 @@ export function createPostgresDriveSessionStore(databaseUrl: string): DriveSessi
         if (!session) return null;
         await tx.update(queueEntries)
           .set({ status: "accepted", updatedAt: now })
-          .where(eq(queueEntries.id, waitingEntries[queueIndex]!.id));
+          .where(eq(queueEntries.id, entry.id));
         await tx.update(cars)
           .set({ state: "RESERVED", updatedAt: now })
           .where(eq(cars.id, carId));

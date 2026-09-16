@@ -136,7 +136,7 @@ describe("driving setup screens", () => {
     expect(markup).not.toContain("PERSONAL BEST");
   });
 
-  it("renders a queue offer without an acceptance countdown", () => {
+  it("renders a queue offer with a 15-second acceptance countdown", () => {
     const markup = renderToStaticMarkup(
       <SimulationScreen
         adminAccess
@@ -146,6 +146,8 @@ describe("driving setup screens", () => {
           count: 1,
           availableCarCount: 4,
           status: "ready",
+          serverNow: "2030-01-01T12:00:00.000Z",
+          offerExpiresAt: "2030-01-01T12:00:15.000Z",
           cars: [{
             id: "40000000-0000-4000-8000-000000000001",
             name: "RC Mania One",
@@ -202,7 +204,7 @@ describe("driving setup screens", () => {
       />,
     );
 
-    expect(markup).toContain("Choose a car when you&#x27;re ready.");
+    expect(markup).toContain("Choose a car and accept before the timer ends.");
     expect(markup).toContain("0%");
     expect(markup).toContain("19%");
     expect(markup).toContain("20%");
@@ -212,7 +214,8 @@ describe("driving setup screens", () => {
     expect(markup.match(/battery-status battery-warning/g)).toHaveLength(2);
     expect(markup.match(/battery-status battery-ok/g)).toHaveLength(1);
     expect(markup.match(/battery-status battery-unavailable/g)).toHaveLength(1);
-    expect(markup).not.toContain("Accept within");
+    expect(markup).toContain("ACCEPT WITHIN");
+    expect(markup).toContain("00:15");
     expect(markup).not.toContain("countdown");
     expect(markup).toContain("LEAVE QUEUE");
     expect(source).toContain("router.push(getRideUrl(selectedCar))");
