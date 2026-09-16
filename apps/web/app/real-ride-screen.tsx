@@ -28,6 +28,7 @@ import { RideFullscreenToggle } from "./ride-fullscreen-toggle";
 import { formatVideoStreamStats } from "./adaptive-video";
 import { RideAudioControls } from "./ride-audio-controls";
 import { INITIAL_RIDE_AUDIO, RideMediaPlayback } from "./ride-media-playback";
+import { PENDING_AUDIO_PREFERENCES, RideAudioPreferences, type AudioSaveStatus } from "./ride-audio-preferences";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const TRIM_SAVE_DELAY_MS = 300;
@@ -84,6 +85,7 @@ export function RealRideScreen() {
   const carId = searchParams.get("car") ?? fallbackCarId;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<RideMediaPlayback | null>(null);
+  const audioPreferencesRef = useRef<RideAudioPreferences | null>(null);
   const rideSurfaceRef = useRef<HTMLDivElement | null>(null);
   const videoAttemptRef = useRef<RideConnectionAttempt | null>(null);
   const attemptRef = useRef<RideConnectionAttempt | null>(null);
@@ -103,7 +105,8 @@ export function RealRideScreen() {
     EMPTY_BATTERY_TELEMETRY,
   );
   const [videoMode, setVideoMode] = useState("VIDEO · —");
-  const [audio, setAudio] = useState(INITIAL_RIDE_AUDIO);
+  const [audio, setAudio] = useState({ ...INITIAL_RIDE_AUDIO, ...PENDING_AUDIO_PREFERENCES });
+  const [audioSaveStatus, setAudioSaveStatus] = useState<AudioSaveStatus>("loading");
   const [control, setControl] = useState<KeyboardControlIntent>(NEUTRAL_CONTROL);
   const [connection, setConnection] = useState<RideConnectionSnapshot>(initialConnectionSnapshot);
   const [attemptKey, setAttemptKey] = useState(0);
@@ -125,11 +128,30 @@ export function RealRideScreen() {
   }, []);
 
   useEffect(() => {
+    const preferences = new RideAudioPreferences((value) => {
+      setAudio((current) => ({ ...current, ...value }));
+      void playbackRef.current?.setPreferences(value);
+    }, fetch, setAudioSaveStatus);
+    audioPreferencesRef.current = preferences;
+    void preferences.load();
+    const flush = () => preferences.flush();
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+      preferences.close();
+      if (audioPreferencesRef.current === preferences) audioPreferencesRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     setConnection(initialConnectionSnapshot());
     setState("CONNECTING");
     setError(null);
     setVideoMode("VIDEO · —");
-    setAudio(INITIAL_RIDE_AUDIO);
+    setAudio({ ...INITIAL_RIDE_AUDIO, ...(audioPreferencesRef.current?.value ?? PENDING_AUDIO_PREFERENCES) });
     dispatchBatteryTelemetry({ type: "RESET" });
     setReadyLoop(null);
     setRideSession(null);
@@ -166,7 +188,7 @@ export function RealRideScreen() {
         setConnection(snapshot);
         if (snapshot.status === "failed") {
           playback?.close();
-          setAudio(INITIAL_RIDE_AUDIO);
+          setAudio({ ...INITIAL_RIDE_AUDIO, ...(audioPreferencesRef.current?.value ?? PENDING_AUDIO_PREFERENCES) });
           setState("DISCONNECTED");
           setError(snapshot.errorMessage);
         }
@@ -196,7 +218,10 @@ export function RealRideScreen() {
     }, dependencies);
     attemptRef.current = attempt;
     if (videoRef.current) {
-      playback = new RideMediaPlayback(videoRef.current, setAudio, (message) => attempt.fail(message));
+      playback = new RideMediaPlayback(
+        videoRef.current, setAudio, (message) => attempt.fail(message),
+        audioPreferencesRef.current?.value ?? PENDING_AUDIO_PREFERENCES,
+      );
       playbackRef.current = playback;
     }
     const resumeSound = () => { void playback?.resumeFromGesture(); };
@@ -357,14 +382,16 @@ export function RealRideScreen() {
       <div className="ride-brand"><span className="brand"><span className="brand-lockup"><strong>RC</strong> MANIA</span></span><b>REAL CAR · LIVE</b></div>
       <RideAudioControls
         state={audio}
+        saveStatus={audioSaveStatus}
         onToggle={() => {
           const enable = audio.blocked || audio.muted || audio.volume === 0;
-          if (enable && audio.volume === 0) playbackRef.current?.setVolume(1);
-          void playbackRef.current?.setMuted(!enable);
+          audioPreferencesRef.current?.update({
+            volume: enable && audio.volume === 0 ? 1 : audio.volume,
+            muted: !enable,
+          });
         }}
         onVolume={(volume) => {
-          playbackRef.current?.setVolume(volume);
-          if (volume > 0) void playbackRef.current?.setMuted(false);
+          audioPreferencesRef.current?.update({ volume, muted: volume > 0 ? false : audio.muted });
         }}
       />
       <RideSessionClock remainingSeconds={remainingSeconds} />

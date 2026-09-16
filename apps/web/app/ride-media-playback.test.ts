@@ -12,6 +12,18 @@ function harness(audio = true) {
 }
 
 describe("ride media playback", () => {
+  it("applies account preferences before the first playback attempt", async () => {
+    const video = { srcObject: null, muted: false, volume: 1, play: vi.fn(async () => {}), pause: vi.fn() };
+    const playback = new RideMediaPlayback(video as unknown as HTMLVideoElement, () => {}, () => {}, { volume: 0, muted: true });
+    const stream = { getAudioTracks: () => [{ kind: "audio" }] } as unknown as MediaStream;
+    await playback.attach(stream);
+    expect(video.muted).toBe(true);
+    expect(video.volume).toBe(0);
+    await playback.setPreferences({ volume: 0.18, muted: false });
+    expect(video.muted).toBe(false);
+    expect(video.volume).toBe(0.18);
+  });
+
   it("starts the onboard stream with sound by default", async () => {
     const { playback, video, stream, onState } = harness();
     await playback.attach(stream);

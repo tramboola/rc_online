@@ -1198,6 +1198,7 @@ p { color: #a9afb3; }
 .ride-audio-controls input { width: 95px; margin: 0; accent-color: var(--cyan); cursor: pointer; }
 .ride-audio-controls :disabled { opacity: .5; cursor: default; }
 .ride-audio-controls :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+.ride-audio-save-status { position: absolute; left: 0; top: calc(100% + 5px); color: #ffb67a; font: 700 10px var(--font-body); text-shadow: 0 1px 4px #000; }
 .real-ride-status p { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 9px; margin: 10px 0; color: var(--muted); font-weight: 700; text-shadow: 0 2px 8px #000, 0 0 3px #000; }
 .real-ride-status svg { filter: drop-shadow(0 2px 4px #000); }
 .real-ride-status strong { color: var(--text); font-family: var(--font-display); }

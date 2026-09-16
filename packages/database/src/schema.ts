@@ -31,9 +31,14 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("user"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  onboardVolumePercent: integer("onboard_volume_percent").notNull().default(100),
+  onboardMuted: boolean("onboard_muted").notNull().default(false),
+  onboardAudioRevision: integer("onboard_audio_revision").notNull().default(0),
   ...auditColumns,
 }, (table) => [
   uniqueIndex("users_email_lower_uidx").on(sql`lower(${table.email})`),
+  check("users_onboard_volume_range", sql`${table.onboardVolumePercent} between 0 and 100`),
+  check("users_onboard_audio_revision_nonnegative", sql`${table.onboardAudioRevision} >= 0`),
 ]);
 
 export const oauthIdentities = pgTable("oauth_identities", {

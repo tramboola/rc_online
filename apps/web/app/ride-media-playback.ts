@@ -1,3 +1,5 @@
+import type { PlaybackPreferences } from "./ride-audio-preferences";
+
 export type RideAudioState = {
   hasAudio: boolean;
   muted: boolean;
@@ -25,10 +27,23 @@ export class RideMediaPlayback {
     video: HTMLVideoElement,
     onState: (state: RideAudioState) => void,
     onError: (message: string) => void,
+    preferences: PlaybackPreferences = INITIAL_RIDE_AUDIO,
   ) {
     this.#video = video;
     this.#onState = onState;
     this.#onError = onError;
+    this.#state = { ...INITIAL_RIDE_AUDIO, ...preferences };
+    this.#video.muted = preferences.muted;
+    this.#video.volume = preferences.volume;
+  }
+
+  async setPreferences(preferences: PlaybackPreferences): Promise<void> {
+    if (this.#closed || !Number.isFinite(preferences.volume)) return;
+    this.#state.volume = Math.max(0, Math.min(1, preferences.volume));
+    this.#state.muted = preferences.muted;
+    this.#state.blocked = false;
+    this.#publish();
+    await this.#play();
   }
 
   async attach(stream: MediaStream): Promise<void> {
