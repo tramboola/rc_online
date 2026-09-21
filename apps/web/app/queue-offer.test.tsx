@@ -16,7 +16,7 @@ vi.mock("next-auth/react", () => ({
 const ready: LiveQueueSnapshot = {
   entryId: "offer-1", position: 1, count: 2, availableCarCount: 1, status: "ready",
   serverNow: "2030-01-01T12:00:00.000Z", offerExpiresAt: "2030-01-01T12:00:15.000Z",
-  cars: [{ id: "car-1", slug: "rc-mania-one", name: "RC Mania One", batteryPercent: 47, availability: "available" }],
+  cars: [{ id: "car-1", slug: "rc-mania-one", name: "RC 01", batteryPercent: 47, availability: "available" }],
 };
 let response: LiveQueueSnapshot;
 let fetchMock: ReturnType<typeof vi.fn>;

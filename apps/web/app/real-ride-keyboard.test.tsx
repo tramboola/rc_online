@@ -51,8 +51,8 @@ afterEach(() => {
 function setup(version: 3 | 4 | 5 = 5, durationMs = 300_000) {
   const rendered = render(<RealRideScreen />);
   const frames: Array<{ steering: number; throttle: number; nitro: boolean; armed: boolean; v: number }> = [];
-  const fast = { readyState: "open", send: (data: string) => frames.push(JSON.parse(data)), addEventListener() {} } as unknown as RTCDataChannel;
-  const reliable = { readyState: "open", send() {}, addEventListener() {} } as unknown as RTCDataChannel;
+  const fast = { readyState: "open", bufferedAmount: 0, send: (data: string) => frames.push(JSON.parse(data)), addEventListener() {}, removeEventListener() {} } as unknown as RTCDataChannel;
+  const reliable = { readyState: "open", bufferedAmount: 0, send() {}, addEventListener() {}, removeEventListener() {} } as unknown as RTCDataChannel;
   let loop!: BrowserControlLoop;
   act(() => {
     fixture.callbacks!.onSession({
@@ -68,13 +68,32 @@ function setup(version: 3 | 4 | 5 = 5, durationMs = 300_000) {
     fixture.callbacks!.onReady(loop, "DIRECT");
     fixture.callbacks!.onSnapshot({ activeStep: 8, entries: [], errorMessage: "", status: "connected" });
   });
-  return { ...rendered, loop, latest: () => frames.at(-1)!, frames };
+  return { ...rendered, loop, fast, latest: () => frames.at(-1)!, frames };
 }
 function tick(ms: number) { act(() => vi.advanceTimersByTime(ms)); }
 function down(code: string, repeat = false) { fireEvent.keyDown(window, { code, repeat }); }
 function up(code: string) { fireEvent.keyUp(window, { code }); }
 
 describe("keyboard commands from the real ride screen", () => {
+  it("offers explicit neutral resume after congestion, including phone input", () => {
+    const ride = setup();
+    act(() => fixture.mobileInput!({ steering: 0.5, throttle: 1, nitro: true }));
+    tick(20);
+    expect(ride.latest()).toMatchObject({ throttle: 1000, armed: true });
+    Object.defineProperty(ride.fast, "bufferedAmount", { value: 500, configurable: true });
+    tick(240);
+    const resume = ride.getByRole("button", { name: "RESUME CONTROLS" });
+    Object.defineProperty(ride.fast, "bufferedAmount", { value: 0, configurable: true });
+    // A previously held input cannot be restored by the resume action.
+    fireEvent.click(resume);
+    tick(20);
+    expect(ride.latest()).toMatchObject({ steering: 0, throttle: 0, nitro: false, armed: true });
+    expect(ride.queryByRole("button", { name: "RESUME CONTROLS" })).toBeNull();
+    act(() => fixture.mobileInput!({ steering: 0.5, throttle: 0.5, nitro: false }));
+    tick(20);
+    expect(ride.latest()).toMatchObject({ steering: 500, throttle: 500 });
+  });
+
   it("sends a reverse boost then 40% without relying on repeated key events", () => {
     const ride = setup();
     down("KeyS");

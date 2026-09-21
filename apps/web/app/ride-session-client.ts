@@ -53,6 +53,7 @@ export class RideSessionClient {
   #reliable: RTCDataChannel | null = null;
   #closed = false;
   #connectedReported = false;
+  #controlFailed = false;
   #videoQuality: RTCDataChannel | null = null;
   #videoPolicy: AdaptiveVideoPolicy | null = null;
   #supportedProfiles: readonly VideoProfile[] = [];
@@ -98,6 +99,17 @@ export class RideSessionClient {
     peer.addTransceiver("audio", { direction: "recvonly" });
     this.#fast = peer.createDataChannel("control-fast", { ordered: false, maxRetransmits: 0 });
     this.#reliable = peer.createDataChannel("control-reliable", { ordered: true });
+    const controlFailed = () => {
+      if (this.#closed || this.#controlFailed) return;
+      this.#controlFailed = true;
+      this.#stopVideoStats();
+      this.onError("Car control connection lost. Please reconnect.");
+      this.onState("DISCONNECTED");
+    };
+    for (const channel of [this.#fast, this.#reliable]) {
+      channel.onclose = controlFailed;
+      channel.onerror = controlFailed;
+    }
     // Only upgraded agents create this channel. Older agents keep their existing
     // control protocol and can still provide receive-side video measurements.
     peer.ondatachannel = (event) => this.#bindVideoQuality(event.channel);
@@ -128,7 +140,7 @@ export class RideSessionClient {
       });
     };
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === "connected") {
+      if (!this.#closed && !this.#controlFailed && peer.connectionState === "connected") {
         if (!this.#connectedReported) {
           this.#connectedReported = true;
           this.#send({ v: 1, type: "session.connected", sessionId: this.#session.sessionId });
@@ -155,7 +167,7 @@ export class RideSessionClient {
 
   async #reportConnectedRoute(peer: RTCPeerConnection): Promise<void> {
     const route = await detectConnectionRoute(peer);
-    if (this.#closed || peer.connectionState !== "connected") return;
+    if (this.#closed || this.#controlFailed || peer.connectionState !== "connected") return;
     this.onProgress(route === "DIRECT"
       ? "webrtc.direct"
       : route === "TURN"
@@ -219,10 +231,10 @@ export class RideSessionClient {
   }
 
   #startVideoStats(peer: RTCPeerConnection): void {
-    if (this.#closed || this.#statsRunning) return;
+    if (this.#closed || this.#controlFailed || this.#statsRunning) return;
     this.#statsRunning = true;
     const generation = ++this.#statsGeneration;
-    const current = () => !this.#closed && generation === this.#statsGeneration && peer.connectionState === "connected";
+    const current = () => !this.#closed && !this.#controlFailed && generation === this.#statsGeneration && peer.connectionState === "connected";
     const sample = async () => {
       try {
         const report = await peer.getStats();

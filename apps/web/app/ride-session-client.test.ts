@@ -40,8 +40,8 @@ function harness(candidateType: "host" | "relay" | null = "host") {
     onclose: null as null | (() => void),
     onerror: null as null | (() => void)
   };
-  const fast = { readyState: "open", send: vi.fn(), close: vi.fn() };
-  const reliable = { readyState: "open", send: vi.fn(), close: vi.fn() };
+  const fast = { readyState: "open", send: vi.fn(), close: vi.fn(), onclose: null as null | (() => void), onerror: null as null | (() => void) };
+  const reliable = { readyState: "open", send: vi.fn(), close: vi.fn(), onclose: null as null | (() => void), onerror: null as null | (() => void) };
   const peer = {
     localDescription: { type: "offer", sdp: "v=0 offer" },
     connectionState: "new",
@@ -75,6 +75,36 @@ function harness(candidateType: "host" | "relay" | null = "host") {
 }
 
 describe("RideSessionClient", () => {
+  it.each(["fast", "reliable"] as const)("reports loss of %s control even while video peer is connected", async (name) => {
+    const { client, peer, fast, reliable } = harness();
+    const state = vi.fn();
+    const error = vi.fn();
+    client.onState = state;
+    client.onError = error;
+    client.connect();
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.(); // getStats route lookup is still in flight.
+    (name === "fast" ? fast : reliable).onclose?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(state).toHaveBeenLastCalledWith("DISCONNECTED");
+    expect(error).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledWith("Car control connection lost. Please reconnect.");
+    (name === "fast" ? fast : reliable).onerror?.();
+    expect(error).toHaveBeenCalledOnce();
+  });
+
+  it("does not report intentional control-channel teardown as a failure", () => {
+    const { client, fast, reliable } = harness();
+    const error = vi.fn();
+    client.onError = error;
+    client.connect();
+    client.close();
+    fast.onclose?.();
+    reliable.onerror?.();
+    expect(error).not.toHaveBeenCalled();
+  });
+
   afterEach(() => {
     clients.splice(0).forEach((client) => client.close());
     vi.useRealTimers();

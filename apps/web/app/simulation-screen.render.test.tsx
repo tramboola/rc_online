@@ -35,13 +35,13 @@ describe("driving setup screens", () => {
           cars: [{
             id: "second-car",
             slug: "rcmania-zero2w-02",
-            name: "RCmania Two",
+            name: "RC 02",
             batteryPercent: null,
             availability: "in_use",
           }, ...(availableCarCount ? [{
             id: "first-car",
             slug: "rc-mania-one",
-            name: "RC Mania One",
+            name: "RC 01",
             batteryPercent: 73,
             availability: "available" as const,
           }] : [])],
@@ -58,7 +58,7 @@ describe("driving setup screens", () => {
     expect(markup).not.toContain("YOU ARE #0");
     expect(markup).not.toContain("-1 AHEAD OF YOU");
     expect(markup).toContain(`<b>${availableCarCount}</b><em>CARS</em><small>AVAILABLE</small>`);
-    expect(markup).toContain('alt="RCMANIA TWO RC car"');
+    expect(markup).toContain('alt="RC 02 RC car"');
     const carButtons = [...markup.matchAll(/<button\b[^>]*class="car-choice[^>]*>/g)];
     expect(carButtons).toHaveLength(availableCarCount + 1);
     for (const [button] of carButtons) expect(button).toContain('disabled=""');
@@ -150,7 +150,7 @@ describe("driving setup screens", () => {
           offerExpiresAt: "2030-01-01T12:00:15.000Z",
           cars: [{
             id: "40000000-0000-4000-8000-000000000001",
-            name: "RC Mania One",
+            name: "RC 01",
             slug: "rc-mania-one",
             batteryPercent: 0,
             availability: "available",
@@ -179,7 +179,7 @@ describe("driving setup screens", () => {
           state: "ready",
           cars: [{
             id: "40000000-0000-4000-8000-000000000001",
-            name: "RC Mania One",
+            name: "RC 01",
             slug: "rc-mania-one",
             batteryPercent: 0,
           }, {
@@ -209,7 +209,7 @@ describe("driving setup screens", () => {
     expect(markup).toContain("19%");
     expect(markup).toContain("20%");
     expect(markup).toContain('src="/assets/car-rc-mania-one.webp"');
-    expect(markup).toContain('alt="RC MANIA ONE RC car"');
+    expect(markup).toContain('alt="RC 01 RC car"');
     expect(markup).toContain("—");
     expect(markup.match(/battery-status battery-warning/g)).toHaveLength(2);
     expect(markup.match(/battery-status battery-ok/g)).toHaveLength(1);
@@ -262,7 +262,7 @@ describe("driving setup screens", () => {
           status: "waiting",
           cars: [{
             id: "40000000-0000-4000-8000-000000000001",
-            name: "RC Mania One",
+            name: "RC 01",
             slug: "rc-mania-one",
             batteryPercent: 73,
             availability: "available",
@@ -282,7 +282,7 @@ describe("driving setup screens", () => {
   it("renders an occupied car as a disabled yellow choice", () => {
     const occupiedCar = {
       id: "40000000-0000-4000-8000-000000000001",
-      name: "RC Mania One",
+      name: "RC 01",
       slug: "rc-mania-one",
       batteryPercent: 73,
       availability: "in_use" as const,

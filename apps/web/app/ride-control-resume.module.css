@@ -1,0 +1,29 @@
+.panel {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 8px;
+  width: min(280px, calc(100% - 40px));
+  padding: 16px;
+  border: 1px solid #2dd4ee;
+  background: #061116eb;
+  text-align: center;
+  color: #f0f5f6;
+  font-family: var(--font-ui), sans-serif;
+}
+
+.panel span { color: #2dd4ee; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; }
+.panel small { font-size: 12px; line-height: 1.3; }
+.panel button {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid #c4ee00;
+  background: #c4ee00;
+  color: #061116;
+  font: 700 16px/1.2 var(--font-display), sans-serif;
+  cursor: pointer;
+}
+.panel button:focus-visible { outline: 2px solid white; outline-offset: 3px; }

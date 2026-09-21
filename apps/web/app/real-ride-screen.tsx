@@ -25,6 +25,7 @@ import { normalizeSteeringTrim, saveSteeringTrim } from "./steering-trim";
 import { MobileDriveControls } from "./mobile-drive-controls";
 import { MobileLandscapeNotice } from "./mobile-landscape-notice";
 import { RideFullscreenToggle } from "./ride-fullscreen-toggle";
+import { RideControlResume } from "./ride-control-resume";
 import { formatVideoStreamStats } from "./adaptive-video";
 import { RideAudioControls } from "./ride-audio-controls";
 import { INITIAL_RIDE_AUDIO, RideMediaPlayback } from "./ride-media-playback";
@@ -371,7 +372,7 @@ export function RealRideScreen() {
     <div className="ride-page real-ride-page" ref={rideSurfaceRef}>
       <MobileLandscapeNotice detail="Hold it horizontally to use tilt steering and touch controls." />
       <video
-        aria-label="Live onboard camera from RC Mania One"
+        aria-label="Live onboard camera"
         autoPlay
         className="drive-poster"
         onLoadedData={() => videoAttemptRef.current?.markVideoLoadedData()}
@@ -397,6 +398,12 @@ export function RealRideScreen() {
       <RideSessionClock remainingSeconds={remainingSeconds} />
       <button className="mobile-end-session" onClick={() => setEndConfirmationOpen(true)} type="button"><Flag size={16} /> END SESSION</button>
       <RideFullscreenToggle target={rideSurfaceRef} />
+      {connection.status === "connected" && !armed && !endConfirmationOpen ? (
+        <RideControlResume onResume={() => {
+          loopRef.current?.setInput({ steering: 0, throttle: 0, nitro: false });
+          loopRef.current?.arm();
+        }} />
+      ) : null}
       {endConfirmationOpen ? (
         <div className="mobile-end-confirm" role="dialog" aria-modal="true" aria-labelledby="mobile-end-confirm-title">
           <section>

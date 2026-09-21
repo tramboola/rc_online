@@ -8,9 +8,13 @@ function channel() {
   const listeners = new Map<string, Array<() => void>>();
   return {
     readyState: "open",
+    bufferedAmount: 0,
     send: vi.fn(),
     addEventListener: vi.fn((event: string, listener: () => void) => {
       listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+    }),
+    removeEventListener: vi.fn((event: string, listener: () => void) => {
+      listeners.set(event, (listeners.get(event) ?? []).filter((item) => item !== listener));
     }),
     emit(event: string) {
       for (const listener of listeners.get(event) ?? []) listener();
@@ -19,6 +23,80 @@ function channel() {
 }
 
 describe("BrowserControlLoop", () => {
+  it.each(["close", "error"])("disarms on fast-channel %s and forgets held controls", (event) => {
+    vi.useFakeTimers();
+    const fast = channel();
+    const reliable = channel();
+    const armed = vi.fn();
+    const loop = new BrowserControlLoop("session-1", armed, 5);
+    loop.bindChannels(fast, reliable);
+    loop.arm();
+    loop.setInputProvider(() => ({ steering: 1, throttle: 1, nitro: true }));
+    loop.start();
+    vi.advanceTimersByTime(20);
+    fast.emit(event);
+    expect(armed).toHaveBeenLastCalledWith(false);
+    loop.arm(); // Explicit new action; the previous hold must not be reused.
+    vi.advanceTimersByTime(20);
+    expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).toMatchObject({ steering: 0, throttle: 0, nitro: false });
+    loop.stop();
+  });
+
+  it("waits for both channels before arming", () => {
+    const fast = channel();
+    const reliable = channel();
+    Object.defineProperty(fast, "readyState", { value: "connecting", configurable: true });
+    const armed = vi.fn();
+    const loop = new BrowserControlLoop("session-1", armed);
+    loop.bindChannels(fast, reliable);
+    loop.arm();
+    expect(reliable.send).not.toHaveBeenCalled();
+    expect(armed).not.toHaveBeenCalled();
+    Object.defineProperty(fast, "readyState", { value: "open", configurable: true });
+    fast.emit("open");
+    expect(armed).toHaveBeenLastCalledWith(true);
+    loop.stop();
+  });
+
+  it.each(["fast", "reliable"])("contains a %s send exception and disarms", (which) => {
+    vi.useFakeTimers();
+    const fast = channel();
+    const reliable = channel();
+    const armed = vi.fn();
+    const loop = new BrowserControlLoop("session-1", armed);
+    loop.bindChannels(fast, reliable);
+    loop.arm();
+    loop.setInput({ throttle: 1 });
+    vi.mocked(which === "fast" ? fast.send : reliable.send).mockImplementation(() => { throw new Error("SCTP failed"); });
+    loop.start();
+    expect(() => which === "fast" ? vi.advanceTimersByTime(20) : loop.neutral("blur")).not.toThrow();
+    expect(armed).toHaveBeenLastCalledWith(false);
+    loop.stop();
+  });
+
+  it("does not queue motion during congestion and requires a fresh action after 200 ms", () => {
+    vi.useFakeTimers();
+    const fast = channel();
+    const reliable = channel();
+    const armed = vi.fn();
+    const loop = new BrowserControlLoop("session-1", armed);
+    loop.bindChannels(fast, reliable);
+    loop.arm();
+    loop.setInput({ throttle: 1 });
+    loop.start();
+    Object.defineProperty(fast, "bufferedAmount", { value: 500, configurable: true });
+    vi.advanceTimersByTime(240);
+    expect(fast.send).not.toHaveBeenCalled();
+    expect(armed).toHaveBeenLastCalledWith(false);
+    Object.defineProperty(fast, "bufferedAmount", { value: 0, configurable: true });
+    vi.advanceTimersByTime(20);
+    expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).toMatchObject({ armed: false, throttle: 0 });
+    loop.arm();
+    vi.advanceTimersByTime(20);
+    expect(JSON.parse(String(vi.mocked(fast.send).mock.calls.at(-1)?.[0]))).toMatchObject({ armed: true, throttle: 0 });
+    loop.stop();
+  });
+
   it("does not transmit armed motion before the reliable channel opens", () => {
     vi.useFakeTimers();
     const fast = channel();

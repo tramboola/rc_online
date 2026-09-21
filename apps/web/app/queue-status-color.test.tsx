@@ -37,7 +37,7 @@ it("uses the available status color for the queue car connection icon", () => {
         status: "ready",
         cars: [{
           id: "40000000-0000-4000-8000-000000000001",
-          name: "RC Mania One",
+          name: "RC 01",
           slug: "rc-mania-one",
           batteryPercent: 53,
           availability: "available",

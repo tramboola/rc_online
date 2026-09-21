@@ -27,3 +27,9 @@ it("updates the visible received resolution and measured FPS, then clears stale 
   act(() => callbacks.onVideoStats?.(null));
   expect(screen.getByLabelText("Received video format").textContent).toBe("VIDEO · —");
 });
+
+it("labels the onboard camera without naming a different car", () => {
+  render(<RealRideScreen />);
+
+  expect(screen.getByLabelText("Live onboard camera")).toBeTruthy();
+});

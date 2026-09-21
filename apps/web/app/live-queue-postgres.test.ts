@@ -40,7 +40,7 @@ describe.skipIf(!databaseUrl)('live queue on PostgreSQL', () => {
     await sql!`truncate drive_sessions, queue_entries, devices, cars, sites, users cascade`;
     await sql!`insert into users(id,email,display_name) values (${first},'first@example.test','First'),(${second},'second@example.test','Second')`;
     await sql!`insert into sites(id,slug,name,timezone,status) values (${site},'queue-test','Queue Test','UTC','online')`;
-    await sql!`insert into cars(id,site_id,slug,name,state,battery_percent) values (${car},${site},'rc-mania-one','RC Mania One','AVAILABLE',47)`;
+    await sql!`insert into cars(id,site_id,slug,name,state,battery_percent) values (${car},${site},'rc-mania-one','RC 01','AVAILABLE',47)`;
     await sql!`insert into devices(car_id,site_id,kind,serial_number,state,last_seen_at) values (${car},${site},'pi','queue-test-pi','AVAILABLE',${at(0).toISOString()})`;
   });
   afterAll(async () => { await sql?.end(); });

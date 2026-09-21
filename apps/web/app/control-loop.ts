@@ -34,6 +34,7 @@ export class BrowserControlLoop {
   #steeringTrimPercent = 0;
   #armRequested = false;
   #armed = false;
+  #congestedAt: number | null = null;
   #inputProvider: (() => ControlInput) | null = null;
 
   public constructor(
@@ -50,10 +51,14 @@ export class BrowserControlLoop {
     fastChannel: RTCDataChannel,
     reliableChannel: RTCDataChannel,
   ): void {
+    this.#unbindChannels();
     this.#fastChannel = fastChannel;
     this.#reliableChannel = reliableChannel;
-    reliableChannel.addEventListener("open", this.#tryArm);
-    reliableChannel.addEventListener("close", this.#handleChannelClose);
+    for (const channel of [fastChannel, reliableChannel]) {
+      channel.addEventListener("open", this.#tryArm);
+      channel.addEventListener("close", this.#handleChannelClose);
+      channel.addEventListener("error", this.#handleChannelClose);
+    }
     this.#tryArm();
   }
 
@@ -110,17 +115,42 @@ export class BrowserControlLoop {
     this.#armRequested = false;
     this.#setArmed(false);
     this.neutral("control_loop_stopped");
+    this.#unbindChannels();
   }
 
   readonly #tryArm = (): void => {
-    if (!this.#armRequested || this.#reliableChannel?.readyState !== "open") return;
-    this.sendReliable({ v: 3, type: "arm", sessionId: this.#sessionId });
-    this.#setArmed(true);
+    if (!this.#armRequested || this.#armed || this.#fastChannel?.readyState !== "open"
+      || this.#reliableChannel?.readyState !== "open"
+      || this.#fastChannel.bufferedAmount > 0 || this.#reliableChannel.bufferedAmount > 0) return;
+    if (this.sendReliable({ v: 3, type: "arm", sessionId: this.#sessionId })) this.#setArmed(true);
   };
 
   readonly #handleChannelClose = (): void => {
-    this.#setArmed(false);
+    this.#transportFailed("control_channel_closed");
   };
+
+  #transportFailed(reason: string): void {
+    this.#armRequested = false;
+    this.#inputProvider = null;
+    this.#steering = 0;
+    this.#throttle = 0;
+    this.#nitro = false;
+    this.#setArmed(false);
+    // Best effort only: never recurse through sendReliable on a broken channel.
+    if (this.#reliableChannel?.readyState === "open" && this.#reliableChannel.bufferedAmount === 0) {
+      try {
+        this.#reliableChannel.send(JSON.stringify({ v: 3, type: "neutral", reason, sessionId: this.#sessionId }));
+      } catch { /* The independent Pi command watchdog still stops the car. */ }
+    }
+  }
+
+  #unbindChannels(): void {
+    for (const channel of [this.#fastChannel, this.#reliableChannel]) {
+      channel?.removeEventListener("open", this.#tryArm);
+      channel?.removeEventListener("close", this.#handleChannelClose);
+      channel?.removeEventListener("error", this.#handleChannelClose);
+    }
+  }
 
   #setArmed(armed: boolean): void {
     if (this.#armed === armed) return;
@@ -129,6 +159,15 @@ export class BrowserControlLoop {
   }
 
   private sendLatest(): void {
+    if (this.#fastChannel?.readyState === "open" && this.#fastChannel.bufferedAmount > 0) {
+      this.#congestedAt ??= performance.now();
+      if (this.#armed && performance.now() - this.#congestedAt >= 200) {
+        this.#transportFailed("control_channel_congested");
+      }
+      // Keep at most the packet already handed to SCTP, not a backlog of intent.
+      return;
+    }
+    this.#congestedAt = null;
     // Sample immediately before encoding, using the existing 50 Hz send clock.
     if (this.#armed && this.#inputProvider) this.applyInput(this.#inputProvider());
     const proportional = this.#protocolVersion === 5;
@@ -145,9 +184,15 @@ export class BrowserControlLoop {
       ? { v: this.#protocolVersion, ...base, steeringTrimPercent: this.#steeringTrimPercent }
       : { v: 3, ...base };
     if (this.#fastChannel?.readyState === "open") {
-      this.#fastChannel.send(JSON.stringify(command));
+      try {
+        this.#fastChannel.send(JSON.stringify(command));
+      } catch {
+        this.#transportFailed("control_send_failed");
+      }
       return;
     }
+    // A broken WebRTC channel must never reroute held input through HTTP.
+    if (this.#fastChannel) return;
     const edgeOrigin =
       process.env.NEXT_PUBLIC_EDGE_ORIGIN ??
       (process.env.NODE_ENV === "development" ? "http://localhost:3002" : null);
@@ -160,10 +205,16 @@ export class BrowserControlLoop {
     }).catch(() => undefined);
   }
 
-  private sendReliable(message: object): void {
-    if (this.#reliableChannel?.readyState === "open") {
-      this.#reliableChannel.send(JSON.stringify(message));
+  private sendReliable(message: object): boolean {
+    if (this.#reliableChannel?.readyState === "open" && !(this.#reliableChannel.bufferedAmount > 0)) {
+      try {
+        this.#reliableChannel.send(JSON.stringify(message));
+        return true;
+      } catch {
+        this.#transportFailed("control_send_failed");
+      }
     }
+    return false;
   }
 }
 

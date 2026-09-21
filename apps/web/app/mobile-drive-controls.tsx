@@ -23,11 +23,30 @@ export function MobileDriveControls({
   const steeringRef = useRef(0);
   const throttleRef = useRef(0);
   const nitroRef = useRef(false);
+  const throttlePointerRef = useRef<{ element: HTMLDivElement; id: number } | null>(null);
+  const onInputRef = useRef(onInput);
+  onInputRef.current = onInput;
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState("");
   const [steering, setSteering] = useState(0);
   const [throttle, setThrottle] = useState(0);
   const [nitro, setNitro] = useState(false);
+
+  useEffect(() => {
+    if (!disabled) return;
+    const pointer = throttlePointerRef.current;
+    throttlePointerRef.current = null;
+    if (pointer?.element.hasPointerCapture(pointer.id)) {
+      pointer.element.releasePointerCapture(pointer.id);
+    }
+    steeringRef.current = 0;
+    throttleRef.current = 0;
+    nitroRef.current = false;
+    setSteering(0);
+    setThrottle(0);
+    setNitro(false);
+    onInputRef.current({ steering: 0, throttle: 0, nitro: false });
+  }, [disabled]);
 
   const publish = (nextSteering: number, nextThrottle: number, nextNitro = nitroRef.current) => {
     steeringRef.current = nextSteering;
@@ -87,6 +106,7 @@ export function MobileDriveControls({
   function updateThrottle(event: React.PointerEvent<HTMLDivElement>): void {
     if (disabled) return;
     onTouchActivity?.();
+    throttlePointerRef.current = { element: event.currentTarget, id: event.pointerId };
     event.currentTarget.setPointerCapture(event.pointerId);
     const bounds = event.currentTarget.getBoundingClientRect();
     const axis = mapThrottlePosition(event.clientY - bounds.top, bounds.height);
@@ -94,6 +114,8 @@ export function MobileDriveControls({
   }
 
   function releaseThrottle(event: React.PointerEvent<HTMLDivElement>): void {
+    if (throttlePointerRef.current?.id !== event.pointerId) return;
+    throttlePointerRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -126,7 +148,9 @@ export function MobileDriveControls({
           className="mobile-throttle-track"
           onPointerCancel={releaseThrottle}
           onPointerDown={updateThrottle}
-          onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) updateThrottle(event); }}
+          onPointerMove={(event) => {
+            if (throttlePointerRef.current?.id === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) updateThrottle(event);
+          }}
           onPointerUp={releaseThrottle}
         ><i style={{ top: `${throttleAxisToTrackPercent(throttle)}%` }} /></div>
         <span>REVERSE</span>

@@ -5,7 +5,7 @@ import { queueSnapshotFromState } from "./live-queue-store";
 const car = {
   id: "d17e00d9-436f-4387-b8b4-27f941bab3cc",
   slug: "rc-mania-one",
-  name: "RC Mania One",
+  name: "RC 01",
   batteryPercent: 74,
   availability: "available" as const,
 };
