@@ -31,6 +31,7 @@ export type RideConnectionSnapshot = {
 };
 
 export type RideConnectionAttemptCallbacks = {
+  canArmControls?: () => boolean;
   onSnapshot: (snapshot: RideConnectionSnapshot) => void;
   onSession: (session: StoredDriveSession) => void;
   onStream: (stream: MediaStream) => void;
@@ -191,7 +192,7 @@ export class RideConnectionAttempt {
     this.#activeStep = 7;
     this.#append("READY", "Camera ready", "success", "connected");
     this.#loop.start();
-    this.#loop.arm();
+    if (this.#callbacks.canArmControls?.() ?? true) this.#loop.arm();
     this.#callbacks.onReady(this.#loop, this.#connectedRoute);
   }
 

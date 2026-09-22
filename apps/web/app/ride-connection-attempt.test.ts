@@ -21,7 +21,7 @@ const session: StoredDriveSession = {
   iceTransportPolicy: "all",
 };
 
-function harness() {
+function harness(canArmControls?: () => boolean) {
   const client = {
     channels: {
       fast: {} as RTCDataChannel,
@@ -51,6 +51,7 @@ function harness() {
   };
   const snapshots: Array<{ status: string; errorMessage: string }> = [];
   const callbacks = {
+    ...(canArmControls ? { canArmControls } : {}),
     onReady: vi.fn(),
     onSession: vi.fn(),
     onSnapshot: vi.fn((snapshot: { status: string; errorMessage: string }) => snapshots.push(snapshot)),
@@ -120,6 +121,23 @@ describe("RideConnectionAttempt", () => {
     client.onState("DIRECT");
 
     expect(callbacks.onReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("rechecks video safety before initial arm when route readiness arrives later", async () => {
+    const canArmControls = vi.fn(() => false);
+    const { attempt, client, callbacks, loop } = harness(canArmControls);
+    await attempt.start();
+    attempt.markVideoLoadedData();
+    client.onState("DIRECT");
+    expect(canArmControls).toHaveBeenCalledTimes(1);
+    expect(loop.start).toHaveBeenCalledTimes(1);
+    expect(loop.arm).not.toHaveBeenCalled();
+    expect(callbacks.onReady).toHaveBeenCalledTimes(1);
+    // Recovery does not silently undo the safety pause.
+    canArmControls.mockReturnValue(true);
+    attempt.markVideoLoadedData();
+    client.onState("DIRECT");
+    expect(loop.arm).not.toHaveBeenCalled();
   });
 
   it("accepts TURN as a connected transport after a real frame is decoded", async () => {

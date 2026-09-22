@@ -1,5 +1,11 @@
 # Adaptive onboard video
 
+> Historical software-encoding implementation. For the current shared hardware
+> agent and the locally prepared 240p/bandwidth policy, use
+> [Low-bandwidth onboard video](adaptive-low-bandwidth.md). In particular, the
+> camera-scaling, minimum resolution, cooldown and rollout statements below do
+> not describe the new hardware path.
+
 The browser and `../tether-rally-mjx/pi-agent` must both include the adaptive-video
 change to enable automatic profile selection. No database migration or gateway
 contract change is required. The optional `video-quality` WebRTC data channel is

@@ -1,4 +1,4 @@
-export type VideoProfile = "720p60" | "720p30" | "540p30" | "360p30";
+export type VideoProfile = "720p60" | "720p30" | "540p30" | "360p30" | "240p30";
 
 export type VideoStreamStats = {
   width: number | null;
@@ -23,10 +23,15 @@ type VideoSample = {
   bufferEmitted: number | null;
 };
 
-const PROFILE_ORDER: readonly VideoProfile[] = ["720p60", "720p30", "540p30", "360p30"];
+const PROFILE_ORDER: readonly VideoProfile[] = ["720p60", "720p30", "540p30", "360p30", "240p30"];
 const PROFILE_HEIGHT: Record<VideoProfile, number> = {
-  "720p60": 720, "720p30": 720, "540p30": 540, "360p30": 360,
+  "720p60": 720, "720p30": 720, "540p30": 540, "360p30": 360, "240p30": 240,
 };
+const MIN_PROFILE_BPS: Record<VideoProfile, number> = {
+  "720p60": 2_800_000, "720p30": 1_400_000, "540p30": 800_000,
+  "360p30": 500_000, "240p30": 250_000,
+};
+const BANDWIDTH_MAX_AGE_MS = 1_500;
 const MIN_HEALTHY_FPS = 21;
 const MAX_SAMPLE_GAP_MS = 3_000;
 
@@ -191,7 +196,12 @@ export class AdaptiveVideoPolicy {
   private lowFpsSamples = 0;
   private goodSince: number | null = null;
   private pending: { profile: VideoProfile; requestedAt: number } | null = null;
+  private lastRequestedProfile: VideoProfile | null = null;
   private unacknowledgedRequests = 0;
+  private bandwidthFeedback = false;
+  private bandwidth: { bps: number; sampledAt: number } | null = null;
+  private lastBandwidthAt: number | null = null;
+  private lowBandwidth: { since: number; severeSince: number | null } | null = null;
 
   constructor(profiles: readonly VideoProfile[], current: VideoProfile) {
     this.profiles = PROFILE_ORDER.filter((profile) => profiles.includes(profile));
@@ -203,6 +213,74 @@ export class AdaptiveVideoPolicy {
     this.badSamples = 0;
     this.lowFpsSamples = 0;
     this.goodSince = null;
+    this.lowBandwidth = null;
+  }
+
+  /** Raw receiver REMB, never received bytes/sec or the capped encoder target. */
+  observeBandwidth(bps: number | null, ageMs: number | null, nowMs: number): VideoProfile | null {
+    if (!Number.isFinite(nowMs) || nowMs < 0) return null;
+    if (!this.bandwidthFeedback) {
+      this.bandwidthFeedback = true;
+      this.clearEvidence();
+    }
+    const gap = this.lastBandwidthAt === null ? null : nowMs - this.lastBandwidthAt;
+    if (gap === null || gap <= 0 || gap > BANDWIDTH_MAX_AGE_MS) {
+      this.lowBandwidth = null;
+      this.goodSince = null;
+    }
+    this.lastBandwidthAt = nowMs;
+    if (bps === null || !Number.isSafeInteger(bps) || bps <= 0
+      || ageMs === null || !Number.isSafeInteger(ageMs) || ageMs < 0 || ageMs > BANDWIDTH_MAX_AGE_MS) {
+      this.bandwidth = null;
+      this.lowBandwidth = null;
+      this.goodSince = null;
+      return null;
+    }
+    this.bandwidth = { bps, sampledAt: nowMs - ageMs };
+    if (!this.hasUpgradeBudget(nowMs)) this.goodSince = null;
+    if (this.waitingForAck(nowMs)) return null;
+    const lower = this.profiles.slice(this.profiles.indexOf(this.current) + 1);
+    if (bps >= MIN_PROFILE_BPS[this.current] || lower.length === 0) {
+      this.lowBandwidth = null;
+      return null;
+    }
+    const target = lower.find((profile) => bps >= MIN_PROFILE_BPS[profile]) ?? lower[lower.length - 1]!;
+    const severe = bps < 650_000 && PROFILE_HEIGHT[this.current] > PROFILE_HEIGHT[target]
+      && this.profiles.indexOf(target) - this.profiles.indexOf(this.current) > 1;
+    // A persistent shortage is still bad even while its suitable lower profile
+    // fluctuates. Only the accelerated path needs continuously severe evidence.
+    this.lowBandwidth ??= { since: nowMs, severeSince: null };
+    this.lowBandwidth.severeSince = severe ? (this.lowBandwidth.severeSince ?? nowMs) : null;
+    const sustained = nowMs - this.lowBandwidth.since >= 1000;
+    const collapsed = this.lowBandwidth.severeSince !== null
+      && nowMs - this.lowBandwidth.severeSince >= 500;
+    if (!sustained && !collapsed) return null;
+    return this.request(target, nowMs);
+  }
+
+  private hasUpgradeBudget(nowMs: number): boolean {
+    if (!this.bandwidthFeedback) return true; // deployed older agents have no REMB telemetry
+    const next = this.profiles[this.profiles.indexOf(this.current) - 1];
+    return next !== undefined && this.bandwidth !== null
+      && nowMs - this.bandwidth.sampledAt <= BANDWIDTH_MAX_AGE_MS
+      && this.bandwidth.bps >= MIN_PROFILE_BPS[next] * 1.25;
+  }
+
+  private waitingForAck(nowMs: number): boolean {
+    if (!this.pending) return false;
+    if (nowMs - this.pending.requestedAt < 5000) return true;
+    this.pending = null;
+    this.clearEvidence();
+    return false;
+  }
+
+  private request(profile: VideoProfile, nowMs: number): VideoProfile | null {
+    if (this.unacknowledgedRequests >= 3) return null;
+    this.pending = { profile, requestedAt: nowMs };
+    this.lastRequestedProfile = profile;
+    this.unacknowledgedRequests += 1;
+    this.clearEvidence();
+    return profile;
   }
 
   observe(stats: VideoStreamStats, nowMs: number): VideoProfile | null {
@@ -211,17 +289,18 @@ export class AdaptiveVideoPolicy {
     if (gap !== null && gap > 0 && gap < 750) return null;
     if (gap === null || gap <= 0 || gap > MAX_SAMPLE_GAP_MS) {
       this.firstSampleAt = nowMs;
+      const bandwidthEvidence = this.lowBandwidth;
       this.clearEvidence();
+      this.lowBandwidth = bandwidthEvidence;
     }
     this.lastSampleAt = nowMs;
-    if (this.pending) {
-      if (nowMs - this.pending.requestedAt < 5_000) return null;
-      this.pending = null;
-      this.clearEvidence();
-    }
+    if (this.waitingForAck(nowMs)) return null;
     if (this.firstSampleAt === null || nowMs - this.firstSampleAt < 3_000
-      || (this.lastChangeAt !== null && nowMs - this.lastChangeAt < 8_000)) {
+      || (!this.bandwidthFeedback && this.lastChangeAt !== null && nowMs - this.lastChangeAt < 8_000)) {
+      // Do not erase the independent faster bandwidth evidence during warmup.
+      const bandwidthEvidence = this.lowBandwidth;
       this.clearEvidence();
+      this.lowBandwidth = bandwidthEvidence;
       return null;
     }
     const rtt = nonNegative(stats.rttMs);
@@ -244,7 +323,7 @@ export class AdaptiveVideoPolicy {
       this.goodSince = null;
     } else {
       this.badSamples = 0;
-      this.goodSince = healthy ? (this.goodSince ?? nowMs) : null;
+      this.goodSince = healthy && this.hasUpgradeBudget(nowMs) ? (this.goodSince ?? nowMs) : null;
     }
     const currentIndex = this.profiles.indexOf(this.current);
     let next: VideoProfile | undefined;
@@ -258,17 +337,17 @@ export class AdaptiveVideoPolicy {
     else if (this.goodSince !== null && nowMs - this.goodSince >= 6_000) {
       next = this.profiles[currentIndex - 1];
     }
-    if (!next || this.unacknowledgedRequests >= 3) return null;
-    this.pending = { profile: next, requestedAt: nowMs };
-    this.unacknowledgedRequests += 1;
-    this.clearEvidence();
-    return next;
+    return next ? this.request(next, nowMs) : null;
   }
 
   acknowledge(profile: VideoProfile, nowMs: number): void {
-    if (!this.profiles.includes(profile) || !Number.isFinite(nowMs) || nowMs < 0) return;
+    if (!this.profiles.includes(profile) || !Number.isFinite(nowMs) || nowMs < 0
+      || this.lastRequestedProfile !== profile) return;
     this.current = profile;
     this.pending = null;
+    // Keep a timed-out request eligible for a late matching ACK until here or
+    // a newer request supersedes it. Otherwise the retry cap becomes permanent.
+    this.lastRequestedProfile = null;
     this.unacknowledgedRequests = 0;
     this.lastChangeAt = nowMs;
     this.clearEvidence();

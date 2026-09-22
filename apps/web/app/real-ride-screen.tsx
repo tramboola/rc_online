@@ -30,6 +30,7 @@ import { formatVideoStreamStats } from "./adaptive-video";
 import { RideAudioControls } from "./ride-audio-controls";
 import { INITIAL_RIDE_AUDIO, RideMediaPlayback } from "./ride-media-playback";
 import { PENDING_AUDIO_PREFERENCES, RideAudioPreferences, type AudioSaveStatus } from "./ride-audio-preferences";
+import { RideVideoSafety } from "./ride-video-safety";
 
 const fallbackCarId = "40000000-0000-4000-8000-000000000001";
 const TRIM_SAVE_DELAY_MS = 300;
@@ -86,9 +87,10 @@ export function RealRideScreen() {
   const carId = searchParams.get("car") ?? fallbackCarId;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<RideMediaPlayback | null>(null);
+  const videoSafetyRef = useRef<RideVideoSafety | null>(null);
+  const videoPausedRef = useRef(false);
   const audioPreferencesRef = useRef<RideAudioPreferences | null>(null);
   const rideSurfaceRef = useRef<HTMLDivElement | null>(null);
-  const videoAttemptRef = useRef<RideConnectionAttempt | null>(null);
   const attemptRef = useRef<RideConnectionAttempt | null>(null);
   const loopRef = useRef<BrowserControlLoop | null>(null);
   const sessionRef = useRef<StoredDriveSession | null>(null);
@@ -99,6 +101,8 @@ export function RealRideScreen() {
   const keyboardModelRef = useRef<KeyboardDriveModel | null>(null);
   const [state, setState] = useState<RideConnectionState>("CONNECTING");
   const [armed, setArmed] = useState(false);
+  const [videoFresh, setVideoFresh] = useState(false);
+  const [videoPaused, setVideoPaused] = useState(false);
   const [pressedKeys, setPressedKeys] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [batteryTelemetry, dispatchBatteryTelemetry] = useReducer(
@@ -118,7 +122,22 @@ export function RealRideScreen() {
   const [trimSaveStatus, setTrimSaveStatus] = useState<TrimSaveStatus>("saved");
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const battery = getBatteryPresentation(batteryTelemetry.batteryPercent);
+  const pauseForVideo = useCallback(() => {
+    videoPausedRef.current = true;
+    setVideoPaused(true);
+    keyboardModelRef.current?.reset();
+    pressedRef.current = new Set();
+    setPressedKeys(pressedRef.current);
+    setControl(NEUTRAL_CONTROL);
+    loopRef.current?.setInput(NEUTRAL_CONTROL);
+    loopRef.current?.disarm("camera video stopped updating");
+  }, []);
   const applyMobileInput = useCallback((input: { steering: number; throttle: number; nitro: boolean }) => {
+    if (!armedRef.current || videoPausedRef.current || !videoSafetyRef.current?.isFresh()) {
+      loopRef.current?.setInput(NEUTRAL_CONTROL);
+      if (armedRef.current) pauseForVideo();
+      return;
+    }
     keyboardModelRef.current?.reset();
     if (pressedRef.current.size > 0) {
       pressedRef.current = new Set();
@@ -126,7 +145,7 @@ export function RealRideScreen() {
       setControl(NEUTRAL_CONTROL);
     }
     loopRef.current?.setInput(input);
-  }, []);
+  }, [pauseForVideo]);
 
   useEffect(() => {
     const preferences = new RideAudioPreferences((value) => {
@@ -155,10 +174,12 @@ export function RealRideScreen() {
     setAudio({ ...INITIAL_RIDE_AUDIO, ...(audioPreferencesRef.current?.value ?? PENDING_AUDIO_PREFERENCES) });
     dispatchBatteryTelemetry({ type: "RESET" });
     setReadyLoop(null);
+    setVideoFresh(false);
+    setVideoPaused(false);
+    videoPausedRef.current = false;
     setRideSession(null);
     sessionRef.current = null;
     loopRef.current = null;
-    videoAttemptRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     armedRef.current = false;
     setArmed(false);
@@ -178,7 +199,9 @@ export function RealRideScreen() {
       return loop;
     });
     let playback: RideMediaPlayback | null = null;
+    let videoSafety: RideVideoSafety | null = null;
     const attempt = new RideConnectionAttempt(carId, {
+      canArmControls: () => !videoPausedRef.current && Boolean(videoSafety?.isFresh()),
       onSession: (session) => {
         sessionRef.current = session;
         setRideSession(session);
@@ -188,6 +211,8 @@ export function RealRideScreen() {
       onSnapshot: (snapshot) => {
         setConnection(snapshot);
         if (snapshot.status === "failed") {
+          videoSafety?.close();
+          setVideoFresh(false);
           playback?.close();
           setAudio({ ...INITIAL_RIDE_AUDIO, ...(audioPreferencesRef.current?.value ?? PENDING_AUDIO_PREFERENCES) });
           setState("DISCONNECTED");
@@ -195,8 +220,8 @@ export function RealRideScreen() {
         }
       },
       onStream: (stream) => {
-        videoAttemptRef.current = attempt;
         void playback?.attach(stream);
+        videoSafety?.watch(stream);
       },
       onVideoStats: (stats) => {
         // Prefer decoded RTP measurements; Safari may expose dimensions only on
@@ -212,6 +237,7 @@ export function RealRideScreen() {
         const browserLoop = loop as BrowserControlLoop;
         browserLoop.setSteeringTrim(sessionRef.current?.steeringTrimPercent ?? 0);
         loopRef.current = browserLoop;
+        if (videoPausedRef.current || !videoSafety?.isFresh()) pauseForVideo();
         setReadyLoop(browserLoop);
         setState(route);
         setError(null);
@@ -219,6 +245,12 @@ export function RealRideScreen() {
     }, dependencies);
     attemptRef.current = attempt;
     if (videoRef.current) {
+      videoSafety = new RideVideoSafety(videoRef.current, (fresh) => {
+        setVideoFresh(fresh);
+        if (fresh) attempt.markVideoLoadedData();
+        else pauseForVideo();
+      });
+      videoSafetyRef.current = videoSafety;
       playback = new RideMediaPlayback(
         videoRef.current, setAudio, (message) => attempt.fail(message),
         audioPreferencesRef.current?.value ?? PENDING_AUDIO_PREFERENCES,
@@ -233,13 +265,14 @@ export function RealRideScreen() {
     return () => {
       window.removeEventListener("pointerdown", resumeSound, true);
       window.removeEventListener("keydown", resumeSound, true);
+      videoSafety?.close();
+      if (videoSafetyRef.current === videoSafety) videoSafetyRef.current = null;
       playback?.close();
       if (playbackRef.current === playback) playbackRef.current = null;
       attempt.close("ride connection replaced");
-      if (videoAttemptRef.current === attempt) videoAttemptRef.current = null;
       if (attemptRef.current === attempt) attemptRef.current = null;
     };
-  }, [attemptKey, carId]);
+  }, [attemptKey, carId, pauseForVideo]);
 
   useEffect(() => {
     if (!rideSession) {
@@ -249,6 +282,7 @@ export function RealRideScreen() {
     const countdown = new SessionCountdown({
       onTick: setRemainingSeconds,
       onExpire: () => {
+        videoSafetyRef.current?.close();
         keyboardModelRef.current?.reset();
         const neutral = new Set<string>();
         pressedRef.current = neutral;
@@ -294,10 +328,12 @@ export function RealRideScreen() {
       loop.disarm(reason);
     };
     const onBlur = () => neutralize("browser focus lost");
-    const onFocus = () => loop.arm();
+    const onFocus = () => {
+      if (!videoPausedRef.current && videoSafetyRef.current?.isFresh()) loop.arm();
+    };
     const onVisibility = () => {
       if (document.visibilityState !== "visible") neutralize("browser hidden");
-      else loop.arm();
+      else onFocus();
     };
     const onKey = (event: KeyboardEvent, pressed: boolean) => {
       const key = controlKeyForCode(event.code);
@@ -306,6 +342,10 @@ export function RealRideScreen() {
       // A lost-focus hold must not re-arm the car through OS repeat events.
       if (pressed && (event.repeat || pressedRef.current.has(event.code))) return;
       if (!pressed && !pressedRef.current.has(event.code)) return;
+      if (videoPausedRef.current || !videoSafetyRef.current?.isFresh()) {
+        pauseForVideo();
+        return;
+      }
       if (pressed && !armedRef.current) loop.arm();
       applyPressedKeys(updatePressedKeys(pressedRef.current, event.code, pressed));
     };
@@ -326,20 +366,23 @@ export function RealRideScreen() {
       applyPressedKeys(new Set());
       if (keyboardModelRef.current === model) keyboardModelRef.current = null;
     };
-  }, [readyLoop]);
+  }, [readyLoop, pauseForVideo]);
 
   function end(): void {
+    videoSafetyRef.current?.close();
     loopRef.current?.disarm("operator ended ride");
     attemptRef.current?.close("operator ended ride");
     router.push("/queue");
   }
 
   function retryConnection(): void {
+    videoSafetyRef.current?.close();
     attemptRef.current?.close("retrying connection");
     setAttemptKey((current) => current + 1);
   }
 
   function returnToQueue(): void {
+    videoSafetyRef.current?.close();
     attemptRef.current?.close("returning to queue");
     router.push("/queue");
   }
@@ -375,7 +418,7 @@ export function RealRideScreen() {
         aria-label="Live onboard camera"
         autoPlay
         className="drive-poster"
-        onLoadedData={() => videoAttemptRef.current?.markVideoLoadedData()}
+        onLoadedData={() => videoSafetyRef.current?.check()}
         playsInline
         ref={videoRef}
       />
@@ -399,10 +442,25 @@ export function RealRideScreen() {
       <button className="mobile-end-session" onClick={() => setEndConfirmationOpen(true)} type="button"><Flag size={16} /> END SESSION</button>
       <RideFullscreenToggle target={rideSurfaceRef} />
       {connection.status === "connected" && !armed && !endConfirmationOpen ? (
-        <RideControlResume onResume={() => {
-          loopRef.current?.setInput({ steering: 0, throttle: 0, nitro: false });
-          loopRef.current?.arm();
-        }} />
+        <RideControlResume
+          disabled={!videoFresh}
+          detail={!videoFresh
+            ? "Waiting for fresh camera frames. Controls are paused."
+            : videoPaused
+              ? "Camera video is updating. Release the controls, then tap to resume."
+              : "Release the controls, then tap to resume."}
+          onResume={() => {
+            // Re-check at the gesture, not only when the banner last rendered.
+            if (!videoSafetyRef.current?.isFresh()) {
+              pauseForVideo();
+              return;
+            }
+            videoPausedRef.current = false;
+            setVideoPaused(false);
+            loopRef.current?.setInput(NEUTRAL_CONTROL);
+            loopRef.current?.arm();
+          }}
+        />
       ) : null}
       {endConfirmationOpen ? (
         <div className="mobile-end-confirm" role="dialog" aria-modal="true" aria-labelledby="mobile-end-confirm-title">

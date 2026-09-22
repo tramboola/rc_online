@@ -20,6 +20,7 @@ vi.mock("./ride-connection-attempt", () => ({
   RideConnectionAttempt: class {
     constructor(_carId: string, callbacks: RideConnectionAttemptCallbacks) { fixture.callbacks = callbacks; }
     async start() {}
+    markVideoLoadedData() {}
     close() { fixture.loop?.stop(); }
   },
 }));
@@ -34,6 +35,8 @@ import { RealRideScreen } from "./real-ride-screen";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date", "performance", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
 });
 afterEach(() => {
   cleanup();
@@ -45,11 +48,30 @@ afterEach(() => {
   fixture.router.push.mockClear();
   fixture.router.replace.mockClear();
   vi.restoreAllMocks();
+  vi.clearAllTimers();
   vi.useRealTimers();
 });
 
-function setup(version: 3 | 4 | 5 = 5, durationMs = 300_000) {
+function setup(version: 3 | 4 | 5 = 5, durationMs = 300_000, liveVideo = true) {
   const rendered = render(<RealRideScreen />);
+  const video = rendered.container.querySelector("video")!;
+  Object.defineProperties(video, {
+    readyState: { value: 2, configurable: true },
+    paused: { value: false, configurable: true },
+    videoWidth: { value: 640, configurable: true },
+    videoHeight: { value: 360, configurable: true },
+  });
+  let frameCallback: VideoFrameRequestCallback | null = null;
+  let presentedFrames = 0;
+  video.requestVideoFrameCallback = (callback) => { frameCallback = callback; return presentedFrames; };
+  video.cancelVideoFrameCallback = () => { frameCallback = null; };
+  const frame = () => frameCallback?.(performance.now(), { presentedFrames: ++presentedFrames } as VideoFrameCallbackMetadata);
+  const stream = { getAudioTracks: () => [] } as unknown as MediaStream;
+  act(() => {
+    fixture.callbacks!.onStream(stream);
+    if (liveVideo) frame();
+  });
+  const videoTimer = liveVideo ? setInterval(frame, 40) : null;
   const frames: Array<{ steering: number; throttle: number; nitro: boolean; armed: boolean; v: number }> = [];
   const fast = { readyState: "open", bufferedAmount: 0, send: (data: string) => frames.push(JSON.parse(data)), addEventListener() {}, removeEventListener() {} } as unknown as RTCDataChannel;
   const reliable = { readyState: "open", bufferedAmount: 0, send() {}, addEventListener() {}, removeEventListener() {} } as unknown as RTCDataChannel;
@@ -64,11 +86,15 @@ function setup(version: 3 | 4 | 5 = 5, durationMs = 300_000) {
     fixture.loop = loop;
     loop.bindChannels(fast, reliable);
     loop.start();
-    loop.arm();
+    if (fixture.callbacks!.canArmControls?.() ?? true) loop.arm();
     fixture.callbacks!.onReady(loop, "DIRECT");
     fixture.callbacks!.onSnapshot({ activeStep: 8, entries: [], errorMessage: "", status: "connected" });
   });
-  return { ...rendered, loop, fast, latest: () => frames.at(-1)!, frames };
+  return {
+    ...rendered, loop, fast, video, frame, stream,
+    stopVideo: () => { if (videoTimer !== null) clearInterval(videoTimer); },
+    latest: () => frames.at(-1)!, frames,
+  };
 }
 function tick(ms: number) { act(() => vi.advanceTimersByTime(ms)); }
 function down(code: string, repeat = false) { fireEvent.keyDown(window, { code, repeat }); }
@@ -208,7 +234,7 @@ describe("keyboard commands from the real ride screen", () => {
     expect(ride.latest()).toMatchObject({ steering: 250, throttle: 600 });
   });
 
-  it("stays neutral after a hidden page becomes visible until a fresh key press", () => {
+  it("requires fresh video and explicit resume after a hidden page becomes visible", () => {
     const visibility = vi.spyOn(document, "visibilityState", "get");
     const ride = setup();
     down("KeyW");
@@ -222,8 +248,12 @@ describe("keyboard commands from the real ride screen", () => {
     visibility.mockReturnValue("visible");
     fireEvent(document, new Event("visibilitychange"));
     down("KeyD", true);
+    tick(40);
+    expect(ride.latest()).toMatchObject({ steering: 0, throttle: 0, armed: false });
+    down("KeyD");
     tick(20);
-    expect(ride.latest()).toMatchObject({ steering: 0, throttle: 0, armed: true });
+    expect(ride.latest()).toMatchObject({ steering: 0, throttle: 0, armed: false });
+    fireEvent.click(ride.getByRole("button", { name: "RESUME CONTROLS" }));
     down("KeyD");
     tick(20);
     expect(ride.latest()).toMatchObject({ steering: 1000, throttle: 0 });
@@ -268,5 +298,83 @@ describe("keyboard commands from the real ride screen", () => {
     down("KeyS");
     tick(600);
     expect(ride.latest().throttle).toBe(-1);
+  });
+
+  it("blocks startup without frame evidence and cannot resume on loadeddata alone", () => {
+    const ride = setup(5, 300_000, false);
+    fireEvent.loadedData(ride.video);
+    down("KeyW");
+    act(() => fixture.mobileInput!({ steering: 1, throttle: 1, nitro: true }));
+    tick(20);
+    expect(ride.latest()).toMatchObject({ armed: false, steering: 0, throttle: 0, nitro: false });
+    expect((ride.getByRole("button", { name: "RESUME CONTROLS" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(ride.getByRole("button", { name: "RESUME CONTROLS" }));
+    tick(20);
+    expect(ride.latest().armed).toBe(false);
+    act(() => ride.frame());
+    expect((ride.getByRole("button", { name: "RESUME CONTROLS" }) as HTMLButtonElement).disabled).toBe(false);
+    tick(20);
+    expect(ride.latest().armed).toBe(false);
+    fireEvent.click(ride.getByRole("button", { name: "RESUME CONTROLS" }));
+    tick(20);
+    expect(ride.latest()).toMatchObject({ armed: true, steering: 0, throttle: 0, nitro: false });
+  });
+
+  it.each(["keyboard", "phone"])("neutralizes a held %s input on video freeze and never automatically rearms", (input) => {
+    const ride = setup();
+    if (input === "keyboard") {
+      down("KeyW");
+      down("KeyD");
+      down("KeyN");
+    } else {
+      act(() => fixture.mobileInput!({ steering: 0.8, throttle: 1, nitro: true }));
+    }
+    tick(100);
+    expect(ride.latest()).toMatchObject({ armed: true, throttle: 1000, nitro: true });
+    ride.stopVideo();
+    tick(1_000);
+    expect(ride.latest()).toMatchObject({ armed: false, steering: 0, throttle: 0, nitro: false });
+    expect(ride.container.querySelectorAll('.real-keycap[data-active="true"]').length).toBe(0);
+    expect(ride.getByText("Waiting for fresh camera frames. Controls are paused.")).toBeTruthy();
+    fireEvent.focus(window);
+    down("KeyW");
+    act(() => fixture.mobileInput!({ steering: 1, throttle: 1, nitro: true }));
+    fireEvent.click(ride.getByRole("button", { name: "RESUME CONTROLS" }));
+    tick(20);
+    expect(ride.latest().armed).toBe(false);
+    act(() => ride.frame());
+    fireEvent.focus(window);
+    down("KeyW");
+    fireEvent(document, new Event("visibilitychange"));
+    tick(20);
+    expect(ride.latest()).toMatchObject({ armed: false, throttle: 0 });
+    fireEvent.click(ride.getByRole("button", { name: "RESUME CONTROLS" }));
+    tick(20);
+    expect(ride.latest()).toMatchObject({ armed: true, steering: 0, throttle: 0, nitro: false });
+    down("KeyW", true);
+    tick(20);
+    expect(ride.latest().throttle).toBe(0);
+    down("KeyW");
+    tick(20);
+    expect(ride.latest().throttle).toBe(1000);
+  });
+
+  it("invalidates old-frame evidence on stream replacement and cleans up when unmounted", async () => {
+    const ride = setup();
+    down("KeyW");
+    tick(100);
+    ride.stopVideo();
+    act(() => fixture.callbacks!.onStream({ getAudioTracks: () => [] } as unknown as MediaStream));
+    tick(20);
+    expect(ride.latest()).toMatchObject({ armed: false, throttle: 0 });
+    expect((ride.getByRole("button", { name: "RESUME CONTROLS" }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => ride.frame());
+    tick(20);
+    expect(ride.latest().armed).toBe(false);
+    await act(async () => { ride.unmount(); });
+    const sentBefore = ride.frames.length;
+    tick(2_000);
+    expect(ride.frames).toHaveLength(sentBefore);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

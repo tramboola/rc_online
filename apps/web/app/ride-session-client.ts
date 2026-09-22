@@ -1,7 +1,7 @@
 import { GatewayServerMessageSchema, type IceServer } from "@rc/contracts";
 import { AdaptiveVideoPolicy, VideoStatsSampler, type VideoProfile, type VideoStreamStats } from "./adaptive-video";
 
-const videoProfiles: readonly VideoProfile[] = ["720p60", "720p30", "540p30", "360p30"];
+const videoProfiles: readonly VideoProfile[] = ["720p60", "720p30", "540p30", "360p30", "240p30"];
 
 export type StoredDriveSession = {
   sessionId: string;
@@ -95,8 +95,14 @@ export class RideSessionClient {
     this.#peer = peer;
     const stream = this.#dependencies.createStream?.() ?? new MediaStream();
     this.#remoteStream = stream;
-    peer.addTransceiver("video", { direction: "recvonly" });
-    peer.addTransceiver("audio", { direction: "recvonly" });
+    for (const kind of ["video", "audio"] as const) {
+      const receiver = peer.addTransceiver(kind, { direction: "recvonly" })?.receiver;
+      // Best-effort browser buffering preference, not a zero-latency promise.
+      // Apply to both streams because synchronized audio can hold video back.
+      try {
+        if (receiver && "jitterBufferTarget" in receiver) receiver.jitterBufferTarget = 0;
+      } catch { /* Older browsers may expose a readonly/unsupported setter. */ }
+    }
     this.#fast = peer.createDataChannel("control-fast", { ordered: false, maxRetransmits: 0 });
     this.#reliable = peer.createDataChannel("control-reliable", { ordered: true });
     const controlFailed = () => {
@@ -213,7 +219,7 @@ export class RideSessionClient {
         if (!message || message.v !== 1 || message.sessionId !== this.#session.sessionId) return;
         if (message.type === "video.capabilities" && !this.#videoPolicy) {
           if (Object.keys(message).sort().join() !== "profile,profiles,sessionId,type,v") return;
-          if (!Array.isArray(message.profiles) || message.profiles.length < 1 || message.profiles.length > 4) return;
+          if (!Array.isArray(message.profiles) || message.profiles.length < 1 || message.profiles.length > 5) return;
           const profiles = videoProfiles.filter((profile) => message.profiles.includes(profile));
           if (profiles.length !== message.profiles.length || !profiles.includes(message.profile)) return;
           this.#supportedProfiles = profiles;
@@ -223,11 +229,31 @@ export class RideSessionClient {
           if (message.profile !== this.#requestedProfile || !this.#supportedProfiles.includes(message.profile)) return;
           this.#videoPolicy?.acknowledge(message.profile, performance.now());
           this.#requestedProfile = null;
+        } else if (message.type === "video.bandwidth") {
+          if (Object.keys(message).sort().join() !== "estimatedBitrateBps,sampleAgeMs,sessionId,type,v") return;
+          const { estimatedBitrateBps: bps, sampleAgeMs: age } = message;
+          if (!((bps === null && age === null) || (Number.isSafeInteger(bps) && bps > 0
+            && Number.isSafeInteger(age) && age >= 0))) return;
+          if (this.#canNegotiateQuality()) {
+            this.#requestProfile(this.#videoPolicy?.observeBandwidth(bps, age, performance.now()));
+          }
         }
       } catch {
         // Optional video negotiation must never interrupt the driving session.
       }
     };
+  }
+
+  #canNegotiateQuality(): boolean {
+    return !this.#closed && !this.#controlFailed && this.#peer?.connectionState === "connected"
+      && (typeof document === "undefined" || document.visibilityState === "visible")
+      && this.#videoQuality?.readyState === "open" && this.#videoQuality.bufferedAmount < 2048;
+  }
+
+  #requestProfile(profile: VideoProfile | null | undefined): void {
+    if (!profile || !this.#canNegotiateQuality()) return;
+    this.#requestedProfile = profile;
+    this.#videoQuality!.send(JSON.stringify({ v: 1, type: "video.profile.request", sessionId: this.#session.sessionId, profile }));
   }
 
   #startVideoStats(peer: RTCPeerConnection): void {
@@ -241,15 +267,7 @@ export class RideSessionClient {
         if (!current()) return;
         const stats = this.#videoSampler.sample(report);
         this.onVideoStats(stats);
-        const quality = this.#videoQuality;
-        const visible = typeof document === "undefined" || document.visibilityState === "visible";
-        if (visible && quality?.readyState === "open" && quality.bufferedAmount < 2048) {
-          const profile = this.#videoPolicy?.observe(stats, performance.now());
-          if (profile) {
-            this.#requestedProfile = profile;
-            quality.send(JSON.stringify({ v: 1, type: "video.profile.request", sessionId: this.#session.sessionId, profile }));
-          }
-        }
+        if (this.#canNegotiateQuality()) this.#requestProfile(this.#videoPolicy?.observe(stats, performance.now()));
       } catch {
         if (current()) {
           this.#videoSampler = new VideoStatsSampler();

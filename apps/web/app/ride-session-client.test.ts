@@ -75,6 +75,83 @@ function harness(candidateType: "host" | "relay" | null = "host") {
 }
 
 describe("RideSessionClient", () => {
+  it("uses fresh Pi bandwidth to select normal 240p while stats and controls are independent", async () => {
+    vi.useFakeTimers();
+    const { client, peer, fast, reliable } = harness();
+    client.connect();
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+    const quality = { label: "video-quality", readyState: "open", bufferedAmount: 0, send: vi.fn(), close: vi.fn(),
+      onmessage: null as null | ((event: { data: string }) => void), onclose: null as null | (() => void) };
+    peer.ondatachannel?.({ channel: quality as unknown as RTCDataChannel });
+    const receive = (message: object) => quality.onmessage?.({ data: JSON.stringify({ v: 1, sessionId: session.sessionId, ...message }) });
+    receive({ type: "video.capabilities", profiles: ["720p30", "540p30", "360p30", "240p30"], profile: "720p30" });
+    const budget = { type: "video.bandwidth", estimatedBitrateBps: 400_000, sampleAgeMs: 0 };
+    receive({ ...budget, sessionId: "wrong" });
+    await vi.advanceTimersByTimeAsync(500);
+    receive(budget);
+    expect(quality.send).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500); // stats warmup must not clear independent bandwidth evidence
+    receive(budget);
+    expect(quality.send).toHaveBeenCalledOnce();
+    expect(JSON.parse(quality.send.mock.calls[0]![0])).toEqual({
+      v: 1, type: "video.profile.request", sessionId: session.sessionId, profile: "240p30",
+    });
+    receive(budget); // no second request while waiting for apply
+    receive({ type: "video.profile.applied", profile: "540p30" }); // unrelated ACK ignored
+    expect(quality.send).toHaveBeenCalledOnce();
+    receive({ type: "video.profile.applied", profile: "240p30" });
+    expect(fast.send).not.toHaveBeenCalled();
+    expect(reliable.send).not.toHaveBeenCalled();
+    quality.onclose?.();
+    await vi.advanceTimersByTimeAsync(6000);
+    receive(budget);
+    expect(quality.send).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { estimatedBitrateBps: 400_000, sampleAgeMs: 2000 },
+    { estimatedBitrateBps: null, sampleAgeMs: null },
+    { estimatedBitrateBps: "400000", sampleAgeMs: 0 },
+    { estimatedBitrateBps: 400_000, sampleAgeMs: -1 },
+    { estimatedBitrateBps: 400_000, sampleAgeMs: 0, unexpected: true },
+  ])("ignores missing, malformed or stale bandwidth data %j", async (sample) => {
+    vi.useFakeTimers();
+    const { client, peer } = harness();
+    client.connect();
+    peer.connectionState = "connected";
+    peer.onconnectionstatechange?.();
+    const quality = { label: "video-quality", readyState: "open", bufferedAmount: 0, send: vi.fn(), close: vi.fn(),
+      onmessage: null as null | ((event: { data: string }) => void), onclose: null as null | (() => void) };
+    peer.ondatachannel?.({ channel: quality as unknown as RTCDataChannel });
+    quality.onmessage?.({ data: JSON.stringify({ v: 1, type: "video.capabilities", sessionId: session.sessionId,
+      profiles: ["720p30", "540p30", "360p30", "240p30"], profile: "720p30" }) });
+    for (let i = 0; i < 6; i++) {
+      quality.onmessage?.({ data: JSON.stringify({ v: 1, type: "video.bandwidth", sessionId: session.sessionId, ...sample }) });
+      await vi.advanceTimersByTimeAsync(500);
+    }
+    expect(quality.send).not.toHaveBeenCalled();
+  });
+
+  it("requests minimum supported browser jitter buffering on video and audio", () => {
+    const { client, peer } = harness();
+    const receivers = [{ jitterBufferTarget: 200 }, { jitterBufferTarget: 200 }];
+    peer.addTransceiver.mockImplementationOnce(() => ({ receiver: receivers[0] }))
+      .mockImplementationOnce(() => ({ receiver: receivers[1] }));
+    client.connect();
+    expect(receivers.map((receiver) => receiver.jitterBufferTarget)).toEqual([0, 0]);
+  });
+
+  it("unsupported jitter buffer setters never break connection setup", () => {
+    const { client, peer } = harness();
+    const receiver = Object.defineProperty({}, "jitterBufferTarget", {
+      set() { throw new Error("unsupported"); },
+    });
+    peer.addTransceiver.mockReturnValue({ receiver });
+    expect(() => client.connect()).not.toThrow();
+    expect(peer.createDataChannel).toHaveBeenCalledWith("control-fast", { ordered: false, maxRetransmits: 0 });
+  });
+
   it.each(["fast", "reliable"] as const)("reports loss of %s control even while video peer is connected", async (name) => {
     const { client, peer, fast, reliable } = harness();
     const state = vi.fn();
