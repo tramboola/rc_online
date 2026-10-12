@@ -1,4 +1,4 @@
-FROM node:22.20.0-bookworm-slim AS base
+FROM node:26.11.1-bookworm-slim AS base
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -26,7 +26,7 @@ COPY packages/device-auth packages/device-auth
 COPY infra/compose/compose.vps-web.yaml infra/compose/compose.vps-web.yaml
 RUN pnpm --filter "@rc/web..." build && pnpm --filter @rc/web exec vitest run app/live-queue-store.test.ts app/simulation-screen.render.test.tsx app/queue-status-color.test.tsx app/api/queue/route.test.ts app/queue-offer.test.tsx auth/turn-redundancy.test.ts app/ride-session-client.test.ts app/ride-audio-controls.test.tsx
 
-FROM node:22.20.0-bookworm-slim AS runner
+FROM node:26.11.1-bookworm-slim AS runner
 
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
